@@ -1,0 +1,162 @@
+.wrapper {
+  overflow: hidden;
+  position: relative;
+}
+
+.autoHeight {
+  height: auto;
+  white-space: unset;
+  word-break: break-word;
+}
+
+.prefix {
+  display: inline-flex;
+}
+
+.suffix {
+  margin-left: auto;
+  display: inline-flex;
+}
+
+.dropDown {
+  gap: 0;
+  // Reset `width: var(--icon-size)` from _base.scss.
+  width: 24px;
+  // height: var(--widget-height);
+  // background-color: var(--widget-background);
+
+  &:not(:disabled):hover {
+    background-color: var(--widget-background-highlight-color);
+  }
+
+  &:not(:disabled):active {
+    background-color: var(--widget-background);
+  }
+
+  > i:first-of-type {
+    margin-left: 2px;
+    margin-right: -4px;
+  }
+
+  > i:last-of-type {
+    margin-top: 2px;
+    margin-left: 2px;
+    align-self: flex-start;
+    font-size: 10px;
+  }
+}
+
+.count {
+  gap: 0;
+  width: auto;
+
+  > i {
+    margin-left: 2px;
+    width: 13px;
+  }
+
+  > .badge {
+    margin-inline: 2px;
+    align-self: flex-start;
+    font-size: 10px;
+  }
+}
+
+.danger {
+  color: var(--widget-font-danger-color);
+  background-color: var(--widget-button-danger-bg);
+
+  &:hover {
+    background-color: var(--widget-button-danger-hover-bg);
+  }
+
+  &:active {
+    background-color: var(--widget-button-danger-bg);
+  }
+
+  &:disabled {
+    color: var(--widget-font-disable-color);
+    background-color: var(--widget-background);
+  }
+}
+
+.outline {
+  color: var(--widget-secondary-font-color);
+  background-color: transparent;
+  border: 1px solid var(--widget-secondary-font-color);
+  transition:
+    color var(--transition-time),
+    background-color var(--transition-time);
+
+  &:hover {
+    color: var(--brand-highlight-color);
+    border-color: var(--brand-highlight-color);
+    transition-duration: 0s;
+  }
+
+  &:active {
+    background-color: var(--widget-background-mask-highlight-color);
+    transition-duration: 0s;
+  }
+
+  &:focus-visible {
+    color: var(--brand-highlight-color);
+    background-color: var(--widget-background-mask-highlight-color);
+    transition-duration: 0s;
+  }
+
+  &:disabled {
+    color: var(--widget-font-disable-color);
+    border-color: var(--widget-border-color);
+  }
+}
+
+.active {
+  color: var(--white);
+  background-color: var(--brand-highlight-color);
+
+  &:active {
+    background-color: var(--brand-hover-color);
+  }
+
+  &:disabled {
+    background-color: var(--brand-color);
+  }
+}
+
+.isSuffix {
+  padding-left: 4px;
+}
+
+.clear {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  opacity: 0;
+
+  .wrapper:hover > &,
+  .wrapper:has(.button:focus-visible) > & {
+    opacity: 1;
+  }
+}
+
+.wrapper:has(.clear) .button {
+  padding-right: calc(var(--icon-size) + 2px);
+}
+
+.wrapper:has(.danger) .clear {
+  color: var(--widget-font-danger-color);
+
+  &:hover {
+    background-color: var(--widget-button-danger-bg);
+  }
+
+  &:active {
+    background-color: var(--widget-button-danger-hover-bg);
+  }
+
+  &:disabled {
+    color: var(--widget-font-disable-color);
+    background-color: var(--widget-input-background);
+  }
+}

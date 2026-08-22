@@ -1,0 +1,10 @@
+.container {
+  position: absolute;
+  pointer-events: none;
+}
+
+.indicator {
+  position: absolute;
+  border-bottom: 1px solid var(--widget-font-color);
+  z-index: 1001;
+}

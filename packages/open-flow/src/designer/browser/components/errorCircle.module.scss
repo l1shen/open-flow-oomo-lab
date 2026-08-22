@@ -1,0 +1,27 @@
+.tooltip {
+  max-width: 250px;
+  padding: 0.25em 0.5em;
+  border-radius: var(--widget-radius);
+  // border: 1px solid var(--node-border-color);
+  // background: var(--node-background-color);
+  border: 1px solid var(--widget-error-tip-border);
+  background: var(--widget-error-tip-background);
+  user-select: text;
+
+  :global(.ant-tooltip-container) {
+    background: unset;
+    min-height: unset;
+    padding: 0;
+    color: var(--widget-font-color);
+    font-size: var(--base-font-size);
+    box-shadow: none;
+  }
+}
+
+.wrapper {
+  font-size: calc(var(--base-font-size) * 1.25);
+}
+
+.icon {
+  color: var(--widget-error-color);
+}

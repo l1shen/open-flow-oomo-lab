@@ -1,0 +1,243 @@
+@import '@xyflow/react/dist/style.css';
+
+@keyframes oo-designer-spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+// Keep the Designer root before component styles so its low-specificity defaults remain overridable.
+.oo-designer-root {
+  cursor: default;
+  font: var(--base-font-size) / 1 var(--font-sans);
+  color: var(--widget-font-color);
+  accent-color: var(--brand-highlight-color);
+  scrollbar-color: var(--scrollbar-color) transparent;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: inherit;
+  }
+
+  ::placeholder {
+    color: var(--widget-font-placeholder-color);
+  }
+
+  ::selection {
+    background-color: var(--widget-input-selection-background-color);
+  }
+
+  ::-webkit-scrollbar-corner,
+  ::-webkit-resizer {
+    border: none;
+    outline: none;
+    background: no-repeat
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 36 36'%3E%3Ccircle cx='12' cy='24' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-1'/%3E%3Ccircle cx='18' cy='24' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-2'/%3E%3Ccircle cx='18' cy='18' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-3'/%3E%3Ccircle cx='24' cy='12' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-4'/%3E%3Ccircle cx='24' cy='24' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-5'/%3E%3Ccircle cx='24' cy='18' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-6'/%3E%3Cpath fill='none' d='M0 0h36v36H0z'/%3E%3C/svg%3E");
+  }
+
+  [hidden] {
+    display: none;
+  }
+
+  // Current spec doesn't style scrollbar itself: https://github.com/w3c/csswg-drafts/issues/10591
+  :where(:hover) {
+    scrollbar-color: var(--scrollbar-color-hover) transparent;
+  }
+
+  // We use <i> for icons, they can not be interacted with.
+  :where(i) {
+    pointer-events: none;
+  }
+
+  :where(.oo-designer-spin) {
+    animation: oo-designer-spin 1.5s steps(30) infinite;
+    transform-origin: center center;
+  }
+
+  :where(pre, code, samp, tt) {
+    font-size: 1em;
+    font-family: var(--font-monospace);
+  }
+
+  :where(button, input, select, textarea) {
+    border: none;
+    width: 100%;
+    color: inherit;
+    font: 1em / 1.5 var(--font-sans);
+    font-weight: inherit;
+    letter-spacing: inherit;
+    padding: 2px 0.375em;
+    border: 1px solid transparent;
+    outline: none;
+    vertical-align: middle;
+    height: var(--widget-height);
+    border-radius: var(--widget-radius);
+    background: var(--widget-background);
+    box-sizing: border-box;
+    text-overflow: ellipsis;
+    text-align: inherit;
+  }
+
+  :where(select) {
+    appearance: none;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  :where(button) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 0.3em;
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  :where(button:has(> i)) {
+    padding: 0;
+    color: var(--text-2);
+    width: var(--icon-size);
+    height: var(--icon-size);
+    font-size: var(--icon-font-size);
+    background-color: transparent;
+  }
+
+  // :where(input[type="number"]) {
+  //   font-variant-numeric: tabular-nums;
+  // }
+
+  :where(input[type='color']) {
+    appearance: none;
+    background-image:
+      linear-gradient(45deg, rgba(0, 0, 0, 0.4) 25%, transparent 25%, transparent 75%, rgba(0, 0, 0, 0.4) 75%),
+      linear-gradient(45deg, rgba(0, 0, 0, 0.4) 25%, transparent 25%, transparent 75%, rgba(0, 0, 0, 0.4) 75%);
+    background-position:
+      0 0,
+      7px 7px;
+    background-size: 14px 14px;
+
+    &::-webkit-color-swatch {
+      all: unset;
+    }
+  }
+
+  :where(input[type='checkbox']) {
+    flex: none;
+    appearance: none;
+    margin: 0;
+    padding: 0;
+    width: 1.25em;
+    height: 1.25em;
+    cursor: pointer;
+    display: grid;
+    place-content: center;
+
+    &::before {
+      content: '';
+      width: 0.75em;
+      height: 0.75em;
+      opacity: 0;
+      clip-path: polygon(0 65%, 50% 96%, 100% 10%, 90% 3%, 46% 79%, 6% 54%);
+      background-color: currentColor;
+    }
+  }
+
+  :where(:is(button, input, select, textarea):hover) {
+    background-color: var(--widget-background-highlight-color);
+    transition-duration: 0s;
+  }
+
+  :where(input[type='checkbox']:enabled:hover)::before {
+    opacity: 0.5;
+  }
+
+  :where(input[type='checkbox']:checked) {
+    // Override the more specific VS Code `.workbench input { color: inherit }` rule.
+    color: var(--white) !important;
+    background-color: var(--brand-highlight-color) !important;
+    transition-duration: 0s;
+
+    &::before {
+      opacity: 1;
+    }
+  }
+
+  :where(:is(input, select, textarea):focus-visible) {
+    outline: none;
+    border: 1px solid var(--brand-highlight-color);
+    background-color: var(--widget-input-background);
+    transition-duration: 0s;
+  }
+
+  :where(:is(select, textarea):read-only:focus-visible) {
+    border-color: var(--border-2);
+  }
+
+  :where(input:read-only) {
+    color: var(--widget-font-disable-color);
+  }
+
+  :where(input:read-only:hover) {
+    background-color: var(--widget-background);
+  }
+
+  :where(input:read-only:focus-visible) {
+    background: var(--widget-background);
+    border-color: var(--widget-background);
+  }
+
+  :where(input[type='checkbox']:focus-visible) {
+    background-color: var(--widget-background);
+  }
+
+  :where(input[type='checkbox']:checked:focus-visible) {
+    background-color: var(--brand-highlight-color);
+  }
+
+  :where(button:focus-visible) {
+    border: 1px solid var(--brand-highlight-color);
+    transition-duration: 0s;
+  }
+
+  :where(button:active) {
+    background-color: var(--widget-active-background);
+    transition-duration: 0s;
+  }
+
+  :where(:is(button, input, select, textarea):disabled) {
+    color: var(--widget-font-disable-color);
+    background: var(--widget-background);
+    cursor: default;
+  }
+
+  &:has(.react-flow__connectionline) :where(input:disabled) {
+    // Let the drag mouse-up event bubble through disabled inputs.
+    pointer-events: none;
+  }
+
+  :where(button:has(> i):disabled) {
+    background-color: transparent;
+    opacity: 0.5;
+  }
+
+  :where(progress)::-webkit-progress-inner-element {
+    background-position: inherit;
+  }
+
+  :where(progress)::-webkit-progress-bar {
+    background-color: transparent;
+    background-position: inherit;
+  }
+
+  :where(progress)::-webkit-progress-value {
+    background-color: var(--brand-highlight-color);
+    background-position: inherit;
+    transition: width var(--transition-time);
+  }
+}

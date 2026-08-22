@@ -1,0 +1,32 @@
+.container {
+  position: relative;
+  outline-style: none;
+}
+
+.body {
+  height: 100%;
+  padding: 4px;
+  user-select: text;
+  overflow-y: auto;
+  box-sizing: border-box;
+
+  video {
+    max-height: 640px;
+    min-height: 200px;
+    max-width: 100% !important;
+  }
+}
+
+.draggable .body {
+  user-select: none;
+  cursor: default;
+}
+
+:global(pre code.hljs) {
+  padding: 0 !important;
+}
+
+:global(pre:has(code.language-mermaid > svg)) {
+  text-align: center;
+  background-color: transparent;
+}

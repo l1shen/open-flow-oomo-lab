@@ -1,0 +1,14 @@
+title: Greet
+private: false
+inputs_def:
+  - handle: name
+    json_schema:
+      type: string
+outputs_def:
+  - handle: message
+    json_schema:
+      type: string
+executor:
+  name: javascript
+  options:
+    entry: main.ts

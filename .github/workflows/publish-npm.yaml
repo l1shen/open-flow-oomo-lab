@@ -1,0 +1,80 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact Open Flow version to publish.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-open-flow-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Verify package
+        run: |
+          bun run check
+          bun run test
+          bun run build
+          bun run test:package
+
+      - name: Verify version
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          package_manifest="packages/open-flow/dist/npm-package/package/package.json"
+          package_name="$(jq -er '.name' "$package_manifest")"
+          package_version="$(jq -er '.version' "$package_manifest")"
+
+          if [ "$package_name" != "@oomol-lab/open-flow" ]; then
+            echo "Unexpected package name $package_name." >&2
+            exit 1
+          fi
+          if [ "$package_version" != "$EXPECTED_VERSION" ]; then
+            echo "Package version $package_version does not match requested version $EXPECTED_VERSION." >&2
+            exit 1
+          fi
+
+      - name: Publish
+        working-directory: packages/open-flow/dist/npm-package/package
+        run: |
+          set -euo pipefail
+
+          package_version="$(jq -er '.version' package.json)"
+          package_tag="latest"
+          if [[ "$package_version" == *-* ]]; then
+            package_tag="next"
+          fi
+          npm publish --ignore-scripts --access public --provenance --tag "$package_tag"

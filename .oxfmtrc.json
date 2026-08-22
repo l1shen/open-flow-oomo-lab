@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": ["node_modules", "dist", "coverage", "**/.open-flow-dev", "**/.wrangler", "**/worker-configuration.d.ts", "package-lock.json"],
+  "printWidth": 160,
+  "quoteProps": "consistent",
+  "semi": false,
+  "singleQuote": true,
+  "sortImports": {
+    "newlinesBetween": false,
+    "groups": [
+      ["side_effect_style", "side_effect", "style"],
+      ["type-builtin", "type-external"],
+      ["type-internal", "type-parent", "type-sibling", "type-index"],
+      { "newlinesBetween": true },
+      ["value-builtin", "value-external"],
+      ["value-internal", "value-parent", "value-sibling", "value-index"],
+      "unknown"
+    ]
+  },
+  "sortPackageJson": false,
+  "trailingComma": "all"
+}

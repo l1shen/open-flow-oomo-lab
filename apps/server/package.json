@@ -1,0 +1,39 @@
+{
+  "name": "@oomol-lab/open-flow-server",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "check": "bun run format -- --check && bun run lint && tsc --noEmit",
+    "dev": "bun scripts/dev.ts",
+    "format": "oxfmt index.html scripts src test package.json tsconfig.json vite.config.ts vitest.config.ts",
+    "lint": "oxlint --deny-warnings scripts src test vite.config.ts vitest.config.ts",
+    "start": "node --no-node-snapshot dist/server/main.js",
+    "test": "bun run build && node --no-node-snapshot ../../node_modules/vitest/vitest.mjs run --config vitest.config.ts",
+    "test:docker": "bun scripts/check-docker.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "@oomol-lab/open-flow": "workspace:*",
+    "hono": "4.13.3",
+    "isolated-vm": "6.2.0",
+    "pino": "10.3.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@unocss/vite": "66.7.5",
+    "@vitejs/plugin-react": "6.0.5",
+    "oxfmt": "^0.60.0",
+    "oxlint": "^1.75.0",
+    "sass": "1.101.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.1",
+    "vitest": "^4.1.10"
+  }
+}

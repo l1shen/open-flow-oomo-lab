@@ -1,0 +1,112 @@
+.wrapper {
+  overflow: hidden;
+
+  :global(.ant-picker-disabled) {
+    pointer-events: none;
+  }
+
+  :global(.ant-picker-outlined.ant-picker-disabled) {
+    border-color: transparent;
+  }
+
+  :global(.ant-picker) {
+    background-color: var(--widget-background);
+    border-radius: var(--widget-radius);
+    font-size: var(--base-font-size);
+  }
+
+  :global(.ant-picker-outlined) {
+    &:hover {
+      box-shadow: none;
+      border-color: transparent;
+      background-color: var(--widget-background-highlight-color);
+    }
+
+    &:focus {
+      box-shadow: none;
+    }
+
+    &:global(.ant-picker-focused) {
+      box-shadow: none;
+      border-color: var(--brand-highlight-color);
+      background-color: var(--widget-input-background);
+    }
+
+    &:global(.ant-picker-disabled) {
+      color: var(--widget-font-disable-color);
+      background-color: var(--widget-background);
+    }
+  }
+
+  :global(.ant-picker-suffix) {
+    color: var(--widget-font-color);
+  }
+
+  :global(.ant-picker .ant-picker-input) > input {
+    font-size: 1em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+  }
+
+  :global(.ant-picker .ant-picker-suffix),
+  :global(.ant-picker .ant-picker-input-placeholder > input) {
+    color: var(--widget-font-color);
+  }
+
+  :global(.ant-picker-disabled .ant-picker-suffix) {
+    color: var(--widget-font-disable-color);
+  }
+}
+
+.picker {
+  width: 100%;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--widget-radius);
+  height: var(--widget-height);
+
+  input {
+    color: var(--widget-font-color);
+    font-size: 1em;
+  }
+
+  :global(.ant-picker-clear) {
+    width: 15px;
+    height: 15px;
+    font-size: 1.25em;
+    margin-top: -7.5px;
+    transform: translateX(2.5px);
+    color: var(--widget-font-color);
+    display: grid;
+    place-content: center;
+
+    &:hover {
+      color: var(--widget-font-color) !important;
+    }
+  }
+}
+
+.popup {
+  :global(.ant-picker-panel-container) {
+    outline: none;
+    font-size: var(--base-font-size);
+  }
+
+  :global(.ant-picker-header) {
+    button {
+      width: auto;
+      height: auto;
+    }
+  }
+
+  :global(.ant-picker-footer) {
+    button {
+      color: var(--white);
+      background-color: var(--brand-highlight-color);
+    }
+  }
+}
+
+.isSuffix {
+  padding-left: 4px;
+}

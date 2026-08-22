@@ -1,0 +1,381 @@
+import type {
+  ChangeOperation,
+  CodeModule,
+  GraphNode,
+  GraphTarget,
+  InputMapping,
+  JsonValue,
+  PortDefinition,
+  RevisionContent,
+  TaskDefinition,
+  TriggerKeySnapshot,
+  TriggerNode,
+  TriggerSchedule,
+  WebhookOptions,
+} from './change.ts'
+
+export interface Settings {
+  readonly concurrency: number
+  readonly name?: string
+  readonly timeoutMs?: number
+}
+
+export interface LlmTaskOptions {
+  readonly inputs?: Readonly<Partial<Record<LlmInputHandle, JsonValue>>>
+  readonly output?: PortDefinition
+}
+
+export type LlmInputHandle = 'input' | 'messages' | 'model' | 'template'
+
+interface TriggerSettingsBase {
+  readonly description?: string
+  readonly name: string
+}
+
+export type TriggerSettings =
+  | (TriggerSettingsBase & {
+      readonly inputs: Extract<TriggerNode, { readonly kind: 'webhook' }>['inputsDef']
+      readonly kind: 'webhook'
+      readonly options: WebhookOptions
+    })
+  | (TriggerSettingsBase & { readonly kind: 'cron'; readonly schedule: readonly TriggerSchedule[] })
+  | (TriggerSettingsBase & {
+      readonly config: Readonly<Record<string, JsonValue>>
+      readonly kind: 'poll'
+      readonly schedule: readonly TriggerSchedule[]
+    })
+  | (TriggerSettingsBase & { readonly config: Readonly<Record<string, JsonValue>>; readonly kind: 'integration' })
+
+export function createCodeTask(
+  target: GraphTarget,
+  identity: { readonly moduleId: string; readonly nodeId: string },
+  name: string,
+  module: Pick<CodeModule, 'imports' | 'source'> = {
+    imports: [],
+    source: 'export default function run(input) {\n  return { result: input.value }\n}\n',
+  },
+  ports: Pick<Extract<TaskDefinition, { readonly moduleId: string }>, 'inputs' | 'outputs'> = {
+    inputs: { value: { jsonSchema: {}, nullable: true, value: null } },
+    outputs: { result: { jsonSchema: {}, nullable: true } },
+  },
+): readonly ChangeOperation[] {
+  return [
+    {
+      kind: 'module.create',
+      module: { ...module, name },
+      moduleId: identity.moduleId,
+    },
+    {
+      kind: 'graph.node.create',
+      node: {
+        concurrency: 1,
+        inputs: defaultInputs(ports.inputs),
+        kind: 'task',
+        name,
+        task: {
+          inputs: ports.inputs,
+          moduleId: identity.moduleId,
+          name,
+          outputs: ports.outputs,
+        },
+      },
+      nodeId: identity.nodeId,
+      target,
+    },
+  ]
+}
+
+export function createManagedTask(
+  target: GraphTarget,
+  identity: { readonly nodeId: string; readonly taskId: string },
+  task: Extract<TaskDefinition, { readonly executor: unknown }>,
+): readonly ChangeOperation[] {
+  return [
+    { kind: 'task.create', task, taskId: identity.taskId },
+    {
+      kind: 'graph.node.create',
+      node: {
+        concurrency: 1,
+        inputs: defaultInputs(task.inputs),
+        kind: 'task',
+        name: task.name,
+        taskId: identity.taskId,
+      },
+      nodeId: identity.nodeId,
+      target,
+    },
+  ]
+}
+
+export function createLlmTask(
+  target: GraphTarget,
+  identity: { readonly nodeId: string; readonly taskId: string },
+  name: string,
+  mode: 'chat' | 'json',
+  outputDescription: string,
+  options: LlmTaskOptions = {},
+): readonly ChangeOperation[] {
+  const values = options.inputs ?? {}
+  return createManagedTask(target, identity, {
+    executor: { kind: 'llm', mode },
+    inputs: {
+      messages: { jsonSchema: { items: { type: 'object' }, type: 'array' }, nullable: true, value: llmInputValue(values, 'messages', null) },
+      input: { jsonSchema: { type: 'string' }, nullable: false, value: llmInputValue(values, 'input', 'Alex') },
+      template: {
+        jsonSchema: { items: { type: 'object' }, minItems: 1, type: 'array' },
+        nullable: false,
+        value: llmInputValue(values, 'template', [{ content: "Hello, I'm {{input}}", role: 'user' }]),
+      },
+      model: { jsonSchema: { type: 'object' }, nullable: false, value: llmInputValue(values, 'model', { model: 'deepseek-v4-flash' }) },
+    },
+    name,
+    outputs: {
+      output: options.output ?? { description: outputDescription, jsonSchema: mode == 'chat' ? { type: 'string' } : {}, nullable: false },
+    },
+  })
+}
+
+export function createCondition(target: GraphTarget, nodeId: string, name: string): readonly ChangeOperation[] {
+  return [
+    {
+      kind: 'graph.node.create',
+      node: {
+        cases: [{ expressions: [{ input: 'value', operator: 'isTrue' }], output: 'true', relation: 'all' }],
+        concurrency: 1,
+        defaultOutput: 'false',
+        input: { handle: 'value', jsonSchema: {}, nullable: true, value: null },
+        inputs: { value: { kind: 'value', value: null } },
+        kind: 'condition',
+        name,
+      },
+      nodeId,
+      target,
+    },
+  ]
+}
+
+export function createValue(target: GraphTarget, nodeId: string, name: string): readonly ChangeOperation[] {
+  return [
+    {
+      kind: 'graph.node.create',
+      node: { concurrency: 1, inputs: {}, kind: 'value', name, values: { value: { jsonSchema: {}, nullable: true, value: null } } },
+      nodeId,
+      target,
+    },
+  ]
+}
+
+export function createBuiltinTrigger(
+  target: { readonly id: string; readonly kind: 'flow' },
+  nodeId: string,
+  node: Extract<TriggerNode, { readonly kind: 'cron' | 'webhook' }>,
+): readonly ChangeOperation[] {
+  return [{ kind: 'graph.node.create', node, nodeId, target }]
+}
+
+export function createProviderTrigger(
+  target: { readonly id: string; readonly kind: 'flow' },
+  identity: { readonly bindingId: string; readonly nodeId: string },
+  definition: TriggerKeySnapshot,
+  options: {
+    readonly config: Readonly<Record<string, JsonValue>>
+    readonly connectionId: string
+    readonly name?: string
+    readonly schedule?: readonly TriggerSchedule[]
+  },
+): readonly ChangeOperation[] {
+  const name = options.name ?? definition.displayName
+  const node: TriggerNode =
+    definition.type == 'poll'
+      ? {
+          bindingId: identity.bindingId,
+          config: options.config,
+          definition,
+          kind: 'poll',
+          name,
+          pollTimes: options.schedule ?? [{ type: 'every', unit: 'minute', value: 5 }],
+        }
+      : {
+          bindingId: identity.bindingId,
+          config: options.config,
+          definition,
+          kind: 'integration',
+          name,
+        }
+  return [
+    { binding: { kind: 'connection', target: options.connectionId }, bindingId: identity.bindingId, kind: 'binding.create' },
+    { kind: 'graph.node.create', node, nodeId: identity.nodeId, target },
+  ]
+}
+
+export function deleteNodes(content: RevisionContent, target: GraphTarget, nodeIds: readonly string[]): readonly ChangeOperation[] {
+  const nodes = graph(content, target)?.nodes
+  if (nodes == null) return []
+  const removed = new Set(nodeIds)
+  const operations: ChangeOperation[] = nodeIds.flatMap((nodeId) => {
+    const node = nodes[nodeId]
+    if (node == null) return []
+    return [
+      { kind: 'graph.node.delete' as const, nodeId, target },
+      ...(node.kind == 'task' && node.task != null ? [{ kind: 'module.delete' as const, moduleId: node.task.moduleId }] : []),
+    ]
+  })
+  if (target.kind == 'subflow') return operations
+  const bindingIds = new Set(
+    nodeIds.flatMap((nodeId) => {
+      const node = nodes[nodeId]
+      return node?.kind == 'poll' || node?.kind == 'integration' ? [node.bindingId] : []
+    }),
+  )
+  for (const bindingId of bindingIds) {
+    const inUse = Object.entries(content.document.flows).some(([flowId, flow]) =>
+      Object.entries(flow.graph.nodes).some(
+        ([nodeId, node]) => !(flowId == target.id && removed.has(nodeId)) && (node.kind == 'poll' || node.kind == 'integration') && node.bindingId == bindingId,
+      ),
+    )
+    if (!inUse) operations.push({ bindingId, kind: 'binding.delete' })
+  }
+  return operations
+}
+
+export function updateSettings(content: RevisionContent, target: GraphTarget, nodeId: string, settings: Settings): readonly ChangeOperation[] | undefined {
+  const node = graph(content, target)?.nodes[nodeId]
+  if (node == null || !('inputs' in node)) return
+  const { concurrency: _concurrency, name: _name, timeoutMs: _timeoutMs, ...rest } = node
+  return replaceNode(target, nodeId, { ...rest, ...settings })
+}
+
+export function setInputValue(
+  content: RevisionContent,
+  target: GraphTarget,
+  nodeId: string,
+  handle: string,
+  value: JsonValue | undefined,
+): readonly ChangeOperation[] | undefined {
+  return setInputValues(content, target, nodeId, { [handle]: value })
+}
+
+export function setInputValues(
+  content: RevisionContent,
+  target: GraphTarget,
+  nodeId: string,
+  values: Readonly<Record<string, JsonValue | undefined>>,
+): readonly ChangeOperation[] | undefined {
+  const node = graph(content, target)?.nodes[nodeId]
+  if (node == null || !('inputs' in node)) return
+  const inputs = { ...node.inputs }
+  for (const [handle, value] of Object.entries(values)) {
+    if (value === undefined) delete inputs[handle]
+    else inputs[handle] = { kind: 'value', value }
+  }
+  return replaceNode(target, nodeId, { ...node, inputs })
+}
+
+export function setConnectorConnection(content: RevisionContent, taskId: string, connectionId: string): readonly ChangeOperation[] | undefined {
+  const task = content.document.tasks[taskId]
+  if (task == null || !('executor' in task) || task.executor.kind != 'connector') return
+  return [{ kind: 'task.replace', task: { ...task, executor: { ...task.executor, connectionId } }, taskId }]
+}
+
+export function updateTrigger(
+  content: RevisionContent,
+  target: { readonly id: string; readonly kind: 'flow' },
+  nodeId: string,
+  settings: TriggerSettings,
+): readonly ChangeOperation[] | undefined {
+  const trigger = content.document.flows[target.id]?.graph.nodes[nodeId]
+  if (trigger == null) return
+  const common = { ...(settings.description == null ? {} : { description: settings.description }), name: settings.name }
+  let next: TriggerNode
+  switch (settings.kind) {
+    case 'webhook':
+      if (trigger.kind != 'webhook') return
+      next =
+        Object.keys(settings.options).length == 0
+          ? { ...common, inputsDef: settings.inputs, kind: 'webhook' }
+          : { ...common, inputsDef: settings.inputs, kind: 'webhook', options: settings.options }
+      break
+    case 'cron':
+      if (trigger.kind != 'cron') return
+      next = { ...common, cronTimes: settings.schedule, kind: 'cron' }
+      break
+    case 'poll':
+      if (trigger.kind != 'poll') return
+      next = { ...trigger, ...common, config: settings.config, pollTimes: settings.schedule }
+      break
+    case 'integration':
+      if (trigger.kind != 'integration') return
+      next = { ...trigger, ...common, config: settings.config }
+      break
+  }
+  return replaceNode(target, nodeId, next)
+}
+
+export function updateTriggerConfig(
+  content: RevisionContent,
+  target: { readonly id: string; readonly kind: 'flow' },
+  nodeId: string,
+  name: string,
+  value: JsonValue | undefined,
+): readonly ChangeOperation[] | undefined {
+  const trigger = content.document.flows[target.id]?.graph.nodes[nodeId]
+  if (trigger == null || (trigger.kind != 'integration' && trigger.kind != 'poll')) return
+  const config: Record<string, JsonValue> = { ...trigger.config }
+  if (value === undefined) delete config[name]
+  else config[name] = value
+  return replaceNode(target, nodeId, { ...trigger, config })
+}
+
+export function updateTriggerSchedule(
+  content: RevisionContent,
+  target: { readonly id: string; readonly kind: 'flow' },
+  nodeId: string,
+  schedule: readonly TriggerSchedule[],
+): readonly ChangeOperation[] | undefined {
+  const trigger = content.document.flows[target.id]?.graph.nodes[nodeId]
+  if (trigger == null) return
+  switch (trigger.kind) {
+    case 'cron':
+      return replaceNode(target, nodeId, { ...trigger, cronTimes: schedule })
+    case 'poll':
+      return replaceNode(target, nodeId, { ...trigger, pollTimes: schedule })
+    case 'integration':
+    case 'webhook':
+      return
+    default:
+      return
+  }
+}
+
+export function setTriggerConnection(
+  content: RevisionContent,
+  target: { readonly id: string; readonly kind: 'flow' },
+  nodeId: string,
+  connectionId: string,
+): readonly ChangeOperation[] | undefined {
+  const trigger = content.document.flows[target.id]?.graph.nodes[nodeId]
+  if (trigger == null || (trigger.kind != 'poll' && trigger.kind != 'integration')) return
+  const binding = content.document.bindings[trigger.bindingId]
+  if (binding?.kind != 'connection') return
+  return [{ binding: { kind: 'connection', target: connectionId }, bindingId: trigger.bindingId, kind: 'binding.replace' }]
+}
+
+function graph(content: RevisionContent, target: GraphTarget) {
+  return target.kind == 'flow' ? content.document.flows[target.id]?.graph : content.document.subflows[target.id]?.graph
+}
+
+function defaultInputs(ports: TaskDefinition['inputs']): Readonly<Record<string, InputMapping>> {
+  return Object.fromEntries(
+    Object.entries(ports).flatMap(([handle, port]) =>
+      Object.hasOwn(port, 'value') ? [[handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [],
+    ),
+  )
+}
+
+function llmInputValue(values: LlmTaskOptions['inputs'], handle: LlmInputHandle, fallback: JsonValue): JsonValue {
+  return values != null && Object.hasOwn(values, handle) ? values[handle]! : fallback
+}
+
+function replaceNode(target: GraphTarget, nodeId: string, node: GraphNode): readonly ChangeOperation[] {
+  return [{ kind: 'graph.node.replace', node, nodeId, target }]
+}

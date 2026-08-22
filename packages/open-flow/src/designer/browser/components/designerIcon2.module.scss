@@ -1,0 +1,14 @@
+.btn {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  padding: 0;
+  background-color: transparent;
+
+  &:hover:not(:disabled) {
+    background-color: var(--widget-background-mask-highlight-color);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}

@@ -1,0 +1,378 @@
+import type { JsonValue, RevisionContent, TriggerNode } from '@oomol-lab/open-flow/project-change'
+import type { Context, Next } from 'hono'
+import type { Logger } from 'pino'
+import type { ResolveControlActor } from './control.ts'
+import type { OperatorSession } from './operator.ts'
+import type { AcceptRunInput } from './service.ts'
+
+import { serveStatic } from '@hono/node-server/serve-static'
+import { controlErrorCode } from '@oomol-lab/open-flow/control-api'
+import { integrationEndpointId } from '@oomol-lab/open-flow/integration-trigger'
+import { maximumWebhookBodyBytes, webhookEndpointId, webhookOccurrenceId } from '@oomol-lab/open-flow/webhook-trigger'
+import { Hono } from 'hono'
+import { randomUUID } from 'node:crypto'
+import { createControlApp } from './control.ts'
+import { AcceptanceError, ControlError, serverErrorCode } from './error.ts'
+import { handleIntegration } from './integration.ts'
+import { errorKind, silentLogger } from './logger.ts'
+import { createOperatorApp } from './operator.ts'
+import { serverPaths } from './server-paths.ts'
+import { ServerService } from './service.ts'
+
+const maxRequestBytes = 5 * 1024 * 1024
+const defaultWebhookMethods = ['POST'] as const
+const nullBodyStatuses = new Set([204, 205, 304])
+const reservedPaths = ['/assets', ...serverPaths] as const
+const encoder = new TextEncoder()
+
+interface ServerAppOptions {
+  readonly logger?: Logger
+  readonly operator?: OperatorSession
+  readonly publicDirectory?: string
+  readonly resolveControlActor?: ResolveControlActor
+}
+
+interface AppEnv {
+  readonly Variables: {
+    readonly requestId: string
+  }
+}
+
+export function createServerApp(service: ServerService, options: ServerAppOptions = {}): Hono<AppEnv> {
+  const app = new Hono<AppEnv>()
+  const logger = (options.logger ?? silentLogger).child({ component: 'http' })
+  const operator = options.operator
+  const resolveActor = operator == null ? options.resolveControlActor : (request: Request) => operator.actor(request)
+
+  app.use('*', async (context, next) => {
+    const startedAt = performance.now()
+    const requestId = safeRequestId(context.req.header('x-request-id')) ?? randomUUID()
+    context.set('requestId', requestId)
+    await next()
+    context.header('x-request-id', requestId)
+    const fields = {
+      category: 'http.request.completed',
+      durationMs: Math.round(performance.now() - startedAt),
+      method: context.req.method,
+      path: context.req.path,
+      requestId,
+      status: context.res.status,
+    }
+    if (context.req.path == '/healthz' || context.req.path == '/readyz') logger.debug(fields, 'HTTP request completed.')
+    else logger.info(fields, 'HTTP request completed.')
+  })
+
+  app.route('/auth', createOperatorApp(operator))
+  app.all('/v1/integrations', (context) => integration(service, context.req.raw, logger, context.get('requestId')))
+  app.all('/v1/integrations/*', (context) => integration(service, context.req.raw, logger, context.get('requestId')))
+  app.all('/v1/webhooks', (context) => webhook(service, context.req.raw, logger, context.get('requestId')))
+  app.all('/v1/webhooks/*', (context) => webhook(service, context.req.raw, logger, context.get('requestId')))
+  app.get('/v1/projects/:projectId/notifications', async (context) => {
+    const actor = await resolveActor?.(context.req.raw)
+    if (actor == null || actor.length == 0) throw new ControlError(controlErrorCode.authenticationRequired, 'Authentication is required.')
+    return new Response(projectNotifications(service, context.req.param('projectId'), context.req.raw.signal), {
+      headers: {
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+        'content-type': 'text/event-stream',
+      },
+    })
+  })
+  app.route('/v1', createControlApp(service.control, resolveActor))
+
+  app.get('/healthz', () => json(200, { status: 'ok' }))
+  app.get('/readyz', async () => {
+    const ready = await service.ready()
+    return json(ready ? 200 : 503, { status: ready ? 'ready' : 'not-ready' })
+  })
+  const authenticateRun = async (context: Context, next: Next): Promise<void> => {
+    const actor = await resolveActor?.(context.req.raw)
+    if (actor == null || actor.length == 0) throw new ControlError(controlErrorCode.authenticationRequired, 'Authentication is required.')
+    await next()
+  }
+  app.use('/v1/runs', authenticateRun)
+  app.use('/v1/runs/*', authenticateRun)
+  app.post('/v1/runs', async (context) => {
+    const accepted = await service.acceptRun(decodeAcceptRun(await readJson(context.req.raw)))
+    return json(accepted.kind == 'accepted' && accepted.created ? 202 : 200, accepted)
+  })
+  app.all('/v1/runs/:runId', (context) => {
+    const run = service.run(context.req.param('runId'))
+    if (run == null) return runNotFound()
+    if (context.req.method == 'GET') return json(200, run)
+    return routeNotFound()
+  })
+  app.all('/v1/runs/:runId/events', (context) => {
+    const runId = context.req.param('runId')
+    if (service.run(runId) == null) return runNotFound()
+    if (context.req.method == 'GET') return json(200, { events: service.events(runId) })
+    return routeNotFound()
+  })
+  app.all('/v1/runs/:runId/cancel', (context) => {
+    const runId = context.req.param('runId')
+    if (service.run(runId) == null) return runNotFound()
+    if (context.req.method == 'POST') return json(service.cancel(runId) ? 202 : 200, service.run(runId)!)
+    return routeNotFound()
+  })
+
+  if (options.publicDirectory != null) {
+    app.use(
+      '/assets/*',
+      serveStatic({
+        onFound: (_path, context) => context.res.headers.set('cache-control', 'public, max-age=31536000, immutable'),
+        root: options.publicDirectory,
+      }),
+    )
+    const index = serveStatic({
+      path: 'index.html',
+      root: options.publicDirectory,
+    })
+    app.get('*', async (context, next) => {
+      if (reserved(context.req.path) || !acceptsHtml(context.req.header('accept'))) return await next()
+      const response = await index(context, next)
+      response?.headers.set('cache-control', 'no-cache')
+      return response
+    })
+  }
+
+  app.notFound(routeNotFound)
+  app.onError((error, context) => {
+    if (error instanceof ControlError) {
+      return json(error.status, { error: { code: error.code, message: error.message }, version: 1 })
+    }
+    if (error instanceof AcceptanceError) {
+      const status = error.code == 'revision-conflict' ? 409 : 422
+      return json(status, { error: { code: error.code, message: error.message } })
+    }
+    if (error instanceof RequestError) {
+      return json(400, { error: { code: serverErrorCode.requestInvalid, message: error.message } })
+    }
+    logger.error(
+      {
+        category: 'http.request.failed',
+        err: error,
+        method: context.req.method,
+        path: context.req.path,
+        requestId: context.get('requestId'),
+      },
+      'HTTP request failed.',
+    )
+    return json(500, { error: { code: serverErrorCode.internal, message: 'The request could not be completed.' } })
+  })
+  return app
+}
+
+function projectNotifications(service: ServerService, projectId: string, signal: AbortSignal): ReadableStream<Uint8Array> {
+  let unsubscribe: (() => void) | undefined
+  const aborted = (): void => unsubscribe?.()
+  return new ReadableStream({
+    cancel() {
+      signal.removeEventListener('abort', aborted)
+      unsubscribe?.()
+    },
+    start(controller) {
+      unsubscribe = service.subscribeProject(projectId, (event) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)))
+      signal.addEventListener('abort', aborted, { once: true })
+      controller.enqueue(encoder.encode(': connected\n\n'))
+    },
+  })
+}
+
+function safeRequestId(value: string | undefined): string | undefined {
+  return value != null && /^[A-Za-z0-9._:-]{1,128}$/.test(value) ? value : undefined
+}
+
+function reserved(path: string): boolean {
+  return reservedPaths.some((prefix) => path == prefix || path.startsWith(`${prefix}/`))
+}
+
+function acceptsHtml(accept: string | undefined): boolean {
+  return accept == null || accept.split(',').some((value) => ['*/*', 'text/*', 'text/html'].includes(value.split(';', 1)[0]!.trim()))
+}
+
+class RequestError extends Error {}
+class WebhookBodyTooLarge extends Error {}
+class WebhookRequestInvalid extends Error {}
+
+async function integration(service: ServerService, request: Request, logger: Logger, requestId: string): Promise<Response> {
+  const endpointId = integrationEndpointId(new URL(request.url))
+  return endpointId == null ? plain(404) : await handleIntegration(service, endpointId, request, logger, requestId)
+}
+
+async function webhook(service: ServerService, request: Request, logger: Logger, requestId: string): Promise<Response> {
+  const endpointId = webhookEndpointId(new URL(request.url))
+  if (endpointId == null) return plain(404)
+  let origin: string | undefined
+  try {
+    const target = service.webhookTarget(endpointId)
+    if (target == null) return plain(404)
+    const methods = (target.trigger.options?.allowedMethods ?? defaultWebhookMethods).map((method) => method.toUpperCase())
+    const requestOrigin = requestHeader(request, 'origin')
+    origin = corsOrigin(requestOrigin, target.trigger.options?.allowedOrigins)
+    const preflightResponse = preflight(request, methods, origin)
+    if (preflightResponse != null) return preflightResponse
+    if (requestOrigin != null && origin == null) return plain(403)
+    const method = request.method
+    if (!methods.includes(method)) return plain(405, { allow: methods.join(', ') }, origin)
+
+    const payload = await readWebhookPayload(request)
+    const occurrenceId = await webhookOccurrenceId(endpointId, target.runtimeVersion, requestHeader(request, 'idempotency-key') ?? null)
+    if (occurrenceId == null) throw new WebhookRequestInvalid()
+    const accepted = await service.acceptWebhookTarget(target, occurrenceId, payload)
+    if (accepted == null) return plain(404)
+    if (accepted.kind == 'conflict') return plain(409, undefined, origin)
+    return webhookSuccess(method, target.trigger, origin)
+  } catch (error) {
+    if (error instanceof WebhookBodyTooLarge) return plain(413, undefined, origin)
+    if (error instanceof WebhookRequestInvalid || (error instanceof AcceptanceError && error.code == 'trigger-payload-invalid')) {
+      return plain(400, undefined, origin)
+    }
+    logger.error({ category: 'webhook.request.failed', endpointId, requestId, ...errorKind(error) }, 'Webhook request failed.')
+    return plain(503, undefined, origin)
+  }
+}
+
+function corsOrigin(origin: string | undefined, allowedOrigins: readonly string[] | undefined): string | undefined {
+  if (origin == null) return
+  if (allowedOrigins?.includes('*')) return '*'
+  if (allowedOrigins?.includes(origin)) return origin
+}
+
+function preflight(request: Request, methods: readonly string[], origin: string | undefined): Response | undefined {
+  const requestedMethod = requestHeader(request, 'access-control-request-method')?.toUpperCase()
+  if (request.method != 'OPTIONS' || requestedMethod == null) return
+  if (origin == null || !methods.includes(requestedMethod)) return plain(403)
+  const headers = new Headers({
+    'access-control-allow-methods': methods.join(', '),
+    'access-control-max-age': '600',
+    'vary': 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
+  })
+  const requestedHeaders = requestHeader(request, 'access-control-request-headers')
+  if (requestedHeaders != null) headers.set('access-control-allow-headers', requestedHeaders)
+  return plain(204, headers, origin)
+}
+
+function webhookSuccess(method: string, trigger: Extract<TriggerNode, { readonly kind: 'webhook' }>, origin: string | undefined): Response {
+  const status = trigger.options?.responseStatusCode ?? 200
+  const headers = new Headers(trigger.options?.responseHeaders)
+  headers.delete('content-length')
+  headers.set('cache-control', 'no-store')
+  withOrigin(headers, origin)
+  const body = trigger.options?.noResponseBody || method == 'HEAD' || nullBodyStatuses.has(status) ? null : (trigger.options?.responseData ?? null)
+  return text(status, body, headers)
+}
+
+function plain(status: number, headers?: Headers | Readonly<Record<string, string>>, origin?: string): Response {
+  const values = new Headers(headers)
+  values.set('cache-control', 'no-store')
+  withOrigin(values, origin)
+  return text(status, null, values)
+}
+
+function withOrigin(headers: Headers, origin: string | undefined): void {
+  if (origin == null) return
+  headers.set('access-control-allow-origin', origin)
+  if (
+    !headers
+      .get('vary')
+      ?.split(',')
+      .some((value) => value.trim().toLowerCase() == 'origin')
+  ) {
+    headers.append('vary', 'Origin')
+  }
+}
+
+function requestHeader(request: Request, name: string): string | undefined {
+  return request.headers.get(name) ?? undefined
+}
+
+async function readWebhookPayload(request: Request): Promise<JsonValue> {
+  const source = new TextDecoder().decode(await readBody(request, maximumWebhookBodyBytes, () => new WebhookBodyTooLarge()))
+  if (source.length == 0) return {}
+  try {
+    return JSON.parse(source) as JsonValue
+  } catch {
+    throw new WebhookRequestInvalid()
+  }
+}
+
+function text(status: number, body: string | null, headers: Headers): Response {
+  if (body != null) {
+    if (!headers.has('content-type')) headers.set('content-type', 'text/plain;charset=UTF-8')
+    headers.set('content-length', String(encoder.encode(body).byteLength))
+  }
+  return new Response(body, { headers, status })
+}
+
+function decodeAcceptRun(value: unknown): AcceptRunInput {
+  const input = object(value, 'Run request')
+  const keys = Object.keys(input)
+  if (keys.some((key) => !['flowId', 'idempotencyKey', 'inputs', 'revision', 'revisionId'].includes(key))) {
+    throw new RequestError('Run request contains an unknown field.')
+  }
+  const revision = object(input.revision, 'Run request revision')
+  if (revision.modelVersion !== 1) throw new RequestError('Run request revision modelVersion is invalid.')
+  object(revision.document, 'Run request revision document')
+  object(revision.modules, 'Run request modules')
+  const inputs = input.inputs === undefined ? undefined : object(input.inputs, 'Run request inputs')
+  return {
+    flowId: string(input.flowId, 'Run request flowId'),
+    idempotencyKey: string(input.idempotencyKey, 'Run request idempotencyKey'),
+    ...(inputs === undefined ? {} : { inputs: inputs as NonNullable<AcceptRunInput['inputs']> }),
+    revision: revision as unknown as RevisionContent,
+    revisionId: string(input.revisionId, 'Run request revisionId'),
+  }
+}
+
+function object(value: unknown, description: string): Record<string, unknown> {
+  if (value == null || typeof value != 'object' || Array.isArray(value)) throw new RequestError(`${description} must be an object.`)
+  return value as Record<string, unknown>
+}
+
+async function readJson(request: Request): Promise<unknown> {
+  const source = new TextDecoder().decode(await readBody(request, maxRequestBytes, () => new RequestError('Request body is too large.')))
+  try {
+    return JSON.parse(source) as unknown
+  } catch {
+    throw new RequestError('Request body must be valid JSON.')
+  }
+}
+
+async function readBody(request: Request, limit: number, tooLarge: () => Error): Promise<Uint8Array> {
+  if (request.body == null) return new Uint8Array()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for await (const chunk of request.body) {
+    size += chunk.byteLength
+    if (size > limit) throw tooLarge()
+    chunks.push(chunk)
+  }
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
+}
+
+function json(status: number, body: unknown): Response {
+  const source = JSON.stringify(body)
+  return new Response(source, {
+    headers: { 'content-length': String(encoder.encode(source).byteLength), 'content-type': 'application/json; charset=utf-8' },
+    status,
+  })
+}
+
+function routeNotFound(): Response {
+  return json(404, { error: { code: controlErrorCode.routeNotFound, message: 'Route was not found.' } })
+}
+
+function runNotFound(): Response {
+  return json(404, { error: { code: controlErrorCode.runNotFound, message: 'Run was not found.' } })
+}
+
+function string(value: unknown, description: string): string {
+  if (typeof value != 'string' || value.length == 0) throw new RequestError(`${description} must be a non-empty string.`)
+  return value
+}

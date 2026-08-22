@@ -1,0 +1,17 @@
+//#region generated meta
+/**
+ * @typedef {{}} Inputs
+ * @typedef {{}} Outputs
+ */
+//#endregion
+
+/**
+ * @import { TaskContext } from "@oomol-lab/open-flow"
+ * @param {Inputs} _params
+ * @param {TaskContext<Outputs>} _context
+ * @returns {Promise<Partial<Outputs> | undefined | void>}
+ */
+export default async function (_params, _context) {
+  // Add task logic here.
+  // return { output: "output_value" };
+}

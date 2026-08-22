@@ -1,0 +1,13 @@
+.git
+**/.env
+**/.env.*
+**/.impeccable
+**/.local.vars
+**/.local.vars.*
+**/.open-flow-dev
+**/.wrangler
+**/coverage
+**/dist
+**/node_modules
+*.log
+.DS_Store

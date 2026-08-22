@@ -1,0 +1,79 @@
+.translateButton {
+  align-self: flex-start;
+}
+
+.translateMenu {
+  :global(.ant-dropdown-menu-item) {
+    font-size: var(--base-font-size) !important;
+    border-radius: var(--widget-radius) !important;
+  }
+
+  :global(.ant-dropdown-menu-title-content) {
+    white-space: nowrap;
+  }
+}
+
+.translatePanel {
+  min-width: 150px;
+  line-height: 1;
+  font-size: var(--base-font-size);
+
+  :global(.ant-popover-container) {
+    padding: 8px 8px 8px 11px;
+    border-radius: var(--widget-radius);
+    border: 1px solid var(--node-border-color);
+    background-color: var(--block-editor-item-background-color);
+  }
+}
+
+.translations {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 5px 8px;
+}
+
+.translateKey,
+.translation {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: subgrid;
+}
+
+.translateKeyId,
+.language {
+  text-align: right;
+  font-weight: bold;
+  line-height: var(--widget-height);
+}
+
+.translateKeyValue,
+.translationInput {
+  width: 250px;
+}
+
+.translateKeyValue {
+  display: flex;
+  gap: 4px;
+}
+
+.translateKeyInput {
+  flex: 1;
+}
+
+button:has(.loading) {
+  opacity: 1;
+}
+
+.loading {
+  animation: spin 1s linear infinite;
+  animation-timing-function: cubic-bezier(0.53, 0.21, 0.29, 0.67);
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

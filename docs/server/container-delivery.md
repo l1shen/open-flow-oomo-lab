@@ -1,0 +1,99 @@
+# Server 容器交付参考
+
+## 1. 当前镜像边界
+
+`apps/server/Dockerfile` 只交付一个 Server Flow application 进程，包含同源 Workbench、Control API、Run runtime、Trigger runtime 和 SQLite migration。镜像不包含 Connector service、Connector 数据库或多进程 supervisor。
+
+当前发行不包含 Connector transport adapter。Connector-backed Task 和 Runtime Capability 只通过进程内 `ConnectorHost` seam 接入；未注入 host 时稳定返回
+`connector.unavailable`。具体 Provider transport、credential、Connection lifecycle 和管理界面不属于 Open Flow Server。
+
+当前部署边界是单个 Server 容器、单个 SQLite writer。不能让多个容器并发挂载并写入同一个数据卷。
+
+## 2. 构建和交付验证
+
+从仓库根目录构建镜像：
+
+```bash
+docker build --file apps/server/Dockerfile --tag open-flow-server:dev .
+```
+
+Dockerfile 使用多阶段构建。builder 生成可脱离 monorepo 运行的 `dist`，最终 Node.js 镜像只复制以下 release artifact：
+
+- `server/main.js`：包含普通 JavaScript runtime dependency 的服务端 bundle；
+- `public/`：Workbench 静态资源；
+- `migrations/`：按顺序执行的独立 SQL migration；
+- `node_modules/isolated-vm` 和 `node_modules/node-gyp-build`：当前平台的原生 Isolated VM runtime；
+- `LICENSE`、`NOTICE` 和用于声明 ESM 布局的 `package.json`。
+
+`isolated-vm` host、Executor、资源限制和 Engine digest 属于 Server release，不从公共 `@oomol-lab/open-flow` package 导出。公共 package
+只提供它必须满足的 Engine/Runtime contract 和 conformance cases。
+
+显式 Docker smoke 会构建临时镜像，并验证 Workbench、operator session、项目创建、真实 Code 节点执行、Docker health check、优雅退出和 SQLite volume 重启恢复：
+
+```bash
+bun run --filter @oomol-lab/open-flow-server test:docker
+```
+
+该命令创建带随机后缀的临时镜像、两个容器和一个 volume，并在结束时清理。它不进入默认单元测试，因为开发机和 CI 不一定提供 Docker daemon。
+
+## 3. 启动
+
+operator token 至少包含 32 UTF-8 bytes。生产部署应通过 secret 或只供部署者读取的 env file 注入，不要把 token 写入 Dockerfile、镜像层或仓库文件。例如 `.env.server` 可以包含：
+
+```dotenv
+OPEN_FLOW_OPERATOR_TOKEN=replace-with-at-least-32-random-bytes
+OPEN_FLOW_LOG_LEVEL=info
+```
+
+创建数据卷并启动：
+
+```bash
+docker volume create open-flow-data
+docker run --detach \
+  --name open-flow-server \
+  --publish 3000:3000 \
+  --volume open-flow-data:/data/open-flow \
+  --env-file .env.server \
+  open-flow-server:dev
+```
+
+Workbench 和 API 位于 `http://127.0.0.1:3000`。最终镜像默认监听 `0.0.0.0:3000`，以非 root `node` 用户运行，并把 SQLite 保存为 `/data/open-flow/open-flow.sqlite`。
+
+## 4. 配置
+
+| 环境变量                             | 用途                                                           |
+| ------------------------------------ | -------------------------------------------------------------- |
+| `OPEN_FLOW_HOST`                     | HTTP 监听地址；镜像默认 `0.0.0.0`。                            |
+| `OPEN_FLOW_PORT`                     | HTTP 监听端口；镜像默认 `3000`。                               |
+| `OPEN_FLOW_DATA_DIR`                 | SQLite 持久目录；镜像默认 `/data/open-flow`。                  |
+| `OPEN_FLOW_OPERATOR_TOKEN`           | operator session bootstrap secret；配置时至少 32 UTF-8 bytes。 |
+| `OPEN_FLOW_SESSION_COOKIE_SECURE`    | TLS ingress 后应设为 `true`；只接受 `true` 或 `false`。        |
+| `OPEN_FLOW_LOG_LEVEL`                | Pino 日志级别；默认 `info`。                                   |
+| `OPEN_FLOW_RUN_EVENT_RETENTION_DAYS` | terminal Run 详细事件的保留天数；默认 `30`。                   |
+
+不配置 operator token 时，health、callback 和已持久化的 runtime 工作仍可运行，但 Control API fail closed，Workbench 显示管理面尚未配置。
+
+## 5. 健康检查与停止
+
+镜像的 Docker `HEALTHCHECK` 请求 `GET /healthz`，只表示 Server 进程能够响应。部署入口应另外使用 `GET /readyz` 判断是否接收新流量。
+
+检查状态：
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' open-flow-server
+curl --fail http://127.0.0.1:3000/readyz
+```
+
+正常停止应给 Run drain 和 SQLite 关闭留出宽限期：
+
+```bash
+docker stop --time 30 open-flow-server
+```
+
+镜像声明 `SIGTERM` 为停止信号。进程停止接受 HTTP 请求，等待已接受的工作结束，然后关闭 SQLite 并以 0 退出。超过部署宽限期后再由容器运行时强制终止。
+
+## 6. 持久化与恢复
+
+项目、Revision、Publication、Run、RunEvent、Trigger binding 和 migration version 都位于数据卷中的 SQLite 文件。当前只承诺 quiesced backup：先停止入口流量并让容器正常退出，再备份 volume；恢复时把完整数据目录挂载到相同路径后启动一个 Server 容器。
+
+不能只复制主 `.sqlite` 文件而遗漏同目录中的 WAL/SHM 状态，也不能在一个仍写入的容器和一个恢复容器之间共享数据卷。Connector 持久化是外部服务自己的备份边界，不属于 `/data/open-flow`。

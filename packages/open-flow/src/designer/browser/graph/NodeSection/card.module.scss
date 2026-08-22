@@ -1,0 +1,96 @@
+.wrapper {
+  overflow: hidden;
+  margin: 0 8px 8px;
+  background-color: var(--block-editor-item-background-color);
+  border-radius: var(--widget-radius);
+
+  :global(.react-flow__node.selected) &:has(:global(.oo-active), :global(.designer-preview-active)) {
+    background-color: var(--brand-1);
+
+    :global(.oo-designer.dark) & {
+      background-color: var(--brand-8);
+    }
+  }
+}
+
+.header {
+  margin: 0;
+  padding: 8px;
+  height: 36px;
+  font-weight: normal;
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+
+  > i {
+    flex: none;
+  }
+
+  :global(.oo-designer-node-minimap1) & {
+    visibility: hidden;
+  }
+}
+
+.headerWrapper {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+  gap: 0.25em;
+
+  > .header {
+    flex: 1;
+    padding-right: 0;
+    overflow: hidden;
+  }
+}
+
+.title {
+  user-select: none;
+  margin-right: auto;
+  line-height: 1.25;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.question {
+  font-size: 1.2em;
+  cursor: help;
+}
+
+.action {
+  flex: none;
+}
+
+.content {
+  background-color: var(--node-background-color);
+  overflow: hidden;
+  box-sizing: border-box;
+  margin: 0 8px 8px;
+}
+
+.dragIndicator {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background-color: var(--widget-font-color);
+    pointer-events: none;
+  }
+}
+
+.dragIndicatorTop::after {
+  top: 0;
+}
+
+.dragIndicatorBottom::after {
+  bottom: 0;
+}
+
+:global(.oo-designer-node-minimap2) .content > * {
+  visibility: hidden;
+}

@@ -1,0 +1,631 @@
+{
+  "addNode": {
+    "comment": "注释",
+    "connectorActions": "Connector Actions",
+    "connectorConnections": "{count} 个连接",
+    "connectorNewConnection": "新建 Connection",
+    "connectorNoActiveConnection": "没有可用连接",
+    "connectorPopupBlocked": "连接窗口被浏览器拦截，请允许弹出窗口后重试。",
+    "llmChat": "LLM 对话",
+    "llmStructured": "LLM 结构化输出",
+    "sharedBlocks": "任务与子流程",
+    "triggers": "触发器"
+  },
+  "blockEditor": {
+    "addDefaultAdditionalInput": "添加默认额外输入",
+    "addDefaultAdditionalOutput": "添加默认额外输出",
+    "additionalInputs": "额外输入",
+    "additionalInputsHelp": {
+      "allow": "允许任意额外输入",
+      "disallow": "不允许额外输入",
+      "restrict": "允许指定额外输入"
+    },
+    "additionalOutputs": "额外输出",
+    "additionalOutputsHelp": {
+      "allow": "允许任意额外输出",
+      "disallow": "不允许额外输出",
+      "restrict": "允许指定额外输出"
+    },
+    "configHeader": "区块配置",
+    "defaultAdditionalInputs": "默认额外输入",
+    "defaultAdditionalOutputs": "默认额外输出",
+    "description": "描述",
+    "executor": {
+      "action": "Action",
+      "connection": "连接",
+      "connectionAccount": "账号",
+      "connectionDetails": "当前连接",
+      "connectionId": "连接 ID",
+      "connectionStatus": "状态",
+      "connectionStatus_active": "可用",
+      "connectionStatus_disconnected": "已断开",
+      "connectionStatus_error": "异常",
+      "connectionStatus_reauth_required": "需要重新授权",
+      "connectionUnresolved": "未解析",
+      "entry": "入口",
+      "function": "方法名",
+      "mode": "模式",
+      "mode_chat": "对话",
+      "mode_json": "JSON",
+      "name": "名称",
+      "title": "执行器"
+    },
+    "folder": "区块目录名",
+    "icon": "图标",
+    "metadata": "基本信息",
+    "nodeTitlePlaceholder": "请输入标题…",
+    "private": "已私有",
+    "privateField": "私有",
+    "privateHelp": "将共享区块标记为私有，以指示它不能被 AI 和外部用户使用",
+    "public": "已公开",
+    "runningConfig": {
+      "concurrency": "并发数",
+      "progressWeight": "进度权重",
+      "timeout": "超时时间",
+      "title": "运行配置"
+    },
+    "sourceNotFound": "未找到区块源文件",
+    "task": "区块名称",
+    "taskHeader": "来自共享区块",
+    "title": "标题"
+  },
+  "cancel": "取消",
+  "clipboard": {
+    "copySuccess": "已复制 {{@}} 个节点",
+    "copySuccess@1": "已复制 1 个节点"
+  },
+  "comment": {
+    "editWithMarkdown": "使用 Markdown 编辑",
+    "preview": "预览",
+    "source": "显示源文本"
+  },
+  "components": {
+    "noMatching": "无匹配项",
+    "numOptions": "{{count}} 项"
+  },
+  "trigger": {
+    "catalogEmpty": "没有匹配的触发器",
+    "catalogEmptyHelp": "请尝试搜索服务或事件名称。",
+    "catalogUnavailable": "外部触发器目录不可用",
+    "catalogUnavailableHelp": "内置触发器和项目中已有的定义仍然可用。",
+    "configuration": "配置",
+    "configInvalid": "请输入有效的配置值。",
+    "connection": "账号",
+    "integrationSummary": "事件到达时触发",
+    "pollSchedule": "轮询计划",
+    "pollScheduleHelp": "设置这个触发器检查新事件的频率。",
+    "scheduleCron": "Cron",
+    "scheduleDays": "天",
+    "scheduleEvery": "每隔",
+    "scheduleEveryDay": "每 {{value}} 天",
+    "scheduleEveryHour": "每 {{value}} 小时",
+    "scheduleEveryMinute": "每 {{value}} 分钟",
+    "scheduleEveryMonth": "每 {{value}} 个月",
+    "scheduleEveryWeek": "每 {{value}} 周",
+    "scheduleExpression": "Cron 表达式",
+    "scheduleHours": "小时",
+    "scheduleInterval": "轮询间隔",
+    "scheduleMinutes": "分钟",
+    "scheduleMonths": "个月",
+    "scheduleTimezone": "时区",
+    "scheduleType": "计划类型",
+    "scheduleUnit": "间隔单位",
+    "scheduleWeeks": "周",
+    "scheduleMissing": "尚未配置计划",
+    "summaryCron": "触发计划",
+    "summaryIntegration": "事件来源",
+    "summaryPoll": "轮询计划",
+    "summaryWebhook": "请求触发",
+    "webhookAddField": "添加字段",
+    "webhookAddHeader": "添加响应头",
+    "webhookCustomType": "自定义结构",
+    "webhookDeleteField": "删除载荷字段",
+    "webhookDeleteHeader": "删除响应头",
+    "webhookFieldName": "字段名",
+    "webhookFieldNameDuplicate": "字段名不能重复。",
+    "webhookFieldNameRequired": "请输入字段名。",
+    "webhookFieldType": "类型",
+    "webhookHeaderName": "响应头名称",
+    "webhookHeaders": "响应头",
+    "webhookHeaderValue": "响应头值",
+    "webhookMethods": "允许的请求方法",
+    "webhookNoPayloadFields": "请求载荷接受空对象。",
+    "webhookNoResponseBody": "不返回响应体",
+    "webhookNullable": "允许 null",
+    "webhookOrigins": "允许的来源",
+    "webhookPayloadFields": "载荷字段",
+    "webhookRequest": "请求",
+    "webhookResponse": "响应",
+    "webhookResponseData": "响应内容",
+    "webhookStatus": "状态码",
+    "webhookSummary": "收到 HTTP 请求时触发",
+    "webhookDescription": "通过部署后生成的 HTTP 地址接收 JSON 对象。"
+  },
+  "condition": {
+    "addCondition": "添加条件",
+    "configPanelTitle": "配置",
+    "default": "默认",
+    "defaultDescription": "默认条件",
+    "defaultHelp": "当没有其他条件匹配时，执行此条件",
+    "deleteCondition": "删除条件",
+    "handleKeyTitle": "接口名",
+    "handleLogicalTitle": "组合逻辑",
+    "inputHelp": "匹配条件的输出接口会输出第一条输入接口的数据",
+    "label": "条件",
+    "logical": {
+      "AND": "且 (AND)",
+      "OR": "或 (OR)"
+    },
+    "operator": {
+      "!=": "≠",
+      "<": "<",
+      "<=": "≤",
+      "==": "=",
+      ">": ">",
+      ">=": "≥",
+      "contains": "包含",
+      "ends_with": "结尾是",
+      "has_key": "包含键",
+      "has_value": "包含值",
+      "is_empty": "为空",
+      "is_false": "为 false",
+      "is_not_empty": "不为空",
+      "is_not_null": "不为 null",
+      "is_null": "为 null",
+      "is_true": "为 true",
+      "not_contains": "不包含",
+      "not_has_key": "不包含键",
+      "not_has_value": "不包含值",
+      "starts_with": "开头是"
+    },
+    "title": "条件输出接口",
+    "toggleDefault": "默认条件"
+  },
+  "contextMenu": {
+    "addNode": "添加节点",
+    "empty": "没有匹配的节点",
+    "loadFailed": "无法加载连接器操作。",
+    "paste": "粘贴",
+    "retry": "重试",
+    "search": "搜索"
+  },
+  "copy": "复制",
+  "close": "关闭",
+  "create": "创建",
+  "delete": "删除",
+  "edit": "编辑",
+  "edgeError": {
+    "aggregateSummary": "{{connectionCount}} 条连接中有 {{errorCount}} 条错误",
+    "binDiffType": "二进制数据不兼容",
+    "default": "数据类型不兼容",
+    "diffKind": "接口类型标记不匹配",
+    "errorNode": "连接的节点已损坏",
+    "nullable": "来源允许 null，但目标不允许 null",
+    "varDiffPkg": "变量来自不同项目",
+    "varDiffType": "变量输出只能连接到变量输入"
+  },
+  "errorNode": {
+    "blockNotFound": "未找到任务或子流程 YAML 文件"
+  },
+  "fitView": "适应视图",
+  "flowEditor": {
+    "node": {
+      "configHeader": "节点配置",
+      "id": "节点 ID"
+    }
+  },
+  "flowSettings": {
+    "title": "工作流配置"
+  },
+  "handleEditor": {
+    "addItem": "添加项",
+    "additionalInputs": "额外输入",
+    "additionalOutputs": "额外输出",
+    "click": "点击",
+    "descButton": "JSON Schema 说明",
+    "dropOr": "拖放或",
+    "editSharedBlock": "编辑共享区块",
+    "handle": "接口",
+    "inputHandle": "输入接口",
+    "noInputOutput": "没有输入或输出接口",
+    "renaming": {
+      "banned": "Handle 名不能为 {{name}}",
+      "duplicate": "与其他 Handle 重名",
+      "empty": "Handle 名不能为空"
+    },
+    "schemaDescription": "JSON Schema 说明...",
+    "secretUnavailable": "Secret 目录不可用",
+    "selectSecret": "选择密钥"
+  },
+  "handleGroup": {
+    "delete": "删除组",
+    "dropAdd": "拖放以创建新组",
+    "fallback": "请输入组名…",
+    "renaming": {
+      "banned": "组名不能为 {{name}}",
+      "duplicate": "与其他组重名",
+      "empty": "组名不能为空"
+    }
+  },
+  "inputHandleEditor": {
+    "addField": "添加字段",
+    "addInput": "添加输入接口",
+    "canPassNull": "允许传 {{null}}",
+    "cannotPassNull": "不接受 {{null}}",
+    "configPanelTitle": "输入接口配置",
+    "connectionRequired": "需要输入",
+    "defineOptions": "定义选项",
+    "defineSchema": "定义类型",
+    "deleteField": "删除字段",
+    "enumError": "期望 enum 参数",
+    "handleKeyTitle": "接口名",
+    "handleName": "接口名称",
+    "handleTypeTitle": "类型",
+    "handleValueTitle": "数据",
+    "noData": "无数据",
+    "nullable": "允许 null",
+    "presetType": "预设类型",
+    "reference": "已连线",
+    "requiredFieldsUnset": "请设置必填项：{{fields}}。",
+    "secretNotFound": "未找到密钥",
+    "title": "输入接口",
+    "typeError": "期望 {{expected}} 类型",
+    "unset": "<未设值>",
+    "validationError": "请检查配置：{{message}}",
+    "valueUnset": "未设值",
+    "widget": {
+      "array": {
+        "itemType": "项类型",
+        "maxItems": "最大项数",
+        "minItems": "最小项数"
+      },
+      "color": {
+        "type": "类型"
+      },
+      "conditions": {
+        "title": "<条件 {{index}}>"
+      },
+      "date": {
+        "format": "格式"
+      },
+      "number": {
+        "exclusiveMaximum": "最大值(<)",
+        "exclusiveMinimum": "最小值(>)",
+        "maximum": "最大值(≤)",
+        "minimum": "最小值(≥)",
+        "step": "步长"
+      },
+      "object": {
+        "additionalProperties": "允许额外属性",
+        "banned": "Object 属性不能为 {{name}}"
+      },
+      "string": {
+        "format": "格式",
+        "maxLength": "最大长度",
+        "minLength": "最小长度",
+        "pattern": "正则表达式"
+      }
+    }
+  },
+  "interactiveMode": {
+    "mouse": "鼠标友好",
+    "touchpad": "触控板友好"
+  },
+  "jsonViewer": {
+    "bin": "二进制",
+    "secret": "密钥",
+    "var": "变量"
+  },
+  "l10n": {
+    "createKey": "添加翻译",
+    "deleteKey": "删除翻译",
+    "emptyKey": "关闭此面板后翻译会被删除",
+    "en": "英文",
+    "invalidKey": "标识不能为 __proto__",
+    "openPanel": "多语言",
+    "translateKey": "标识",
+    "zh-CN": "中文"
+  },
+  "miniMap": "小地图",
+  "flowDisplayMode": {
+    "detail": "详细",
+    "detailDescription": "显示完整节点、端口、编辑器和控件",
+    "overview": "概览",
+    "overviewDescription": "显示简化节点和只读连接"
+  },
+  "settingsPanel": {
+    "hide": "隐藏设置",
+    "show": "显示设置"
+  },
+  "more": "更多操作",
+  "ms": "毫秒",
+  "s": "秒",
+  "nodeActions": {
+    "configSharedBlock": "配置共享区块",
+    "delete": "删除",
+    "deleteConfirm": "确定删除 {{name}} 吗？\n{{shortcut}} 可直接删除",
+    "duplicate": "克隆",
+    "execute": "执行",
+    "executeWithoutCache": "无缓存执行",
+    "nodeSetting": "节点配置",
+    "openSharedBlockCode": "打开任务区块代码",
+    "skipDisable": "取消忽略此节点",
+    "skipDisableAll": "取消忽略选中节点",
+    "skipEnable": "忽略此节点",
+    "skipEnableAll": "忽略选中节点",
+    "toggleLanguage": "切换为{{lang}}"
+  },
+  "nodeContent": {
+    "addDescription": "添加描述"
+  },
+  "nodeStatus": {
+    "error": "错误",
+    "hasError": "存在错误",
+    "running": "运行中",
+    "skipped": "已忽略",
+    "success": "成功",
+    "waiting": "等待中"
+  },
+  "ok": "确定",
+  "optimize": "自动排版",
+  "llmEditor": {
+    "addMessage": "添加消息",
+    "chooseModel": "从模型列表选择",
+    "customModel": "自定义模型...",
+    "defaultModel": "默认模型",
+    "deleteMessage": "删除消息",
+    "maxTokens": "最大 Token 数",
+    "messageCount": "{{count}} 条消息",
+    "messageCountOne": "1 条消息",
+    "messagePlaceholder": "消息内容",
+    "loadingModels": "正在加载模型...",
+    "model": "模型",
+    "modelOptions": "模型选项",
+    "moveMessageDown": "下移消息",
+    "moveMessageUp": "上移消息",
+    "role": {
+      "assistant": "助手",
+      "system": "系统",
+      "user": "用户"
+    },
+    "temperature": "Temperature",
+    "topP": "Top P"
+  },
+  "outputHandleEditor": {
+    "addOutput": "添加输出接口",
+    "configPanelTitle": "输出接口配置",
+    "handleKeyTitle": "接口名",
+    "handleTypeTitle": "类型",
+    "nullable": "允许 null",
+    "title": "输出接口"
+  },
+  "preset": {
+    "Applicators": "Applicators",
+    "Select": "Select",
+    "allOf": "AllOf",
+    "any": "Any",
+    "anyOf": "AnyOf",
+    "array": "Array",
+    "binary": "Binary",
+    "boolean": "Boolean",
+    "color": "Color",
+    "date": "Date",
+    "integer": "Integer",
+    "multiSelect": "Multi",
+    "null": "Null",
+    "number": "Number",
+    "object": "Object",
+    "oneOf": "OneOf",
+    "secret": "Secret",
+    "select": "Single",
+    "string": "String",
+    "text": "Textarea",
+    "variable": "Variable"
+  },
+  "preview": {
+    "title": "预览",
+    "audio": {
+      "mute": "静音",
+      "pause": "暂停音频",
+      "play": "播放音频",
+      "seek": "调整音频进度",
+      "title": "音频预览",
+      "unmute": "取消静音",
+      "volume": "音量"
+    },
+    "table": {
+      "footer": "共 {{columns}} 列，{{rows}} 条记录"
+    }
+  },
+  "schemaEditor": {
+    "description": "描述",
+    "kind": "自定义类型名称",
+    "kindTooltip": "为类型提供一个自定义名称。如果提供，则只允许具有相同名称的接口连接",
+    "label": "标签",
+    "name": "名称",
+    "namePlaceholder": "例如 Images",
+    "value": "值"
+  },
+  "scriptlet": "小脚本",
+  "subflowEditor": {
+    "blockMode": "区块视图",
+    "flowMode": "工作流视图"
+  },
+  "subflowSettings": {
+    "forwardPreview": "转发预览",
+    "title": "子流配置"
+  },
+  "validation": {
+    "nodeIdBanned": "Node ID 不能为 {{name}}",
+    "nodeIdExists": "Node ID 已存在",
+    "nodeIdInvalid": "Node ID 只能包含英文字母、数字、下划线和短横线",
+    "sharedBlockNameBanned": "任务或子流程名称不能为 {{name}}",
+    "sharedBlockNameExists": "同名任务或子流程已存在",
+    "sharedBlockNameInvalid": "任务和子流程名称只能包含英文字母、数字、下划线和短横线"
+  },
+  "workbench": {
+    "conflict": {
+      "keepLocal": "保留本地修改",
+      "reload": "从磁盘重新加载"
+    },
+    "empty": {
+      "description": "添加 Flow、Subflow 或 Task 源文件，然后重新加载工作台。",
+      "title": "当前项目还没有可运行的目标。"
+    },
+    "noTargets": "没有可运行的目标",
+    "resource": {
+      "openInCodeEditor": "在代码编辑器中打开",
+      "showDesigner": "打开 Designer 视图",
+      "showSource": "打开 YAML 源码",
+      "unknownType": "未知文件类型",
+      "unsupported": "暂不支持此文件类型"
+    },
+    "run": {
+      "cancel": "取消",
+      "cancelled": "运行已取消。",
+      "clearLogs": "清空日志",
+      "closeInputs": "关闭运行输入",
+      "current": "当前运行",
+      "emptyEvents": "运行当前目标后，可在这里查看事件。",
+      "exportLogs": "导出日志",
+      "event": {
+        "cacheHit": "复用 {{handle}}",
+        "completed": "运行完成",
+        "nodeCompleted": "已完成",
+        "nodeStarted": "已开始",
+        "output": "输出 {{handle}}",
+        "outputs": "输出",
+        "preview": "预览 {{type}}",
+        "progress": "{{progress}}%",
+        "started": "开始运行"
+      },
+      "filter": {
+        "cache": "缓存",
+        "empty": "没有符合当前筛选条件的事件。",
+        "error": "错误",
+        "finish": "完成",
+        "label": "筛选事件",
+        "log": "日志",
+        "output": "输出",
+        "preview": "预览",
+        "progress": "进度",
+        "reset": "重置",
+        "selectAll": "全选",
+        "selected": "已选择 {{count}} 项",
+        "start": "开始",
+        "warning": "警告"
+      },
+      "hideDetails": "隐藏运行详情",
+      "history": "运行历史",
+      "historyItem": "第 {{index}} 次运行",
+      "inputs": "运行输入",
+      "form": "表单输入",
+      "invalidInputs": "运行输入必须是符合输入定义的对象。",
+      "invalidJson": "运行输入必须是有效的 JSON。",
+      "logs": "日志",
+      "completed": "运行已完成：{{target}}",
+      "externalTarget": "打开运行中的 {{target}}",
+      "failed": "运行失败（{{target}}）：{{message}}",
+      "openExternal": "打开在工作台外启动的目标：{{target}}",
+      "phase": {
+        "cancelled": "已取消",
+        "error": "失败",
+        "idle": "就绪",
+        "running": "运行中",
+        "success": "已完成"
+      },
+      "run": "运行",
+      "showDetails": "显示运行详情",
+      "trigger": "触发器"
+    },
+    "secrets": {
+      "add": "添加 Secret",
+      "addField": "添加字段",
+      "close": "关闭",
+      "confirmDelete": "从当前 runtime 中删除这个 Secret？",
+      "delete": "删除",
+      "hideValue": "隐藏值",
+      "key": "字段名",
+      "name": "名称",
+      "removeField": "删除字段",
+      "save": "保存",
+      "saved": "Secret 已保存到当前 runtime。",
+      "showValue": "显示值",
+      "template": "模板",
+      "title": "Secrets",
+      "value": "值"
+    },
+    "settings": {
+      "categories": "设置分类",
+      "autoFollowAgent": "Agent 开始运行时自动跟随对应目标",
+      "clearSearch": "清空设置搜索",
+      "close": "关闭设置",
+      "connector": "执行器",
+      "connectorBaseUrl": "Connector Base URL",
+      "connectorCleared": "已清除本地覆盖。",
+      "connectorClear": "清除本地覆盖",
+      "connectorNotConfigured": "未配置",
+      "connectorSave": "保存",
+      "connectorSaved": "已保存。",
+      "connectorSource": {
+        "cli": "命令行配置",
+        "environment": "环境变量配置",
+        "oo-cli-account": "继承的 oo-cli 账号",
+        "oo-cli-connector": "继承的 oo-cli Connector 配置",
+        "open-flow-settings": "Open Flow 本地设置"
+      },
+      "connectorSourceLabel": "来源",
+      "connectorTest": "测试连接",
+      "connectorTestSucceeded": "连接成功。",
+      "connectorToken": "Bearer Token",
+      "connectorTokenConfigured": "已配置",
+      "connectorTokenNotConfigured": "未配置",
+      "connectorTokenOverride": "输入 Token 以创建本地覆盖",
+      "connectorTokenUnchanged": "已保存的 Token 保持不变",
+      "editor": "编辑器",
+      "defaultFlowDisplayMode": "设置打开 Flow 或 Subflow 时使用的显示模式。",
+      "expandScriptletEditor": "默认展开新建小脚本的编辑器",
+      "llm": "大语言模型",
+      "llmApiKey": "API Key",
+      "llmApiKeyConfigured": "已配置",
+      "llmApiKeyNotConfigured": "未配置",
+      "llmApiKeyOverride": "输入 API Key 以创建本地覆盖",
+      "llmApiKeyUnchanged": "已保存的 API Key 保持不变",
+      "llmBaseUrl": "OpenAI 兼容 Base URL",
+      "llmCleared": "已清除 LLM 本地覆盖。",
+      "llmModel": "默认模型",
+      "llmSaved": "LLM 设置已保存。",
+      "llmSource": {
+        "cli": "命令行配置",
+        "environment": "环境变量配置",
+        "oo-cli": "继承的 oo-cli LLM 配置",
+        "open-flow-settings": "Open Flow 本地设置"
+      },
+      "noResults": "未找到设置",
+      "openLogPanelOnRun": "运行开始时打开日志面板",
+      "runtime": "运行时",
+      "searchPlaceholder": "搜索设置",
+      "title": "设置"
+    },
+    "status": {
+      "conflict": "{{fileName}} 已在工作台外被修改",
+      "error": "保存 {{fileName}} 失败",
+      "invalid": "{{fileName}} 包含无效的 YAML",
+      "ready": "就绪",
+      "saved": "已保存 {{fileName}}",
+      "saving": "正在保存 {{fileName}}…",
+      "synced": "已从磁盘更新 {{fileName}}"
+    },
+    "target": "目标"
+  },
+  "valueHandleEditor": {
+    "title": "接口"
+  },
+  "widgetAction": {
+    "download": "下载",
+    "openInNewTab": "在新标签页中打开",
+    "reload": "重新加载"
+  },
+  "zoomIn": "放大",
+  "zoomOut": "缩小"
+}

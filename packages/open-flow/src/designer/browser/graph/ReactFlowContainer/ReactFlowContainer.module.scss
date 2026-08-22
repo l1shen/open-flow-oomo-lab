@@ -1,0 +1,148 @@
+.container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+
+  :global(.ant-dropdown-menu-title-content) {
+    white-space: nowrap;
+  }
+}
+
+.flow {
+  position: relative;
+  outline: none !important;
+  scrollbar-color: rgba(121, 121, 121, 0.4) transparent;
+  background-color: var(--flow-bg);
+
+  &:global(.react-flow.oo-designer) {
+    // Connected edge lines.
+    // --xy-edge-stroke-default: var(--edge-color);
+    --xy-edge-stroke-width-default: 2;
+  }
+
+  ::-webkit-scrollbar-corner,
+  ::-webkit-resizer {
+    border: none;
+    outline: none;
+    background: no-repeat
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 36 36'%3E%3Ccircle cx='12' cy='24' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-1'/%3E%3Ccircle cx='18' cy='24' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-2'/%3E%3Ccircle cx='18' cy='18' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-3'/%3E%3Ccircle cx='24' cy='12' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-4'/%3E%3Ccircle cx='24' cy='24' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-5'/%3E%3Ccircle cx='24' cy='18' r='1.5' fill='%23888888' class='clr-i-outline clr-i-outline-path-6'/%3E%3Cpath fill='none' d='M0 0h36v36H0z'/%3E%3C/svg%3E");
+  }
+
+  & > :global(.react-flow__renderer) {
+    // Prevent the text editor from shifting the viewport.
+    overflow: clip;
+  }
+
+  :global(*),
+  :global(*::before),
+  :global(*::after) {
+    box-sizing: border-box;
+  }
+
+  :global(.react-flow__pane.selection),
+  :global(.react-flow__node),
+  :global(.react-flow__edge) {
+    cursor: auto !important;
+  }
+
+  // Let nodes participate in canvas dragging while Space is held.
+  &:global(.touchpad) :global(.react-flow__pane.draggable .react-flow__node) {
+    pointer-events: none !important;
+  }
+
+  :global(.react-flow__controls) {
+    width: var(--canvas-control-container-size);
+    border: 1px solid var(--rf-controls-border);
+    box-shadow: var(--floating-control-shadow);
+    border-radius: var(--canvas-control-radius);
+    overflow: hidden;
+  }
+
+  :global(.react-flow__controls-button) {
+    width: var(--canvas-control-size);
+    height: var(--canvas-control-size);
+    padding: var(--canvas-control-padding);
+    background-color: var(--rf-button-bg);
+    color: var(--rf-button-fg);
+    // border-bottom: 1px solid var(--rf-button-border);
+    border-radius: 0;
+    font-size: 16px;
+  }
+
+  :global(.react-flow__controls-button:hover) {
+    background-color: var(--rf-button-hover);
+  }
+
+  :global(.react-flow__controls-button path) {
+    fill: currentColor;
+  }
+
+  :global(.react-flow__minimap) {
+    background-color: var(--rf-minimap-bg);
+  }
+
+  :global(.react-flow__minimap-mask) {
+    fill: rgba(0, 0, 0, 0.1);
+  }
+
+  :global(.react-flow__minimap-node) {
+    fill: var(--rf-minimap-node);
+  }
+
+  :global(.react-flow__nodesselection-rect:focus),
+  :global(.react-flow__nodesselection-rect:focus-visible),
+  :global(.react-flow__selection:focus),
+  :global(.react-flow__selection:focus-visible) {
+    outline: none !important;
+  }
+
+  &:has(.contextMenu) :global(.react-flow__nodesselection-rect) {
+    pointer-events: none;
+  }
+
+  :global(.react-flow__viewport > [class^='ant-']:not([class*='ant-tooltip'])) {
+    pointer-events: all;
+  }
+
+  :global(.ant-btn-icon),
+  button > i {
+    cursor: inherit;
+  }
+}
+
+.switchingDisplayMode {
+  :global(.react-flow__node) {
+    transition: transform var(--display-mode-transition-duration) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switchingDisplayMode :global(.react-flow__node) {
+    transition: none;
+  }
+}
+
+.btnCtrl {
+  font-size: var(--canvas-control-icon-size);
+}
+
+.contextMenu {
+  min-width: 150px;
+
+  :global(.ant-dropdown-menu-item) {
+    font-size: var(--base-font-size) !important;
+    border-radius: var(--widget-radius) !important;
+  }
+
+  :global(.ant-popover-container) {
+    padding: 0;
+    box-shadow: 0px 2px 16px 0px var(--contextmenu-shadow);
+  }
+}
+
+.quickPickPopover {
+  :global(.ant-popover-container) {
+    border: 1px solid var(--border-weak);
+    box-shadow: 0 3px 8px var(--contextmenu-shadow);
+  }
+}

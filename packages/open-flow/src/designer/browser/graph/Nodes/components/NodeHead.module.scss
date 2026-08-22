@@ -1,0 +1,147 @@
+.container {
+  padding: 0 4px;
+  background-color: var(--node-head-background-color);
+  overflow: hidden;
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+
+  :global(.oo-designer-node-minimap1) & {
+    visibility: hidden;
+  }
+
+  :global(.react-flow__node-input_node) &,
+  :global(.react-flow__node-output_node) & {
+    display: none;
+  }
+
+  :global(.react-flow__node-comment_node) & {
+    background-color: var(--comment-head-bg);
+
+    :where(button:has(> i)) {
+      color: var(--text-3);
+    }
+
+    :where(button:hover) {
+      background-color: var(--comment-hover-bg);
+    }
+
+    :where(button:active) {
+      background-color: var(--comment-active-bg);
+    }
+  }
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  margin-right: 0.25em;
+  font-weight: bold;
+
+  > input {
+    background-color: transparent;
+
+    &:focus-visible {
+      border-color: transparent;
+    }
+  }
+}
+
+.connection {
+  flex: 0 1 40%;
+  max-width: 180px;
+  padding: 0 4px;
+  font-size: 90%;
+}
+
+.menu {
+  &:global(.ant-dropdown-menu-submenu),
+  &:global(.ant-dropdown-menu) {
+    font-size: var(--base-font-size);
+  }
+
+  :global(.ant-dropdown-menu-item),
+  :global(.ant-dropdown-menu-submenu-title) {
+    font-size: var(--base-font-size) !important;
+    border-radius: var(--widget-radius) !important;
+  }
+
+  :global(.ant-dropdown-menu-item-icon) {
+    font-size: var(--base-font-size) !important;
+  }
+
+  :global(.ant-dropdown-menu-submenu-title) {
+    align-items: center;
+  }
+
+  :global(.ant-dropdown-menu-title-content) {
+    white-space: nowrap;
+  }
+}
+
+.menuButton {
+  display: flex;
+  align-items: flex-start;
+}
+
+.commentIcon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--icon-font-size);
+  pointer-events: none;
+}
+
+.errorIcon {
+  @extend .commentIcon;
+  color: var(--accent-red-1);
+  pointer-events: auto;
+}
+
+.blockSettings {
+  align-self: flex-start;
+  position: absolute;
+  left: 100%;
+  margin-left: 13px;
+  width: 400px;
+}
+
+.floatBar {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, -8px);
+  transform-origin: left bottom;
+  display: none;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  background-color: var(--node-background-color);
+  border: 1px solid var(--node-border-color);
+  border-radius: var(--node-container-radius);
+  padding: 0;
+  overflow: hidden;
+  --icon-font-size: 24px;
+  --icon-size: 32px;
+
+  :global(.react-flow__node.selected) & {
+    display: flex;
+  }
+}
+
+.floatBarButton {
+  padding: 6px;
+  border-radius: 0;
+  width: 36px;
+}
+
+.floatBarStatus {
+  @extend .floatBarButton;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+}

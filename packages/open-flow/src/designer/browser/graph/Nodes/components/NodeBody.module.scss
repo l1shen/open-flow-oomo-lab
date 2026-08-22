@@ -1,0 +1,7 @@
+.container {
+  overflow: hidden;
+
+  &:has(:global(.react-select__menu)) {
+    overflow: visible;
+  }
+}

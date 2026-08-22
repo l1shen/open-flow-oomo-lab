@@ -1,0 +1,28 @@
+@use './fancyScrollbar.scss' as *;
+
+.container {
+  user-select: text;
+
+  :global(.ant-table-content) {
+    @extend %fancy-scrollbar;
+    overflow-y: hidden;
+    overflow-x: auto;
+  }
+
+  :global(.ant-table-body) {
+    @extend %fancy-scrollbar;
+  }
+
+  :global(.ant-pagination-simple-pager) > input {
+    width: auto;
+    font: unset;
+    vertical-align: baseline;
+  }
+
+  border-top: 1px solid var(--vscode-sideBarSectionHeader-border, #1a1b1c2a);
+}
+
+.footer {
+  text-align: right;
+  padding: 5px;
+}

@@ -1,0 +1,28 @@
+.indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) translate(var(--x), var(--y));
+  z-index: 1001;
+  transition: opacity 0.2s linear;
+  opacity: 1;
+  cursor: pointer;
+}
+
+.hiding {
+  opacity: 0;
+}
+
+.bubble {
+  width: 32px;
+  height: 22px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(var(--angle));
+  pointer-events: none;
+}
+
+.icon {
+  font-size: 15px;
+}

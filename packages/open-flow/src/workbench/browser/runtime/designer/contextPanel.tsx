@@ -1,0 +1,387 @@
+import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode } from 'react'
+import type { IAddNodeMenuItem } from '../../../../designer/browser/stores/designer/designer.store.ts'
+import type { IconName } from '../icons.tsx'
+import type { AddNodeOption } from './addNodeOptions.ts'
+
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useTranslate } from 'val-i18n-react'
+import { OverlayScrollbar } from '../../../../designer/browser/components/overlayScrollbar.tsx'
+import { filterBlockPickerItems, useBlockPickerItems } from '../../../../designer/browser/graph/blockPicker.ts'
+import { BlockPickerRow } from '../../../../designer/browser/graph/BlockQuickPickPanel.tsx'
+import { setAddItemId } from '../../../../designer/browser/graph/ReactFlowContainer/addItemDrag.ts'
+import { Icon } from '../icons.tsx'
+import { indexAddNodeOptions } from './addNodeOptions.ts'
+
+interface ContextPanelProps {
+  readonly children: ReactNode
+  readonly focusOnOpen: boolean
+  readonly icon: IconName
+  readonly onClose: () => void
+  readonly title: string
+}
+
+interface LibraryItemProps {
+  readonly disabled: boolean
+  readonly item: Exclude<IAddNodeMenuItem, { type: 'divider' }>
+  readonly onAdd: (itemId: string) => void
+  readonly onDrag: (event: ReactDragEvent, itemId: string) => void
+  readonly onLoadChoices: (itemId: string, signal: AbortSignal) => Promise<readonly LibraryChoice[] | undefined>
+}
+
+type LibraryChoice = NonNullable<Exclude<IAddNodeMenuItem, { type: 'divider' }>['choices']>[number]
+
+interface BlockLibraryProps {
+  readonly browseOptions: (signal: AbortSignal) => Promise<readonly AddNodeOption[] | undefined>
+  readonly disabled: boolean
+  readonly focusRequest: number
+  readonly onAdd: (option: AddNodeOption) => Promise<string | undefined>
+  readonly onRegisterDragOption: (option: AddNodeOption) => void
+  readonly options: readonly AddNodeOption[]
+  readonly provideChoices: (optionId: string, signal: AbortSignal) => Promise<readonly AddNodeOption[] | undefined>
+}
+
+function useOverlayPanel(): boolean {
+  const [overlay, setOverlay] = useState(() => typeof window != 'undefined' && window.matchMedia('(max-width: 980px)').matches)
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 980px)')
+    const update = (): void => setOverlay(query.matches)
+    query.addEventListener('change', update)
+    update()
+    return () => query.removeEventListener('change', update)
+  }, [])
+
+  return overlay
+}
+
+export function ContextPanel({ children, focusOnOpen, icon, onClose, title }: ContextPanelProps): ReactElement {
+  const t = useTranslate()
+  const overlay = useOverlayPanel()
+  const panel = useRef<HTMLElement>(null)
+  const titleId = useId()
+
+  useEffect(() => {
+    if (overlay && focusOnOpen) panel.current?.focus({ preventScroll: true })
+  }, [focusOnOpen, overlay])
+
+  useEffect(() => {
+    if (!overlay) return
+    const close = (event: KeyboardEvent): void => {
+      const target = event.target
+      if (event.key != 'Escape' || event.defaultPrevented || (target instanceof Element && target.closest('.oo-designer-quick-pick-panel') != null)) return
+      event.preventDefault()
+      onClose()
+    }
+    globalThis.addEventListener('keydown', close)
+    return () => globalThis.removeEventListener('keydown', close)
+  }, [onClose, overlay])
+
+  const keyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if (event.key == 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+      return
+    }
+    if (!overlay || event.key != 'Tab') return
+    const focusable = [
+      ...event.currentTarget.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+      ),
+    ]
+    if (focusable.length == 0) {
+      event.preventDefault()
+      event.currentTarget.focus()
+      return
+    }
+    const first = focusable[0]!
+    const last = focusable.at(-1)!
+    if (event.shiftKey && (document.activeElement == first || document.activeElement == event.currentTarget)) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && (document.activeElement == last || document.activeElement == event.currentTarget)) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
+  return (
+    <>
+      <div aria-hidden="true" className="context-panel-backdrop" onClick={onClose} />
+      <aside
+        aria-labelledby={titleId}
+        aria-modal={overlay || undefined}
+        className="context-panel"
+        onKeyDown={keyDown}
+        ref={panel}
+        role={overlay ? 'dialog' : 'complementary'}
+        tabIndex={-1}
+      >
+        <header>
+          <span className="node-icon small">
+            <Icon name={icon} size={16} />
+          </span>
+          <strong id={titleId}>{title}</strong>
+          <button aria-label={t('contextPanel.close')} className="icon-button" onClick={onClose} type="button">
+            <Icon name="close" size={16} />
+          </button>
+        </header>
+        <div className="context-panel-content">{children}</div>
+      </aside>
+    </>
+  )
+}
+
+function optionType(option: AddNodeOption): Exclude<IAddNodeMenuItem, { type: 'divider' }>['type'] {
+  switch (option.kind) {
+    case 'new-task':
+    case 'subflow':
+      return 'block'
+    case 'connector-group':
+      return 'connector'
+    case 'comment':
+    case 'condition':
+    case 'connector':
+    case 'llm':
+    case 'trigger':
+    case 'value':
+      return option.kind
+  }
+}
+
+function menuItems(options: readonly AddNodeOption[]): IAddNodeMenuItem[] {
+  const items: IAddNodeMenuItem[] = []
+  let group: string | undefined
+  for (const option of options) {
+    if (option.group != null && option.group != group) {
+      group = option.group
+      items.push({ label: group, type: 'divider' })
+    }
+    items.push({
+      choices: option.choices?.map((choice) => ({
+        data: choice.option.id,
+        description: choice.description,
+        label: choice.label,
+      })),
+      data: option.id,
+      description: option.description,
+      detail: option.description,
+      icon: option.icon,
+      label: option.label,
+      type: optionType(option),
+    })
+  }
+  return items
+}
+
+function LibraryItem({ disabled, item, onAdd, onDrag, onLoadChoices }: LibraryItemProps): ReactElement {
+  const t = useTranslate()
+  const connectionChoices = item.type == 'trigger'
+  const controller = useRef<AbortController>()
+  const [choices, setChoices] = useState(item.choices)
+  const [error, setError] = useState(false)
+  const [loaded, setLoaded] = useState(item.choices == null || item.choices.length > 0)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    controller.current?.abort()
+    setChoices(item.choices)
+    setError(false)
+    setLoaded(item.choices == null || item.choices.length > 0)
+    setLoading(false)
+    return () => controller.current?.abort()
+  }, [item.choices, item.data])
+
+  const load = useCallback((): void => {
+    if (item.data == null || disabled || loading) return
+    controller.current?.abort()
+    const nextController = new AbortController()
+    controller.current = nextController
+    setError(false)
+    setLoading(true)
+    void onLoadChoices(item.data, nextController.signal)
+      .then((nextChoices) => {
+        if (nextController.signal.aborted || nextChoices == null) return
+        setChoices(nextChoices)
+        setLoaded(true)
+      })
+      .catch(() => {
+        if (!nextController.signal.aborted) setError(true)
+      })
+      .finally(() => {
+        if (!nextController.signal.aborted) setLoading(false)
+      })
+  }, [disabled, item.data, loading, onLoadChoices])
+
+  if (item.choices != null) {
+    return (
+      <details className="block-library-choices" onToggle={(event) => event.currentTarget.open && !loaded && load()}>
+        <summary aria-disabled={disabled} onClick={(event) => disabled && event.preventDefault()}>
+          <BlockPickerRow
+            disabled={disabled}
+            item={item}
+            trailing={
+              <span className="block-library-expand">
+                {loaded && (choices?.length ?? 0)}
+                <Icon name="chevron-down" size={13} />
+              </span>
+            }
+          />
+        </summary>
+        <div className="block-library-choice-list">
+          {choices?.map((choice) => {
+            const choiceItem = { ...item, choices: undefined, data: choice.data, description: choice.description, label: choice.label }
+            return (
+              <button
+                disabled={disabled}
+                draggable={!disabled}
+                key={choice.data}
+                onClick={() => onAdd(choice.data)}
+                onDragStart={(event) => onDrag(event, choice.data)}
+                type="button"
+              >
+                <BlockPickerRow disabled={disabled} item={choiceItem} />
+              </button>
+            )
+          })}
+          {loading && (
+            <div className="block-library-choice-feedback">{t(connectionChoices ? 'contextPanel.loadingConnections' : 'contextPanel.loadingActions')}</div>
+          )}
+          {!loading && error && (
+            <div className="block-library-choice-feedback" role="alert">
+              <span>{t(connectionChoices ? 'contextPanel.loadConnectionsFailed' : 'contextPanel.loadActionsFailed')}</span>
+              <button className="button secondary small" onClick={load} type="button">
+                {t('contextPanel.retry')}
+              </button>
+            </div>
+          )}
+          {!loading && !error && loaded && choices?.length == 0 && (
+            <div className="block-library-choice-feedback">{t(connectionChoices ? 'contextPanel.noConnections' : 'contextPanel.noActions')}</div>
+          )}
+        </div>
+      </details>
+    )
+  }
+  return (
+    <button
+      className="block-library-item"
+      disabled={disabled}
+      draggable={!disabled}
+      onClick={() => item.data != null && onAdd(item.data)}
+      onDragStart={(event) => item.data != null && onDrag(event, item.data)}
+      type="button"
+    >
+      <BlockPickerRow disabled={disabled} item={item} />
+    </button>
+  )
+}
+
+export function BlockLibrary({ browseOptions, disabled, focusRequest, onAdd, onRegisterDragOption, options, provideChoices }: BlockLibraryProps): ReactElement {
+  const t = useTranslate()
+  const search = useRef<HTMLInputElement>(null)
+  const active = useRef(true)
+  const dynamicOptions = useRef<ReadonlyMap<string, AddNodeOption>>(new Map())
+  const [query, setQuery] = useState('')
+  const [adding, setAdding] = useState(false)
+  const staticOptions = useMemo(() => indexAddNodeOptions(options), [options])
+  const localItems = useMemo(() => menuItems(options), [options])
+  const provideAsyncItems = useCallback(
+    async (_searchTerm: string, signal: AbortSignal): Promise<readonly IAddNodeMenuItem[] | undefined> => {
+      const nextOptions = await browseOptions(signal)
+      if (signal.aborted || nextOptions == null) return
+      dynamicOptions.current = indexAddNodeOptions(nextOptions)
+      return menuItems(nextOptions)
+    },
+    [browseOptions],
+  )
+  const loadChoices = useCallback(
+    async (itemId: string, signal: AbortSignal): Promise<readonly LibraryChoice[] | undefined> => {
+      const nextOptions = await provideChoices(itemId, signal)
+      if (signal.aborted || nextOptions == null) return
+      dynamicOptions.current = new Map([...dynamicOptions.current, ...indexAddNodeOptions(nextOptions)])
+      return nextOptions.map((option) => ({ data: option.id, description: option.description, label: option.label }))
+    },
+    [provideChoices],
+  )
+  const { error, items: catalogItems, loading, retry } = useBlockPickerItems(localItems, '', provideAsyncItems)
+  const items = useMemo(() => filterBlockPickerItems(query, catalogItems), [catalogItems, query])
+  const busy = disabled || adding
+
+  useEffect(() => {
+    search.current?.focus({ preventScroll: true })
+  }, [focusRequest])
+
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
+
+  const resolve = (itemId: string): AddNodeOption | undefined => staticOptions.get(itemId) ?? dynamicOptions.current.get(itemId)
+  const add = async (itemId: string): Promise<void> => {
+    const option = resolve(itemId)
+    if (option == null || busy) return
+    setAdding(true)
+    try {
+      await onAdd(option)
+    } finally {
+      if (active.current) setAdding(false)
+    }
+  }
+  const drag = (event: ReactDragEvent, itemId: string): void => {
+    const option = resolve(itemId)
+    if (option == null || busy) return
+    onRegisterDragOption(option)
+    setAddItemId(event.dataTransfer, itemId)
+  }
+
+  return (
+    <div aria-busy={adding || loading} className="block-library">
+      <label className="search-field block-library-search">
+        <span className="sr-only">{t('contextPanel.search')}</span>
+        <Icon name="search" size={15} />
+        <input
+          aria-label={t('contextPanel.search')}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t('contextPanel.searchPlaceholder')}
+          ref={search}
+          value={query}
+        />
+      </label>
+      <OverlayScrollbar className="block-library-list" defer={false} tabIndex={-1}>
+        <div className="block-library-list-content">
+          {items.map((item) =>
+            item.type == 'divider' ? (
+              <BlockPickerRow item={item} key={`group:${item.label}`} />
+            ) : (
+              <LibraryItem
+                disabled={busy || item.disabled == true}
+                item={item}
+                key={item.data ?? item.label}
+                onAdd={(id) => void add(id)}
+                onDrag={drag}
+                onLoadChoices={loadChoices}
+              />
+            ),
+          )}
+          {loading && (
+            <div className="block-library-feedback" role="status">
+              <span className="block-library-spinner" />
+              {t('contextPanel.loading')}
+            </div>
+          )}
+          {!loading && error && (
+            <div className="block-library-feedback" role="alert">
+              <span>{t('contextPanel.loadFailed')}</span>
+              <button className="button secondary small" onClick={retry} type="button">
+                {t('contextPanel.retry')}
+              </button>
+            </div>
+          )}
+          {!loading && !error && items.length == 0 && <div className="block-library-feedback">{t('contextPanel.empty')}</div>}
+        </div>
+      </OverlayScrollbar>
+    </div>
+  )
+}

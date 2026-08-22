@@ -1,0 +1,258 @@
+import type { JsonValue, WebhookInputDefinition, WebhookOptions } from '../../project/common/change.ts'
+
+import { dequal } from 'dequal/lite'
+
+export const maximumWebhookBodyBytes = 64 * 1024
+
+const endpointPattern = /^\/v1\/webhooks\/(endpoint_[0-9a-f]{32})$/
+const encoder = new TextEncoder()
+
+export function webhookEndpointId(url: URL): string | undefined {
+  return endpointPattern.exec(url.pathname)?.[1]
+}
+
+export async function webhookOccurrenceId(endpointId: string, runtimeVersion: number, key: string | null): Promise<string | undefined> {
+  if (key == null) return `webhook_${crypto.randomUUID().replaceAll('-', '')}`
+  if (key.trim().length == 0 || key.length > 256) return
+  const source = JSON.stringify([1, 'webhook-occurrence', endpointId, runtimeVersion, key])
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(source)))
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+export interface WebhookConformanceFixture {
+  readonly inputsDef: readonly WebhookInputDefinition[]
+  readonly options?: WebhookOptions
+}
+
+export interface WebhookConformanceHarness {
+  readonly endpointUrl: string
+  dispose(): Promise<void>
+  payloads(): Promise<readonly JsonValue[]>
+  republish(): Promise<void>
+  request(request: Request): Promise<Response>
+  retire(): Promise<void>
+}
+
+export interface WebhookConformanceCase {
+  readonly fixture: WebhookConformanceFixture
+  readonly name: string
+  verify(harness: WebhookConformanceHarness): Promise<void>
+}
+
+function equal(actual: unknown, expected: unknown, message: string): void {
+  if (!dequal(actual, expected)) {
+    throw new Error(`${message}: expected ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}.`)
+  }
+}
+
+async function response(
+  actual: Response,
+  expected: { readonly body?: string; readonly headers?: Readonly<Record<string, string | null>>; readonly status: number },
+  message: string,
+): Promise<void> {
+  equal(actual.status, expected.status, `${message} status`)
+  if (expected.body != null) equal(await actual.text(), expected.body, `${message} body`)
+  for (const [name, value] of Object.entries(expected.headers ?? {})) equal(actual.headers.get(name), value, `${message} header ${name}`)
+}
+
+function call(
+  harness: WebhookConformanceHarness,
+  input: { readonly body?: string; readonly headers?: Headers | Readonly<Record<string, string>>; readonly method?: string; readonly url?: string } = {},
+): Promise<Response> {
+  return harness.request(
+    new Request(input.url ?? harness.endpointUrl, {
+      ...(input.body == null ? {} : { body: input.body }),
+      headers: input.headers,
+      method: input.method ?? 'POST',
+    }),
+  )
+}
+
+const noInputs: readonly WebhookInputDefinition[] = []
+const messageInputs: readonly WebhookInputDefinition[] = [
+  {
+    handle: 'event',
+    jsonSchema: {
+      additionalProperties: false,
+      properties: { message: { type: 'string' } },
+      required: ['message'],
+      type: 'object',
+    },
+    nullable: false,
+  },
+]
+
+const messagePayload = { event: { message: 'hello' } } as const
+
+export const webhookConformanceCases: readonly WebhookConformanceCase[] = [
+  {
+    fixture: { inputsDef: noInputs },
+    name: 'rejects malformed and unknown endpoint identities',
+    async verify(harness) {
+      const endpoint = new URL(harness.endpointUrl)
+      await response(
+        await call(harness, { url: new URL('/v1/webhooks/not-an-endpoint', endpoint).href }),
+        { body: '', headers: { 'cache-control': 'no-store' }, status: 404 },
+        'Malformed endpoint',
+      )
+      await response(
+        await call(harness, { url: new URL('/v1/webhooks/endpoint_00000000000000000000000000000000', endpoint).href }),
+        { body: '', headers: { 'cache-control': 'no-store' }, status: 404 },
+        'Unknown endpoint',
+      )
+    },
+  },
+  {
+    fixture: { inputsDef: noInputs },
+    name: 'uses POST by default and decodes an empty body as an empty object',
+    async verify(harness) {
+      await response(await call(harness, { method: 'GET' }), { headers: { 'allow': 'POST', 'cache-control': 'no-store' }, status: 405 }, 'Default method')
+      await response(await call(harness), { body: '', headers: { 'cache-control': 'no-store' }, status: 200 }, 'Empty payload')
+      equal(await harness.payloads(), [{}], 'Decoded empty payloads')
+    },
+  },
+  {
+    fixture: {
+      inputsDef: noInputs,
+      options: {
+        allowedMethods: ['PUT'],
+        allowedOrigins: ['https://client.example'],
+        responseData: 'accepted',
+        responseHeaders: { 'x-webhook-response': 'configured' },
+        responseStatusCode: 202,
+      },
+    },
+    name: 'applies configured methods, CORS, preflight, and success response',
+    async verify(harness) {
+      await response(
+        await call(harness, {
+          headers: {
+            'access-control-request-headers': 'content-type, idempotency-key',
+            'access-control-request-method': 'PUT',
+            'origin': 'https://client.example',
+          },
+          method: 'OPTIONS',
+        }),
+        {
+          body: '',
+          headers: {
+            'access-control-allow-headers': 'content-type, idempotency-key',
+            'access-control-allow-methods': 'PUT',
+            'access-control-allow-origin': 'https://client.example',
+            'access-control-max-age': '600',
+          },
+          status: 204,
+        },
+        'Preflight',
+      )
+      await response(
+        await call(harness, { body: '{}', headers: { origin: 'https://client.example' }, method: 'PUT' }),
+        {
+          body: 'accepted',
+          headers: {
+            'access-control-allow-origin': 'https://client.example',
+            'cache-control': 'no-store',
+            'x-webhook-response': 'configured',
+          },
+          status: 202,
+        },
+        'Configured success',
+      )
+      await response(
+        await call(harness, { body: '{}', headers: { origin: 'https://other.example' }, method: 'PUT' }),
+        { body: '', headers: { 'cache-control': 'no-store' }, status: 403 },
+        'Disallowed origin',
+      )
+    },
+  },
+  {
+    fixture: { inputsDef: messageInputs },
+    name: 'rejects invalid JSON, invalid payloads, invalid idempotency keys, and oversized bodies',
+    async verify(harness) {
+      await response(await call(harness, { body: '{' }), { body: '', headers: { 'cache-control': 'no-store' }, status: 400 }, 'Invalid JSON')
+      await response(
+        await call(harness, { body: JSON.stringify({ event: {} }) }),
+        { body: '', headers: { 'cache-control': 'no-store' }, status: 400 },
+        'Invalid payload',
+      )
+      await response(
+        await call(harness, { body: JSON.stringify(messagePayload), headers: { 'idempotency-key': '   ' } }),
+        { body: '', headers: { 'cache-control': 'no-store' }, status: 400 },
+        'Empty key',
+      )
+      await response(
+        await call(harness, { body: JSON.stringify(messagePayload), headers: { 'idempotency-key': 'x'.repeat(257) } }),
+        { body: '', headers: { 'cache-control': 'no-store' }, status: 400 },
+        'Oversized key',
+      )
+      await response(
+        await call(harness, { body: 'x'.repeat(maximumWebhookBodyBytes + 1) }),
+        { body: '', headers: { 'cache-control': 'no-store' }, status: 413 },
+        'Oversized body',
+      )
+      equal(await harness.payloads(), [], 'Rejected payloads')
+    },
+  },
+  {
+    fixture: { inputsDef: messageInputs },
+    name: 'replays one idempotent occurrence and rejects conflicting payloads',
+    async verify(harness) {
+      const headers = { 'idempotency-key': 'delivery-1' }
+      await response(await call(harness, { body: JSON.stringify(messagePayload), headers }), { status: 200 }, 'Initial delivery')
+      await response(await call(harness, { body: JSON.stringify(messagePayload), headers }), { status: 200 }, 'Repeated delivery')
+      await response(
+        await call(harness, { body: JSON.stringify({ event: { message: 'different' } }), headers }),
+        { body: '', headers: { 'cache-control': 'no-store' }, status: 409 },
+        'Conflicting delivery',
+      )
+      equal(await harness.payloads(), [messagePayload], 'Idempotent payloads')
+    },
+  },
+  {
+    fixture: { inputsDef: messageInputs },
+    name: 'admits requests without an idempotency key as separate occurrences',
+    async verify(harness) {
+      const body = JSON.stringify(messagePayload)
+      await response(await call(harness, { body }), { status: 200 }, 'First unkeyed delivery')
+      await response(await call(harness, { body }), { status: 200 }, 'Second unkeyed delivery')
+      equal(await harness.payloads(), [messagePayload, messagePayload], 'Unkeyed payloads')
+    },
+  },
+  {
+    fixture: { inputsDef: messageInputs },
+    name: 'scopes occurrence identity to the current runtime version',
+    async verify(harness) {
+      const body = JSON.stringify(messagePayload)
+      const headers = { 'idempotency-key': 'delivery-across-publish' }
+      await response(await call(harness, { body, headers }), { status: 200 }, 'Delivery before publish')
+      const endpointUrl = harness.endpointUrl
+      await harness.republish()
+      equal(harness.endpointUrl, endpointUrl, 'Endpoint after publish')
+      await response(await call(harness, { body, headers }), { status: 200 }, 'Delivery after publish')
+      equal(await harness.payloads(), [messagePayload, messagePayload], 'Payloads across publish')
+    },
+  },
+  {
+    fixture: { inputsDef: noInputs },
+    name: 'fails closed after its trigger is retired',
+    async verify(harness) {
+      await harness.retire()
+      await response(await call(harness, { body: '{}' }), { body: '', headers: { 'cache-control': 'no-store' }, status: 404 }, 'Retired endpoint')
+      equal(await harness.payloads(), [], 'Payloads after retirement')
+    },
+  },
+  {
+    fixture: { inputsDef: noInputs, options: { responseData: 'ignored', responseStatusCode: 204 } },
+    name: 'omits a configured response body for null-body statuses',
+    async verify(harness) {
+      await response(await call(harness, { body: '{}' }), { body: '', status: 204 }, 'Null-body status')
+    },
+  },
+  {
+    fixture: { inputsDef: noInputs, options: { allowedMethods: ['HEAD'], responseData: 'ignored' } },
+    name: 'omits the response body for HEAD requests',
+    async verify(harness) {
+      await response(await call(harness, { method: 'HEAD' }), { body: '', status: 200 }, 'HEAD response')
+    },
+  },
+]

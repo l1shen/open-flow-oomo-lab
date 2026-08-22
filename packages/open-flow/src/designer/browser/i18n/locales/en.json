@@ -1,0 +1,631 @@
+{
+  "addNode": {
+    "comment": "Comment",
+    "connectorActions": "Connector actions",
+    "connectorConnections": "{count} connections",
+    "connectorNewConnection": "New Connection",
+    "connectorNoActiveConnection": "No active connection",
+    "connectorPopupBlocked": "The connection window was blocked. Allow pop-ups and try again.",
+    "llmChat": "LLM Chat",
+    "llmStructured": "LLM Structured Output",
+    "sharedBlocks": "Tasks and subflows",
+    "triggers": "Triggers"
+  },
+  "blockEditor": {
+    "addDefaultAdditionalInput": "Add default additional input",
+    "addDefaultAdditionalOutput": "Add default additional output",
+    "additionalInputs": "Additional inputs",
+    "additionalInputsHelp": {
+      "allow": "Allowed",
+      "disallow": "Disallowed",
+      "restrict": "Restricted"
+    },
+    "additionalOutputs": "Additional outputs",
+    "additionalOutputsHelp": {
+      "allow": "Allowed",
+      "disallow": "Disallowed",
+      "restrict": "Restricted"
+    },
+    "configHeader": "Block Configs",
+    "defaultAdditionalInputs": "Default additional inputs",
+    "defaultAdditionalOutputs": "Default additional outputs",
+    "description": "Description",
+    "executor": {
+      "action": "Action",
+      "connection": "Connection",
+      "connectionAccount": "Account",
+      "connectionDetails": "Current connection",
+      "connectionId": "Connection ID",
+      "connectionStatus": "Status",
+      "connectionStatus_active": "Active",
+      "connectionStatus_disconnected": "Disconnected",
+      "connectionStatus_error": "Error",
+      "connectionStatus_reauth_required": "Reauthorization required",
+      "connectionUnresolved": "Unresolved",
+      "entry": "Entry",
+      "function": "Function",
+      "mode": "Mode",
+      "mode_chat": "Chat",
+      "mode_json": "JSON",
+      "name": "Name",
+      "title": "Executor"
+    },
+    "folder": "Folder name",
+    "icon": "Icon",
+    "metadata": "Metadata",
+    "nodeTitlePlaceholder": "Enter title...",
+    "private": "True",
+    "privateField": "Private",
+    "privateHelp": "Mark the shared block as private to indicate it cannot be used by AI and other users.",
+    "public": "False",
+    "runningConfig": {
+      "concurrency": "Concurrency",
+      "progressWeight": "Progress weight",
+      "timeout": "Timeout",
+      "title": "Running config"
+    },
+    "sourceNotFound": "Block source file not found",
+    "task": "Block name",
+    "taskHeader": "From Shared Block",
+    "title": "Title"
+  },
+  "cancel": "Cancel",
+  "clipboard": {
+    "copySuccess": "Copied {{@}} nodes",
+    "copySuccess@1": "Copied 1 node"
+  },
+  "comment": {
+    "editWithMarkdown": "Edit with Markdown",
+    "preview": "Preview",
+    "source": "View source"
+  },
+  "components": {
+    "noMatching": "No matching items",
+    "numOptions": "{{count}} options"
+  },
+  "trigger": {
+    "catalogEmpty": "No matching triggers",
+    "catalogEmptyHelp": "Try a service or event name.",
+    "catalogUnavailable": "Provider Trigger Catalog unavailable",
+    "catalogUnavailableHelp": "Built-in triggers and existing saved definitions remain available.",
+    "configuration": "Configuration",
+    "configInvalid": "Enter a valid configuration value.",
+    "connection": "Account",
+    "integrationSummary": "When an event arrives",
+    "pollSchedule": "Polling schedule",
+    "pollScheduleHelp": "Choose how often this trigger checks for new events.",
+    "scheduleCron": "Cron",
+    "scheduleDays": "Days",
+    "scheduleEvery": "Every",
+    "scheduleEveryDay": "Every {{value}} day",
+    "scheduleEveryHour": "Every {{value}} hr",
+    "scheduleEveryMinute": "Every {{value}} min",
+    "scheduleEveryMonth": "Every {{value}} mo",
+    "scheduleEveryWeek": "Every {{value}} wk",
+    "scheduleExpression": "Cron expression",
+    "scheduleHours": "Hours",
+    "scheduleInterval": "Polling interval",
+    "scheduleMinutes": "Minutes",
+    "scheduleMonths": "Months",
+    "scheduleTimezone": "Time zone",
+    "scheduleType": "Schedule type",
+    "scheduleUnit": "Interval unit",
+    "scheduleWeeks": "Weeks",
+    "scheduleMissing": "No schedule configured",
+    "summaryCron": "Schedule",
+    "summaryIntegration": "Event source",
+    "summaryPoll": "Polling schedule",
+    "summaryWebhook": "Request trigger",
+    "webhookAddField": "Add field",
+    "webhookAddHeader": "Add header",
+    "webhookCustomType": "Custom schema",
+    "webhookDeleteField": "Delete payload field",
+    "webhookDeleteHeader": "Delete response header",
+    "webhookFieldName": "Field name",
+    "webhookFieldNameDuplicate": "Field names must be unique.",
+    "webhookFieldNameRequired": "Enter a field name.",
+    "webhookFieldType": "Type",
+    "webhookHeaderName": "Header name",
+    "webhookHeaders": "Response headers",
+    "webhookHeaderValue": "Header value",
+    "webhookMethods": "Allowed methods",
+    "webhookNoPayloadFields": "The request payload accepts an empty object.",
+    "webhookNoResponseBody": "No response body",
+    "webhookNullable": "Allow null",
+    "webhookOrigins": "Allowed origins",
+    "webhookPayloadFields": "Payload fields",
+    "webhookRequest": "Request",
+    "webhookResponse": "Response",
+    "webhookResponseData": "Response body",
+    "webhookStatus": "Status code",
+    "webhookSummary": "When an HTTP request arrives",
+    "webhookDescription": "Receive a JSON object through a generated HTTP endpoint."
+  },
+  "condition": {
+    "addCondition": "Add condition",
+    "configPanelTitle": "Config",
+    "default": "Default",
+    "defaultDescription": "Default case",
+    "defaultHelp": "Execute this case when no other conditions match",
+    "deleteCondition": "Delete condition",
+    "handleKeyTitle": "Handle",
+    "handleLogicalTitle": "Logical",
+    "inputHelp": "The first matched condition will output the data from the first input handle",
+    "label": "Case",
+    "logical": {
+      "AND": "AND",
+      "OR": "OR"
+    },
+    "operator": {
+      "!=": "≠",
+      "<": "<",
+      "<=": "≤",
+      "==": "=",
+      ">": ">",
+      ">=": "≥",
+      "contains": "contains",
+      "ends_with": "ends with",
+      "has_key": "has key",
+      "has_value": "has value",
+      "is_empty": "is empty",
+      "is_false": "is false",
+      "is_not_empty": "is not empty",
+      "is_not_null": "is not null",
+      "is_null": "is null",
+      "is_true": "is true",
+      "not_contains": "not contains",
+      "not_has_key": "not has key",
+      "not_has_value": "not has value",
+      "starts_with": "starts with"
+    },
+    "title": "Condition Handles",
+    "toggleDefault": "Default condition"
+  },
+  "contextMenu": {
+    "addNode": "Add node",
+    "empty": "No matching blocks",
+    "loadFailed": "Connector actions could not be loaded.",
+    "paste": "Paste",
+    "retry": "Retry",
+    "search": "Search"
+  },
+  "copy": "Copy",
+  "close": "Close",
+  "create": "Create",
+  "delete": "Delete",
+  "edit": "Edit",
+  "edgeError": {
+    "aggregateSummary": "{{errorCount}} of {{connectionCount}} connections have errors",
+    "binDiffType": "Binary data is not compatible",
+    "default": "Data types are not compatible",
+    "diffKind": "Handle kinds do not match",
+    "errorNode": "Connected to a broken node",
+    "nullable": "The source is nullable, but the target is not",
+    "varDiffPkg": "Variables belong to different projects",
+    "varDiffType": "A variable output can only connect to a variable input"
+  },
+  "errorNode": {
+    "blockNotFound": "Task or Subflow YAML file not found"
+  },
+  "fitView": "fit view",
+  "flowEditor": {
+    "node": {
+      "configHeader": "Node Settings",
+      "id": "Node ID"
+    }
+  },
+  "flowSettings": {
+    "title": "Flow Configs"
+  },
+  "handleEditor": {
+    "addItem": "Add item",
+    "additionalInputs": "Additional inputs",
+    "additionalOutputs": "Additional outputs",
+    "click": "Click",
+    "descButton": "JSON Schema description",
+    "dropOr": "Drop or",
+    "editSharedBlock": "Edit Shared Block",
+    "handle": "Handle",
+    "inputHandle": "Input Handle",
+    "noInputOutput": "No input or output handles",
+    "renaming": {
+      "banned": "Handle name cannot be {{name}}",
+      "duplicate": "Duplicate with other handle",
+      "empty": "Handle name cannot be empty"
+    },
+    "schemaDescription": "JSON Schema description...",
+    "secretUnavailable": "Secret catalog unavailable",
+    "selectSecret": "Choose secret"
+  },
+  "handleGroup": {
+    "delete": "Delete group",
+    "dropAdd": "Drop to add new group",
+    "fallback": "Enter group name…",
+    "renaming": {
+      "banned": "Group name cannot be {{name}}",
+      "duplicate": "Duplicate with other group",
+      "empty": "Group name cannot be empty"
+    }
+  },
+  "inputHandleEditor": {
+    "addField": "Add field",
+    "addInput": "Add Input",
+    "canPassNull": "Accepts {{null}}",
+    "cannotPassNull": "Does not accept {{null}}",
+    "configPanelTitle": "Input Handle Config",
+    "connectionRequired": "Input required",
+    "defineOptions": "define options",
+    "defineSchema": "define schema",
+    "deleteField": "Delete field",
+    "enumError": "Expect enum value",
+    "handleKeyTitle": "Key",
+    "handleName": "Handle",
+    "handleTypeTitle": "Type",
+    "handleValueTitle": "Value",
+    "noData": "no data",
+    "nullable": "Nullable",
+    "presetType": "Preset type",
+    "reference": "connected",
+    "requiredFieldsUnset": "Set the required fields: {{fields}}.",
+    "secretNotFound": "Secret not found",
+    "title": "Input Handles",
+    "typeError": "Expect type {{expected}}",
+    "unset": "<unset>",
+    "validationError": "Check the configuration: {{message}}",
+    "valueUnset": "unset",
+    "widget": {
+      "array": {
+        "itemType": "item type",
+        "maxItems": "max items",
+        "minItems": "min items"
+      },
+      "color": {
+        "type": "type"
+      },
+      "conditions": {
+        "title": "<condition {{index}}>"
+      },
+      "date": {
+        "format": "format"
+      },
+      "number": {
+        "exclusiveMaximum": "max(<)",
+        "exclusiveMinimum": "min(>)",
+        "maximum": "max(≤)",
+        "minimum": "min(≥)",
+        "step": "step"
+      },
+      "object": {
+        "additionalProperties": "additional properties",
+        "banned": "Object properties cannot be {{name}}"
+      },
+      "string": {
+        "format": "format",
+        "maxLength": "max length",
+        "minLength": "min length",
+        "pattern": "pattern"
+      }
+    }
+  },
+  "interactiveMode": {
+    "mouse": "Mouse-friendly",
+    "touchpad": "Touchpad-friendly"
+  },
+  "jsonViewer": {
+    "bin": "Binary",
+    "secret": "Secret",
+    "var": "Variable"
+  },
+  "l10n": {
+    "createKey": "Enable translation",
+    "deleteKey": "Delete translation",
+    "emptyKey": "Translation will be removed after closing this panel",
+    "en": "English",
+    "invalidKey": "Translation key cannot be __proto__",
+    "openPanel": "Translation",
+    "translateKey": "Key",
+    "zh-CN": "Chinese"
+  },
+  "miniMap": "Mini map",
+  "flowDisplayMode": {
+    "detail": "Detailed",
+    "detailDescription": "Full nodes, ports, editors, and controls",
+    "overview": "Overview",
+    "overviewDescription": "Simplified nodes and read-only connections"
+  },
+  "settingsPanel": {
+    "hide": "Hide settings",
+    "show": "Show settings"
+  },
+  "more": "More actions",
+  "ms": "ms",
+  "s": "s",
+  "nodeActions": {
+    "configSharedBlock": "Shared Block config",
+    "delete": "Delete",
+    "deleteConfirm": "Are you sure to delete {{name}} ?\n{{shortcut}} to delete directly",
+    "duplicate": "Duplicate",
+    "execute": "Execute",
+    "executeWithoutCache": "No-cache execution",
+    "nodeSetting": "Node Settings",
+    "openSharedBlockCode": "Task Block code",
+    "skipDisable": "Enable this node",
+    "skipDisableAll": "Enable selected nodes",
+    "skipEnable": "Ignore this node",
+    "skipEnableAll": "Ignore selected nodes",
+    "toggleLanguage": "Switch to {{lang}}"
+  },
+  "nodeContent": {
+    "addDescription": "Add description"
+  },
+  "nodeStatus": {
+    "error": "Error",
+    "hasError": "Has errors",
+    "running": "Running",
+    "skipped": "Ignored",
+    "success": "Success",
+    "waiting": "Waiting"
+  },
+  "ok": "OK",
+  "optimize": "optimize layout",
+  "llmEditor": {
+    "addMessage": "Add message",
+    "chooseModel": "Choose from model list",
+    "customModel": "Custom model...",
+    "defaultModel": "Default model",
+    "deleteMessage": "Delete message",
+    "maxTokens": "Max tokens",
+    "messageCount": "{{count}} messages",
+    "messageCountOne": "1 message",
+    "messagePlaceholder": "Message content",
+    "loadingModels": "Loading models...",
+    "model": "Model",
+    "modelOptions": "Model options",
+    "moveMessageDown": "Move message down",
+    "moveMessageUp": "Move message up",
+    "role": {
+      "assistant": "Assistant",
+      "system": "System",
+      "user": "User"
+    },
+    "temperature": "Temperature",
+    "topP": "Top P"
+  },
+  "outputHandleEditor": {
+    "addOutput": "Add Output",
+    "configPanelTitle": "Output Handle Config",
+    "handleKeyTitle": "Key",
+    "handleTypeTitle": "Type",
+    "nullable": "Nullable",
+    "title": "Output Handles"
+  },
+  "preset": {
+    "Applicators": "Applicators",
+    "Select": "Select",
+    "allOf": "AllOf",
+    "any": "Any",
+    "anyOf": "AnyOf",
+    "array": "Array",
+    "binary": "Binary",
+    "boolean": "Boolean",
+    "color": "Color",
+    "date": "Date",
+    "integer": "Integer",
+    "multiSelect": "Multi",
+    "null": "Null",
+    "number": "Number",
+    "object": "Object",
+    "oneOf": "OneOf",
+    "secret": "Secret",
+    "select": "Single",
+    "string": "String",
+    "text": "Textarea",
+    "variable": "Variable"
+  },
+  "preview": {
+    "title": "Preview",
+    "audio": {
+      "mute": "Mute audio",
+      "pause": "Pause audio",
+      "play": "Play audio",
+      "seek": "Seek audio",
+      "title": "Audio preview",
+      "unmute": "Unmute audio",
+      "volume": "Audio volume"
+    },
+    "table": {
+      "footer": "Total {{columns}} columns, {{rows}} rows"
+    }
+  },
+  "schemaEditor": {
+    "description": "Description",
+    "kind": "Custom type name",
+    "kindTooltip": "Provide a custom name for the type. If provided, only handles with the same name are allowed to connect",
+    "label": "Label",
+    "name": "Name",
+    "namePlaceholder": "e.g. Images",
+    "value": "Value"
+  },
+  "scriptlet": "Scriptlet",
+  "subflowEditor": {
+    "blockMode": "Block View",
+    "flowMode": "Flow View"
+  },
+  "subflowSettings": {
+    "forwardPreview": "Forward Preview",
+    "title": "Subflow Configs"
+  },
+  "validation": {
+    "nodeIdBanned": "Node ID cannot be {{name}}",
+    "nodeIdExists": "Node ID already exists",
+    "nodeIdInvalid": "Node ID can contain only letters, numbers, underscores, and hyphens",
+    "sharedBlockNameBanned": "Task or Subflow name cannot be {{name}}",
+    "sharedBlockNameExists": "A Task or Subflow with this name already exists",
+    "sharedBlockNameInvalid": "Task and Subflow names can contain only letters, numbers, underscores, and hyphens"
+  },
+  "workbench": {
+    "conflict": {
+      "keepLocal": "Keep local changes",
+      "reload": "Reload from disk"
+    },
+    "empty": {
+      "description": "Add a Flow, Subflow, or Task source file and reload the workbench.",
+      "title": "This project has no runnable targets yet."
+    },
+    "noTargets": "No runnable targets",
+    "resource": {
+      "openInCodeEditor": "Open in code editor",
+      "showDesigner": "Open Designer view",
+      "showSource": "Open YAML source",
+      "unknownType": "Unknown file type",
+      "unsupported": "This file type is not supported"
+    },
+    "run": {
+      "cancel": "Cancel",
+      "cancelled": "Run cancelled.",
+      "clearLogs": "Clear logs",
+      "closeInputs": "Close run inputs",
+      "current": "Current run",
+      "emptyEvents": "Run this target to inspect its events.",
+      "exportLogs": "Export logs",
+      "event": {
+        "cacheHit": "reused {{handle}}",
+        "completed": "Run completed",
+        "nodeCompleted": "completed",
+        "nodeStarted": "started",
+        "output": "produced {{handle}}",
+        "outputs": "produced outputs",
+        "preview": "previewed {{type}}",
+        "progress": "{{progress}}%",
+        "started": "Run started"
+      },
+      "filter": {
+        "cache": "Cache",
+        "empty": "No events match the current filters.",
+        "error": "Errors",
+        "finish": "Finished",
+        "label": "Filter events",
+        "log": "Logs",
+        "output": "Outputs",
+        "preview": "Previews",
+        "progress": "Progress",
+        "reset": "Reset",
+        "selectAll": "Select all",
+        "selected": "{{count}} selected",
+        "start": "Started",
+        "warning": "Warnings"
+      },
+      "hideDetails": "Hide run details",
+      "history": "Run history",
+      "historyItem": "Run {{index}}",
+      "inputs": "Run inputs",
+      "form": "Form inputs",
+      "invalidInputs": "Run inputs must be an object matching the input definitions.",
+      "invalidJson": "Run inputs must be valid JSON.",
+      "logs": "Logs",
+      "completed": "Run completed: {{target}}",
+      "externalTarget": "Open running {{target}}",
+      "failed": "Run failed for {{target}}: {{message}}",
+      "openExternal": "Open the target started outside this workbench: {{target}}",
+      "phase": {
+        "cancelled": "Cancelled",
+        "error": "Failed",
+        "idle": "Ready",
+        "running": "Running",
+        "success": "Completed"
+      },
+      "run": "Run",
+      "showDetails": "Show run details",
+      "trigger": "Trigger"
+    },
+    "secrets": {
+      "add": "Add secret",
+      "addField": "Add field",
+      "close": "Close",
+      "confirmDelete": "Delete this secret from the current runtime?",
+      "delete": "Delete",
+      "hideValue": "Hide value",
+      "key": "Key",
+      "name": "Name",
+      "removeField": "Remove field",
+      "save": "Save",
+      "saved": "Secret saved for this runtime.",
+      "showValue": "Show value",
+      "template": "Template",
+      "title": "Secrets",
+      "value": "Value"
+    },
+    "settings": {
+      "categories": "Settings categories",
+      "autoFollowAgent": "Automatically follow the target when an Agent starts a run",
+      "clearSearch": "Clear settings search",
+      "close": "Close settings",
+      "connector": "Executors",
+      "connectorBaseUrl": "Connector base URL",
+      "connectorCleared": "Local override cleared.",
+      "connectorClear": "Clear local override",
+      "connectorNotConfigured": "Not configured",
+      "connectorSave": "Save",
+      "connectorSaved": "Saved.",
+      "connectorSource": {
+        "cli": "Command line configuration",
+        "environment": "Environment configuration",
+        "oo-cli-account": "Inherited oo-cli account",
+        "oo-cli-connector": "Inherited oo-cli Connector configuration",
+        "open-flow-settings": "Open Flow local settings"
+      },
+      "connectorSourceLabel": "Source",
+      "connectorTest": "Test connection",
+      "connectorTestSucceeded": "Connection successful.",
+      "connectorToken": "Bearer token",
+      "connectorTokenConfigured": "configured",
+      "connectorTokenNotConfigured": "not configured",
+      "connectorTokenOverride": "Enter a token to create a local override",
+      "connectorTokenUnchanged": "Saved token is unchanged",
+      "editor": "Editor",
+      "defaultFlowDisplayMode": "Sets the display mode used when opening a Flow or Subflow.",
+      "expandScriptletEditor": "Expand editors for newly created scriptlets",
+      "llm": "Language model",
+      "llmApiKey": "API key",
+      "llmApiKeyConfigured": "configured",
+      "llmApiKeyNotConfigured": "not configured",
+      "llmApiKeyOverride": "Enter an API key to create a local override",
+      "llmApiKeyUnchanged": "Saved API key is unchanged",
+      "llmBaseUrl": "OpenAI-compatible base URL",
+      "llmCleared": "LLM local override cleared.",
+      "llmModel": "Default model",
+      "llmSaved": "LLM settings saved.",
+      "llmSource": {
+        "cli": "Command line configuration",
+        "environment": "Environment configuration",
+        "oo-cli": "Inherited oo-cli LLM configuration",
+        "open-flow-settings": "Open Flow local settings"
+      },
+      "noResults": "No settings found",
+      "openLogPanelOnRun": "Open the log panel when a run starts",
+      "runtime": "Runtime",
+      "searchPlaceholder": "Search settings",
+      "title": "Settings"
+    },
+    "status": {
+      "conflict": "{{fileName}} changed outside this workbench",
+      "error": "Failed to save {{fileName}}",
+      "invalid": "{{fileName}} contains invalid YAML",
+      "ready": "Ready",
+      "saved": "Saved {{fileName}}",
+      "saving": "Saving {{fileName}}…",
+      "synced": "Updated {{fileName}} from disk"
+    },
+    "target": "Target"
+  },
+  "valueHandleEditor": {
+    "title": "Handles"
+  },
+  "widgetAction": {
+    "download": "Download",
+    "openInNewTab": "Open in new tab",
+    "reload": "Reload"
+  },
+  "zoomIn": "zoom in",
+  "zoomOut": "zoom out"
+}

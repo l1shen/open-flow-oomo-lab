@@ -1,0 +1,47 @@
+title: Designer Showcase
+description: Source-faithful nodes, connections, and conditions for Designer review.
+nodes:
+  - node_id: audience
+    title: Audience
+    values:
+      - handle: name
+        value: Open Flow
+        json_schema:
+          type: string
+  - node_id: greet
+    task: self::greet
+    inputs_from:
+      - handle: name
+        from_node:
+          - node_id: audience
+            output_handle: name
+  - node_id: message-ready
+    title: Message ready
+    inputs_def:
+      - handle: message
+        json_schema:
+          type: string
+    inputs_from:
+      - handle: message
+        from_node:
+          - node_id: greet
+            output_handle: message
+    conditions:
+      cases:
+        - handle: ready
+          description: Non-empty greeting
+          logical: AND
+          expressions:
+            - input_handle: message
+              operator: is not empty
+      default:
+        handle: missing
+        description: Empty greeting
+  - node_id: personalized-greeting
+    title: Personalized greeting
+    subflow: self::designer-showcase
+    inputs_from:
+      - handle: name
+        from_node:
+          - node_id: message-ready
+            output_handle: ready

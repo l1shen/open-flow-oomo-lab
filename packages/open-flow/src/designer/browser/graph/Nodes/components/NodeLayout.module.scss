@@ -1,0 +1,90 @@
+.outerContainer {
+  box-sizing: content-box;
+  padding: 8px;
+  overflow: visible;
+
+  &.enter {
+    // Keep descendant handle geometry stable while xyflow measures the new node.
+    animation: node-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  &.settingsOpen {
+    padding-right: 423px;
+  }
+}
+
+@keyframes node-enter {
+  from {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outerContainer.enter {
+    animation: none;
+  }
+}
+
+.skipOuter {
+  border-radius: var(--node-container-radius);
+  background-color: var(--flow-bg);
+}
+
+.skip {
+  opacity: 0.5;
+}
+
+.offsetContainer {
+  position: relative;
+  overflow: visible;
+}
+
+.container {
+  overflow: hidden;
+  border-radius: var(--node-container-radius);
+  background: var(--node-background-color);
+  box-shadow: var(--node-shadow);
+
+  &:has(:global(.react-select__menu)) {
+    overflow: visible;
+  }
+
+  :global(.react-flow__node.selectable.selected) & {
+    box-shadow: var(--node-selected-shadow);
+  }
+
+  :global(.react-flow__node-comment_node) & {
+    background: var(--comment-bg);
+  }
+}
+
+.overviewContainer {
+  position: relative;
+  overflow: visible;
+  background: transparent;
+}
+
+.resizeHandle {
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+}
+
+.resizeHandleW {
+  width: 7px;
+  height: 100%;
+  left: -8px;
+  top: 0;
+  cursor: w-resize;
+}
+
+.resizeHandleE {
+  width: 7px;
+  height: 100%;
+  right: -8px;
+  top: 0;
+  cursor: e-resize;
+}

@@ -1,0 +1,32 @@
+.outline {
+  position: absolute;
+  // Monaco's suggestion widget uses z-index 40.
+  z-index: 39;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  user-select: none;
+  border-radius: var(--node-container-radius);
+  outline: var(--node-outline-color, var(--node-border-color)) solid 1px;
+
+  :global(.react-flow__node.selectable.selected) & {
+    outline-style: solid;
+    outline-color: var(--node-selected-border-color);
+  }
+}
+
+:global(.react-flow__node-input_node) .outline,
+:global(.react-flow__node-output_node) .outline {
+  outline-style: dashed;
+  outline-color: var(--pseudo-outline-color);
+}
+
+:global(.react-flow__node-comment_node) .outline {
+  outline-color: var(--comment-border);
+}
+
+:global(.react-flow__node-comment_node.selectable.selected) .outline {
+  outline-color: var(--comment-selected-border);
+}

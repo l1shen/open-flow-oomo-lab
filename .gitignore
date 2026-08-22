@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.open-flow-dev/
+.wrangler/
+
+# Designer state is local to a working copy.
+.*.ui.oo.json

@@ -1,0 +1,240 @@
+import UnoCSS from '@unocss/vite'
+import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import path from 'node:path'
+import { promisify } from 'node:util'
+import { build, esmExternalRequirePlugin } from 'vite'
+import { generateScopedName } from '../../build/node/cssModules.ts'
+import designerUnoConfig from '../../build/node/designerUnoConfig.ts'
+import { twemojiCollectionPlugin } from '../../build/node/twemojiCollection.ts'
+
+const execFileAsync = promisify(execFile)
+const packageRequire = createRequire(import.meta.url)
+const connectorProxyEntryPath = 'src/connector/common/proxy.ts'
+const controlApiEntryPath = 'src/control/common/api.ts'
+const controlApiConformanceEntryPath = 'src/control/common/conformance.ts'
+const controlApiErrorsEntryPath = 'src/control/common/errors.ts'
+const projectNotificationsEntryPath = 'src/control/common/projectNotifications.ts'
+const cronTriggerEntryPath = 'src/trigger/common/cron.ts'
+const integrationTriggerEntryPath = 'src/trigger/common/integration.ts'
+const pollTriggerEntryPath = 'src/trigger/common/poll.ts'
+const projectChangeEntryPath = 'src/project/common/change.ts'
+const projectEncodingEntryPath = 'src/project/common/encoding.ts'
+const projectSemanticsEntryPath = 'src/project/common/semantics.ts'
+const runLifecycleEntryPath = 'src/execution/common/runLifecycle.ts'
+const runEventsEntryPath = 'src/execution/common/events.ts'
+const runtimeContractEntryPath = 'src/execution/common/runtime.ts'
+const schedulerEntryPath = 'src/execution/common/scheduler.ts'
+const webhookTriggerEntryPath = 'src/trigger/common/webhook.ts'
+const workbenchEntryPath = 'src/workbench/browser/runtime/openFlowWorkbench.tsx'
+
+interface BuildBrowserPackageOptions {
+  readonly packageRoot: string
+  readonly quiet: boolean
+  readonly sourceRoot: string
+}
+
+export async function buildBrowserPackage(options: BuildBrowserPackageOptions): Promise<void> {
+  const browserOutputPath = path.join(options.packageRoot, 'dist/browser')
+  const commonOutputPath = path.join(options.packageRoot, 'dist/common')
+  await buildRuntime(options, commonOutputPath, connectorProxyEntryPath, 'connector-proxy', true)
+  await buildRuntime(options, commonOutputPath, controlApiEntryPath, 'control-api', false)
+  await buildRuntime(options, commonOutputPath, controlApiConformanceEntryPath, 'control-api-conformance', false)
+  await buildRuntime(options, commonOutputPath, runLifecycleEntryPath, 'run-lifecycle', false)
+  await buildRuntime(options, commonOutputPath, runEventsEntryPath, 'run-events', false)
+  await buildRuntime(options, commonOutputPath, runtimeContractEntryPath, 'runtime-contract', false)
+  await buildRuntime(options, commonOutputPath, projectEncodingEntryPath, 'project-encoding', false)
+  await buildRuntime(options, commonOutputPath, projectSemanticsEntryPath, 'project-semantics', false)
+  await buildRuntime(options, commonOutputPath, schedulerEntryPath, 'scheduler', false)
+  await buildRuntime(options, commonOutputPath, cronTriggerEntryPath, 'cron-trigger', false)
+  await buildRuntime(options, commonOutputPath, integrationTriggerEntryPath, 'integration-trigger', false)
+  await buildRuntime(options, commonOutputPath, pollTriggerEntryPath, 'poll-trigger', false)
+  await buildRuntime(options, commonOutputPath, webhookTriggerEntryPath, 'webhook-trigger', false)
+  await buildRuntime(options, browserOutputPath, projectChangeEntryPath, 'project-change', true)
+  await buildRuntime(options, browserOutputPath, workbenchEntryPath, 'workbench', false)
+  await writeDeclarations(options, browserOutputPath, commonOutputPath)
+}
+
+async function buildRuntime(
+  options: BuildBrowserPackageOptions,
+  outputPath: string,
+  entryPath: string,
+  outputName: string,
+  emptyOutDir: boolean,
+): Promise<void> {
+  await build({
+    build: {
+      emptyOutDir,
+      lib: {
+        cssFileName: outputName,
+        entry: path.join(options.sourceRoot, entryPath),
+        fileName: outputName,
+        formats: ['es'],
+      },
+      license: { fileName: 'licenses.md' },
+      outDir: outputPath,
+      rolldownOptions: {
+        output: {
+          assetFileNames: '[name][extname]',
+          entryFileNames: `${outputName}.js`,
+        },
+      },
+    },
+    configFile: false,
+    css: { modules: { generateScopedName } },
+    define: { 'process.env': '{}' },
+    logLevel: options.quiet ? 'silent' : 'info',
+    plugins: [esmExternalRequirePlugin({ external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/] }), twemojiCollectionPlugin(), UnoCSS(designerUnoConfig)],
+    root: options.sourceRoot,
+  })
+  if (entryPath == workbenchEntryPath) await extractFonts(path.join(outputPath, `${outputName}.css`), outputPath)
+}
+
+async function extractFonts(cssPath: string, outputPath: string): Promise<void> {
+  const fonts = new Map<string, Buffer>()
+  const css = (await readFile(cssPath, 'utf8')).replaceAll(
+    /data:font\/(woff2|woff|ttf);base64,([A-Za-z\d+/=]+)/g,
+    (_match: string, format: string, encoded: string) => {
+      const bytes = Buffer.from(encoded, 'base64')
+      const file = `font-${createHash('sha256').update(bytes).digest('hex').slice(0, 16)}.${format}`
+      fonts.set(file, bytes)
+      return `./assets/${file}`
+    },
+  )
+  if (fonts.size == 0) return
+  const assetsPath = path.join(outputPath, 'assets')
+  await mkdir(assetsPath, { recursive: true })
+  await Promise.all([...fonts].map(([file, bytes]) => writeFile(path.join(assetsPath, file), bytes)))
+  await writeFile(cssPath, css)
+}
+
+async function writeDeclarations(options: BuildBrowserPackageOptions, browserOutputPath: string, commonOutputPath: string): Promise<void> {
+  const declarationRoot = path.join(options.packageRoot, '.browser-declarations')
+  const compiler = path.join(path.dirname(packageRequire.resolve('typescript/package.json')), 'bin/tsc')
+  try {
+    await execFileAsync(
+      process.execPath,
+      [
+        compiler,
+        '--ignoreConfig',
+        '--declaration',
+        '--emitDeclarationOnly',
+        '--outDir',
+        declarationRoot,
+        '--rootDir',
+        path.join(options.sourceRoot, 'src'),
+        '--module',
+        'preserve',
+        '--moduleResolution',
+        'bundler',
+        '--target',
+        'esnext',
+        '--jsx',
+        'react-jsx',
+        '--skipLibCheck',
+        'true',
+        '--allowImportingTsExtensions',
+        'true',
+        '--esModuleInterop',
+        'true',
+        '--experimentalDecorators',
+        'true',
+        '--types',
+        'node,vite/client',
+        path.join(options.sourceRoot, 'src/browser-assets.d.ts'),
+        path.join(options.sourceRoot, connectorProxyEntryPath),
+        path.join(options.sourceRoot, controlApiEntryPath),
+        path.join(options.sourceRoot, controlApiConformanceEntryPath),
+        path.join(options.sourceRoot, controlApiErrorsEntryPath),
+        path.join(options.sourceRoot, projectNotificationsEntryPath),
+        path.join(options.sourceRoot, projectEncodingEntryPath),
+        path.join(options.sourceRoot, projectSemanticsEntryPath),
+        path.join(options.sourceRoot, runEventsEntryPath),
+        path.join(options.sourceRoot, runLifecycleEntryPath),
+        path.join(options.sourceRoot, runtimeContractEntryPath),
+        path.join(options.sourceRoot, schedulerEntryPath),
+        path.join(options.sourceRoot, cronTriggerEntryPath),
+        path.join(options.sourceRoot, integrationTriggerEntryPath),
+        path.join(options.sourceRoot, pollTriggerEntryPath),
+        path.join(options.sourceRoot, webhookTriggerEntryPath),
+        path.join(options.sourceRoot, projectChangeEntryPath),
+        path.join(options.sourceRoot, workbenchEntryPath),
+      ],
+      { cwd: options.sourceRoot },
+    )
+    const workbenchDeclaration = await readFile(path.join(declarationRoot, 'workbench/browser/runtime/openFlowWorkbench.d.ts'), 'utf8')
+    const workbenchStyleImport = "import './styles.css';\n"
+    if (!workbenchDeclaration.startsWith(workbenchStyleImport)) throw new Error('Workbench declaration did not contain the expected style import.')
+    const workbenchContract = (await readFile(path.join(declarationRoot, 'workbench/browser/runtime/contract.d.ts'), 'utf8')).replaceAll(
+      "'../../../control/common/projectNotifications.ts'",
+      "'./project-notifications.js'",
+    )
+    const projectNotificationsDeclaration = await readFile(path.join(declarationRoot, 'control/common/projectNotifications.d.ts'), 'utf8')
+    const projectChangeDeclaration = await readFile(path.join(declarationRoot, 'project/common/change.d.ts'), 'utf8')
+    const connectorProxyDeclaration = await readFile(path.join(declarationRoot, 'connector/common/proxy.d.ts'), 'utf8')
+    const controlApiDeclaration = (await readFile(path.join(declarationRoot, 'control/common/api.d.ts'), 'utf8'))
+      .replaceAll("'../../execution/common/runLifecycle.ts'", "'./run-lifecycle.js'")
+      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+      .replaceAll("'./errors.ts'", "'./control-api-errors.js'")
+      .replaceAll("'./projectNotifications.ts'", "'./project-notifications.js'")
+    const controlApiConformanceDeclaration = await readFile(path.join(declarationRoot, 'control/common/conformance.d.ts'), 'utf8')
+    const controlApiErrorsDeclaration = await readFile(path.join(declarationRoot, 'control/common/errors.d.ts'), 'utf8')
+    const projectEncodingDeclaration = await readFile(path.join(declarationRoot, 'project/common/encoding.d.ts'), 'utf8')
+    const projectSemanticsDeclaration = (await readFile(path.join(declarationRoot, 'project/common/semantics.d.ts'), 'utf8'))
+      .replaceAll("'../../execution/common/engineContract.ts'", "'./engine-contract.js'")
+      .replaceAll("'../../execution/common/runtime.ts'", "'./runtime-contract.js'")
+    const runLifecycleDeclaration = await readFile(path.join(declarationRoot, 'execution/common/runLifecycle.d.ts'), 'utf8')
+    const runEventsDeclaration = await readFile(path.join(declarationRoot, 'execution/common/events.d.ts'), 'utf8')
+    const engineContractDeclaration = await readFile(path.join(declarationRoot, 'execution/common/engineContract.d.ts'), 'utf8')
+    const runtimeContractDeclaration = (await readFile(path.join(declarationRoot, 'execution/common/runtime.d.ts'), 'utf8'))
+      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+      .replaceAll("'./engineContract.ts'", "'./engine-contract.js'")
+    const schedulerDeclaration = (await readFile(path.join(declarationRoot, 'execution/common/scheduler.d.ts'), 'utf8'))
+      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+      .replaceAll("'../../project/common/semantics.ts'", "'./project-semantics.js'")
+    const cronTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/cron.d.ts'), 'utf8')).replaceAll(
+      "'../../project/common/change.ts'",
+      "'../browser/project-change.js'",
+    )
+    const integrationTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/integration.d.ts'), 'utf8'))
+      .replaceAll("'../../connector/common/proxy.ts'", "'./connector-proxy.js'")
+      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+    const pollTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/poll.d.ts'), 'utf8'))
+      .replaceAll("'../../connector/common/proxy.ts'", "'./connector-proxy.js'")
+      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+    const webhookTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/webhook.d.ts'), 'utf8')).replaceAll(
+      "'../../project/common/change.ts'",
+      "'../browser/project-change.js'",
+    )
+    await Promise.all([
+      writeFile(path.join(browserOutputPath, 'project-change.d.ts'), projectChangeDeclaration),
+      writeFile(path.join(commonOutputPath, 'project-encoding.d.ts'), projectEncodingDeclaration),
+      writeFile(path.join(commonOutputPath, 'project-semantics.d.ts'), projectSemanticsDeclaration),
+      writeFile(
+        path.join(browserOutputPath, 'workbench.d.ts'),
+        workbenchDeclaration.slice(workbenchStyleImport.length).replaceAll("'./contract.ts'", "'./workbench-contract.js'"),
+      ),
+      writeFile(path.join(browserOutputPath, 'workbench-contract.d.ts'), workbenchContract),
+      writeFile(path.join(browserOutputPath, 'project-notifications.d.ts'), projectNotificationsDeclaration),
+      writeFile(path.join(browserOutputPath, 'workbench.css.d.ts'), 'export {}\n'),
+      writeFile(path.join(commonOutputPath, 'run-lifecycle.d.ts'), runLifecycleDeclaration),
+      writeFile(path.join(commonOutputPath, 'run-events.d.ts'), runEventsDeclaration),
+      writeFile(path.join(commonOutputPath, 'engine-contract.d.ts'), engineContractDeclaration),
+      writeFile(path.join(commonOutputPath, 'runtime-contract.d.ts'), runtimeContractDeclaration),
+      writeFile(path.join(commonOutputPath, 'scheduler.d.ts'), schedulerDeclaration),
+      writeFile(path.join(commonOutputPath, 'connector-proxy.d.ts'), connectorProxyDeclaration),
+      writeFile(path.join(commonOutputPath, 'control-api.d.ts'), controlApiDeclaration),
+      writeFile(path.join(commonOutputPath, 'control-api-errors.d.ts'), controlApiErrorsDeclaration),
+      writeFile(path.join(commonOutputPath, 'project-notifications.d.ts'), projectNotificationsDeclaration),
+      writeFile(path.join(commonOutputPath, 'control-api-conformance.d.ts'), controlApiConformanceDeclaration),
+      writeFile(path.join(commonOutputPath, 'cron-trigger.d.ts'), cronTriggerDeclaration),
+      writeFile(path.join(commonOutputPath, 'integration-trigger.d.ts'), integrationTriggerDeclaration),
+      writeFile(path.join(commonOutputPath, 'poll-trigger.d.ts'), pollTriggerDeclaration),
+      writeFile(path.join(commonOutputPath, 'webhook-trigger.d.ts'), webhookTriggerDeclaration),
+    ])
+  } finally {
+    await rm(declarationRoot, { force: true, recursive: true })
+  }
+}

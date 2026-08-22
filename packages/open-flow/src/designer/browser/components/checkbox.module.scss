@@ -1,0 +1,36 @@
+.wrapper {
+  height: var(--widget-height);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+
+  &:has(input[type='checkbox']:disabled) {
+    cursor: default;
+    color: var(--widget-font-disable-color);
+  }
+
+  &:has(.label) {
+    gap: 0.25em;
+  }
+}
+
+.compact input[type='checkbox'] {
+  width: 1.2em;
+  height: 1.2em;
+
+  &::before {
+    width: 0.72em;
+    height: 0.72em;
+  }
+}
+
+.label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+.isSuffix {
+  padding-left: 4px;
+}

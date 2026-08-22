@@ -1,0 +1,105 @@
+:where(.wrapper) {
+  position: relative;
+}
+
+.multiline {
+  height: auto; // Reset `height: var(--widget-height)` from _base.scss.
+  resize: none;
+  field-sizing: content;
+  box-sizing: border-box;
+
+  &:disabled {
+    resize: none;
+  }
+}
+
+.resize {
+  resize: vertical;
+}
+
+.monospace {
+  font-family: var(--font-monospace);
+}
+
+.mask {
+  position: absolute;
+  inset: 0;
+}
+
+.input:not(:focus):has(~ .mask) {
+  resize: none;
+}
+
+.input:focus ~ .mask {
+  display: none;
+}
+
+.prefix {
+  position: absolute;
+  top: 0;
+  left: 1px;
+  height: 100%;
+  display: grid;
+  place-content: center;
+
+  // &::after {
+  //   content: "";
+  //   position: absolute;
+  //   inset: 0 -1px 0 auto;
+  //   border-right: 1px solid var(--node-background-color);
+  // }
+}
+
+.input:has(~ .prefix) {
+  padding-left: calc(var(--icon-size) + 2px);
+}
+
+.suffix {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: flex;
+  align-items: center;
+}
+
+.oneSuffix .input {
+  padding-right: calc(var(--icon-size) + 2px);
+}
+
+.twoSuffix .input {
+  padding-right: calc(var(--icon-size) * 2 + 2px);
+}
+
+.clear {
+  position: relative;
+  opacity: 0;
+
+  .wrapper:hover > .suffix > &,
+  .wrapper:has(.input:focus) > .suffix > & {
+    opacity: 1;
+  }
+}
+
+.clearIndicator {
+  width: 1px;
+  height: 16px;
+  background-color: var(--widget-border-color);
+  opacity: 0;
+
+  .wrapper:hover > .suffix > &,
+  .wrapper:has(.input:focus) > .suffix > & {
+    opacity: 1;
+  }
+}
+
+.warning {
+  border-color: var(--widget-error-color);
+}
+
+.isSuffix {
+  padding-left: 4px;
+
+  .prefix {
+    left: 5px;
+  }
+}

@@ -1,0 +1,6 @@
+.placeholder {
+  overflow: hidden;
+  border-radius: var(--node-container-radius);
+  background: linear-gradient(var(--node-background-color) 22px, var(--block-editor-item-background-color) 22px);
+  outline: var(--node-border-color) solid 3px;
+}

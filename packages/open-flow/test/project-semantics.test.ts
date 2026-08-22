@@ -1,0 +1,178 @@
+import type { RevisionContent as RevisionFixture } from '../src/project/common/change.ts'
+
+import { describe, expect, it } from 'vitest'
+import { currentEngineContract, findEngineContract } from '../src/execution/common/runtime.ts'
+import { createRuntimeProgram, prepareFlow, validateFlowInputs, validateModules } from '../src/project/common/semantics.ts'
+
+const engine = findEngineContract(currentEngineContract)!
+
+function revision(source: string, imports: readonly string[] = [], modules: RevisionFixture['modules'] = {}): RevisionFixture {
+  return {
+    document: {
+      bindings: {},
+      flows: {
+        proof: {
+          graph: {
+            nodes: {
+              task: { concurrency: 1, inputs: {}, kind: 'task', task: { inputs: {}, moduleId: 'module-main', name: 'Main', outputs: {} } },
+            },
+          },
+          name: 'Proof',
+        },
+      },
+      subflows: {},
+      tasks: {},
+    },
+    modelVersion: 1,
+    modules: {
+      'module-main': { imports, name: 'Main', source },
+      ...modules,
+    },
+  }
+}
+
+function validate(source: RevisionFixture, moduleIds: readonly string[]) {
+  return validateModules(source, moduleIds, engine)
+}
+
+describe('Project semantics', () => {
+  it('accepts declared static Project imports and the unprivileged Platform Library', () => {
+    const source = revision(
+      `import { value } from "./module-helper.mjs"
+import { engineContract, identity } from "open-flow:platform"
+export function run() { return identity({ engineContract, value }) }`,
+      ['module-helper'],
+      {
+        'module-helper': { imports: [], name: 'Helper', source: 'export const value = 1' },
+      },
+    )
+
+    expect(validate(source, ['module-main', 'module-helper'])).toEqual([])
+  })
+
+  it('maps syntax, missing Module and missing export diagnostics to user source', () => {
+    const syntax = validate(revision('export function broken( {'), ['module-main'])
+    const missingModule = validate(revision('import { value } from "./module-missing.mjs"\nexport { value }'), ['module-main'])
+    const missingExport = validate(
+      revision('import { missing } from "./module-helper.mjs"\nexport { missing }', ['module-helper'], {
+        'module-helper': { imports: [], name: 'Helper', source: 'export const value = 1' },
+      }),
+      ['module-main', 'module-helper'],
+    )
+
+    expect(syntax).toMatchObject([{ code: 'module.syntax', line: 1, path: '/modules/module-main/source' }])
+    expect(missingModule).toMatchObject([{ code: 'module.missing', line: 1, path: '/modules/module-main/source' }])
+    expect(missingExport).toMatchObject([{ code: 'module.missing-export', line: 1, path: '/modules/module-main/source' }])
+  })
+
+  it('rejects npm, Node, remote, dynamic and undeclared imports deterministically', () => {
+    const unsupported = validate(
+      revision(`import react from "react"
+import fs from "node:fs"
+import remote from "https://example.com/module.mjs"
+export async function run(name) { return await import(name) }
+export { react, fs, remote }`),
+      ['module-main'],
+    )
+    const undeclared = validate(
+      revision('import { value } from "./module-helper.mjs"\nexport { value }', [], {
+        'module-helper': { imports: [], name: 'Helper', source: 'export const value = 1' },
+      }),
+      ['module-main'],
+    )
+    const declaredWithoutSource = validate(
+      revision('export const value = 1', ['module-helper'], {
+        'module-helper': { imports: [], name: 'Helper', source: 'export const value = 1' },
+      }),
+      ['module-main', 'module-helper'],
+    )
+
+    expect(unsupported.map((diagnostic) => diagnostic.code)).toEqual([
+      'module.unsupported-import',
+      'module.unsupported-import',
+      'module.unsupported-import',
+      'module.dynamic-import',
+    ])
+    expect(undeclared).toMatchObject([{ code: 'module.import-not-declared', path: '/modules/module-main/source' }])
+    expect(declaredWithoutSource).toMatchObject([{ code: 'module.declared-import-missing', path: '/modules/module-main/source' }])
+  })
+
+  it('rejects CommonJS and dynamic code evaluation', () => {
+    const diagnostics = validate(
+      revision(`export function run(source) {
+  require("module")
+  eval(source)
+  Function(source)
+  return new Function(source)
+}`),
+      ['module-main'],
+    )
+
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(['module.commonjs', 'module.dynamic-code', 'module.dynamic-code', 'module.dynamic-code'])
+  })
+
+  it('prepares a valid fixed Revision and derives a closed RuntimeProgram', async () => {
+    const source = revision(
+      `import { value } from "./module-helper.mjs"
+export default () => value`,
+      ['module-helper'],
+      { 'module-helper': { imports: [], name: 'Helper', source: 'export const value = 1' } },
+    )
+
+    const result = await prepareFlow(source, 'proof', currentEngineContract)
+
+    expect(result).toMatchObject({ kind: 'prepared', validation: { diagnostics: [], valid: true } })
+    if (result.kind != 'prepared') return
+    expect(result.flow.modules).toEqual(source.modules)
+    expect(createRuntimeProgram(result.flow, 'module-main', 'sha256:implementation')).toMatchObject({
+      engineContract: currentEngineContract,
+      engineDigest: 'sha256:implementation',
+      entryModuleId: 'module-main',
+      modules: source.modules,
+    })
+    expect(createRuntimeProgram(result.flow, 'outside-closure', 'sha256:implementation')).toBeUndefined()
+  })
+
+  it('reports unsupported Engine, missing Flow, invalid Flow, and invalid invocation inputs without platform errors', async () => {
+    await expect(prepareFlow(revision('export default () => true'), 'proof', 'unsupported')).resolves.toEqual({ kind: 'engine-unsupported' })
+    await expect(prepareFlow(revision('export default () => true'), 'missing', currentEngineContract)).resolves.toEqual({ kind: 'flow-not-found' })
+    await expect(prepareFlow(revision('export const value = true'), 'proof', currentEngineContract)).resolves.toMatchObject({
+      kind: 'flow-invalid',
+      validation: { diagnostics: [expect.objectContaining({ code: 'task.missing-entry' })], valid: false },
+    })
+    expect(validateFlowInputs(revision('export default () => true'), 'proof', { missing: {} })).toBe('invalid')
+    expect(validateFlowInputs(revision('export default () => true'), 'missing', {})).toBe('flow-not-found')
+  })
+
+  it('rejects incomplete Connector Capability declarations on inline Tasks', async () => {
+    const source = revision('export default () => ({})')
+    const task = source.document.flows.proof!.graph.nodes.task
+    if (task?.kind != 'task' || task.task == null) throw new Error('Fixture inline Task is missing.')
+    const invalid: RevisionFixture = {
+      ...source,
+      document: {
+        ...source.document,
+        flows: {
+          proof: {
+            ...source.document.flows.proof!,
+            graph: {
+              nodes: {
+                task: {
+                  ...task,
+                  task: { ...task.task, capabilities: [{ action: '', connectionId: 'connection-1', kind: 'connector' }] },
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+
+    await expect(prepareFlow(invalid, 'proof', currentEngineContract)).resolves.toMatchObject({
+      kind: 'flow-invalid',
+      validation: {
+        diagnostics: [expect.objectContaining({ code: 'task.capability-incomplete', path: '/document/flows/proof/graph/nodes/task/task/capabilities/0' })],
+      },
+    })
+  })
+})
