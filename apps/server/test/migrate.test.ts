@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, expect, it } from 'vitest'
-import { migrateDatabase } from '../src/migrate.ts'
+import { migrateDatabase } from '../node/migrate.ts'
 
 const directories: string[] = []
 

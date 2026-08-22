@@ -32,7 +32,7 @@ function completed(child: ChildProcess, name: string): Promise<void> {
   })
 }
 
-const backend = start('node', ['--watch', '--experimental-transform-types', '--disable-warning=ExperimentalWarning', '--no-node-snapshot', 'src/main.ts'], {
+const backend = start('node', ['--watch', '--experimental-transform-types', '--disable-warning=ExperimentalWarning', '--no-node-snapshot', 'node/main.ts'], {
   ...process.env,
   OPEN_FLOW_HOST: '127.0.0.1',
   OPEN_FLOW_OPERATOR_TOKEN: operatorToken,

@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ServerService } from '../src/service.ts'
+import { ServerService } from '../node/service.ts'
 
 const directories: string[] = []
 const services = new Set<ServerService>()

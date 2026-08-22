@@ -1,7 +1,7 @@
 import type { ProjectChangeEvent } from '@oomol-lab/open-flow/workbench'
 
 import { afterEach, expect, it, vi } from 'vitest'
-import { createBrowserHost } from '../src/browser/host.ts'
+import { createBrowserHost } from '../browser/host.ts'
 
 afterEach(() => {
   vi.unstubAllGlobals()

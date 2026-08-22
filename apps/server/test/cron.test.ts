@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AcceptanceError } from '../src/error.ts'
-import { ServerService } from '../src/service.ts'
+import { AcceptanceError } from '../node/error.ts'
+import { ServerService } from '../node/service.ts'
 
 const directories: string[] = []
 

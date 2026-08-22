@@ -69,6 +69,9 @@ boundary 重新检查。
 Engine Contract、部署中立 Runtime invocation、Scheduler 图执行语义、RunEvent 投影和 conformance 属于 `packages/open-flow`。具体执行隔离、
 Engine digest、资源限制和恢复属于部署实现；`isolated-vm` RuntimeHost 只属于 Server，不作为公共 package 能力发布。
 
+Server RuntimeHost 以长驻 Executor 子进程隔离 V8 故障域，并为每个代码 Task invocation 创建全新的 isolate；Executor 丢失时终止其中未完成的
+invocation，后续调用重建 Executor，不能自动重放可能已产生外部副作用的 Task。
+
 Run 接受后固定 scope、Project、Flow、Revision、closure 和 Engine identity。用户代码开始执行后不能通过重试创建第二次执行；无法确认的恢复结果
 必须显式结束为不确定失败。取消与完成竞争时，权威 Run store 中只能有一个 terminal。
 

@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'vitest'
-import { createServerApp } from '../src/http.ts'
-import { ServerService } from '../src/service.ts'
+import { createServerApp } from '../node/http.ts'
+import { ServerService } from '../node/service.ts'
 
 function webhookFlow(name: string) {
   return {

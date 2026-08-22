@@ -11,9 +11,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'vitest'
-import { ConnectorTaskError } from '../src/connector.ts'
-import { createServerApp } from '../src/http.ts'
-import { ServerService } from '../src/service.ts'
+import { ConnectorTaskError } from '../node/connector.ts'
+import { createServerApp } from '../node/http.ts'
+import { ServerService } from '../node/service.ts'
 import { createConnectorHost } from './connectorHost.ts'
 
 const connectorProvider: ConnectorProvider = {

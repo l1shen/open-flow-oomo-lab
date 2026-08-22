@@ -11,7 +11,7 @@ const vitePath = path.join(path.dirname(require.resolve('vite/package.json')), '
 
 await rm(outputRoot, { force: true, recursive: true })
 await run([vitePath, 'build'])
-await run(['build', 'src/main.ts', '--target=node', '--packages=bundle', '--external=isolated-vm', '--outdir=dist/server'])
+await run(['build', 'node/main.ts', 'node/isolated-vm.ts', '--target=node', '--packages=bundle', '--external=isolated-vm', '--outdir=dist/server'])
 
 await Promise.all([
   cp(path.join(appRoot, 'migrations'), path.join(outputRoot, 'migrations'), { recursive: true }),

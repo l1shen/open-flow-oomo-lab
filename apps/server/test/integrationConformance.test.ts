@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, it } from 'vitest'
-import { createServerApp } from '../src/http.ts'
-import { ServerService } from '../src/service.ts'
+import { createServerApp } from '../node/http.ts'
+import { ServerService } from '../node/service.ts'
 
 let sequence = 0
 

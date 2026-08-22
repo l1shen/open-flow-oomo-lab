@@ -3,7 +3,7 @@ import designerUnoConfig from '@oomol-lab/open-flow/designer-vite-config'
 import UnoCSS from '@unocss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
-import { serverPaths } from './src/server-paths.ts'
+import { serverPaths } from './node/server-paths.ts'
 
 const serverPathPattern = `^(?:${serverPaths.join('|')})(?:/|$)`
 

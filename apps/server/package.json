@@ -8,8 +8,8 @@
     "build": "bun scripts/build.ts",
     "check": "bun run format -- --check && bun run lint && tsc --noEmit",
     "dev": "bun scripts/dev.ts",
-    "format": "oxfmt index.html scripts src test package.json tsconfig.json vite.config.ts vitest.config.ts",
-    "lint": "oxlint --deny-warnings scripts src test vite.config.ts vitest.config.ts",
+    "format": "oxfmt browser index.html node scripts test package.json tsconfig.json vite.config.ts vitest.config.ts",
+    "lint": "oxlint --deny-warnings browser node scripts test vite.config.ts vitest.config.ts",
     "start": "node --no-node-snapshot dist/server/main.js",
     "test": "bun run build && node --no-node-snapshot ../../node_modules/vitest/vitest.mjs run --config vitest.config.ts",
     "test:docker": "bun scripts/check-docker.ts"

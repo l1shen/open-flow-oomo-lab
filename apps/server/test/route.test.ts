@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { parseRoute, routePath } from '../src/browser/route.ts'
+import { parseRoute, routePath } from '../browser/route.ts'
 
 it('maps Server paths without a Team segment', () => {
   expect(parseRoute('/')).toEqual({ view: 'design' })

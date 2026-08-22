@@ -8,9 +8,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createLogger } from '../src/logger.ts'
-import { ServerService } from '../src/service.ts'
-import { Store } from '../src/store.ts'
+import { createLogger } from '../node/logger.ts'
+import { ServerService } from '../node/service.ts'
+import { Store } from '../node/store.ts'
 import { createConnectorHost } from './connectorHost.ts'
 
 const directories: string[] = []

@@ -31,7 +31,7 @@ import { ConnectorTaskError } from './connector.ts'
 import { ControlService } from './control-service.ts'
 import { AcceptanceError, ControlError, serverErrorCode } from './error.ts'
 import { IntegrationRuntime } from './integration-runtime.ts'
-import { invokeIsolatedVm, IsolatedVmError, isolatedVmEngineDigest } from './isolated-vm.ts'
+import { IsolatedVmError, isolatedVmEngineDigest, IsolatedVmHost } from './isolated-vm.ts'
 import { errorKind, silentLogger } from './logger.ts'
 import { migrateDatabase } from './migrate.ts'
 import { Store } from './store.ts'
@@ -142,6 +142,7 @@ export class ServerService {
   readonly #clock: () => number
   readonly #connector?: ConnectorHost
   readonly #integration: IntegrationRuntime
+  readonly #isolatedVm = new IsolatedVmHost()
   readonly #logger: Logger
   readonly #llm?: InvokeLlmTask
   readonly #pollDefinitions: ReadonlyMap<string, PollDefinition>
@@ -518,6 +519,7 @@ export class ServerService {
     try {
       await this.waitForIdle()
     } finally {
+      await this.#isolatedVm.close()
       this.#store.close()
     }
   }
@@ -956,7 +958,7 @@ export class ServerService {
       if (program == null) throw new Error('Task Module is not part of the fixed Flow closure.')
       let capabilityFailure: unknown
       try {
-        return await invokeIsolatedVm({
+        return await this.#isolatedVm.invoke({
           capability: async (call) => {
             try {
               return await this.#invokeCapability(invocation.capabilities, call)

@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, it } from 'vitest'
-import { createServerApp } from '../src/http.ts'
-import { migrateDatabase } from '../src/migrate.ts'
-import { ServerService } from '../src/service.ts'
+import { createServerApp } from '../node/http.ts'
+import { migrateDatabase } from '../node/migrate.ts'
+import { ServerService } from '../node/service.ts'
 
 async function waitForStatus(service: ServerService, runId: string, status: string): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt += 1) {

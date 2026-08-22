@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'vitest'
-import { createServerApp } from '../src/http.ts'
-import { OperatorSession } from '../src/operator.ts'
-import { ServerService } from '../src/service.ts'
+import { createServerApp } from '../node/http.ts'
+import { OperatorSession } from '../node/operator.ts'
+import { ServerService } from '../node/service.ts'
 
 const token = 'open-flow-server-operator-token-00000001'
 

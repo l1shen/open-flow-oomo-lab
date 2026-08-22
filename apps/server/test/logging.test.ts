@@ -5,9 +5,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { createServerApp } from '../src/http.ts'
-import { createLogger } from '../src/logger.ts'
-import { ServerService } from '../src/service.ts'
+import { createServerApp } from '../node/http.ts'
+import { createLogger } from '../node/logger.ts'
+import { ServerService } from '../node/service.ts'
 
 const directories: string[] = []
 const services: ServerService[] = []

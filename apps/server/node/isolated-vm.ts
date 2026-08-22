@@ -1,6 +1,8 @@
 import type { JsonValue } from '@oomol-lab/open-flow/project-change'
 import type { RuntimeCapabilityResponse, RuntimeInvocation, RuntimeProgram } from '@oomol-lab/open-flow/runtime-contract'
 import type IsolatedVM from 'isolated-vm'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import type { Interface } from 'node:readline'
 
 import { findEngineContract } from '@oomol-lab/open-flow/runtime-contract'
 import { spawn } from 'node:child_process'
@@ -43,6 +45,7 @@ export class IsolatedVmError extends Error {
 }
 
 interface InvokeRequest {
+  readonly executionId: number
   readonly input: JsonValue
   readonly invocationId: string
   readonly limits: IsolatedVmLimits
@@ -50,24 +53,38 @@ interface InvokeRequest {
   readonly type: 'invoke'
 }
 
-type ParentMessage = InvokeRequest | { readonly type: 'cancel' } | CapabilityResult
+type ParentMessage = InvokeRequest | { readonly executionId: number; readonly type: 'cancel' } | CapabilityResult
 
 interface CapabilityResult {
   readonly error?: string
+  readonly executionId: number
   readonly id: number
   readonly ok: boolean
   readonly type: 'capability.result'
   readonly value?: RuntimeCapabilityResponse
 }
 
+type CapabilityOutcome = Omit<CapabilityResult, 'executionId'>
+
 type ExecutorMessage =
-  | { readonly id: number; readonly kind: string; readonly payload: JsonValue; readonly type: 'capability' }
-  | { readonly code: IsolatedVmError['code']; readonly message: string; readonly ok: false; readonly type: 'result' }
-  | { readonly ok: true; readonly type: 'result'; readonly value: JsonValue }
+  | { readonly executionId: number; readonly id: number; readonly kind: string; readonly payload: JsonValue; readonly type: 'capability' }
+  | { readonly code: IsolatedVmError['code']; readonly executionId: number; readonly message: string; readonly ok: false; readonly type: 'result' }
+  | { readonly executionId: number; readonly ok: true; readonly type: 'result'; readonly value: JsonValue }
 
 interface PendingCapability {
   readonly reject: (error: Error) => void
   readonly resolve: (result: CapabilityResult) => void
+}
+
+interface PendingInvocation {
+  capabilityCalls: number
+  readonly capabilitySignals: Set<AbortController>
+  readonly cancel: () => void
+  readonly invocation: RuntimeInvocation
+  readonly limits: IsolatedVmLimits
+  readonly reject: (error: unknown) => void
+  readonly resolve: (value: JsonValue) => void
+  readonly wallTimer: ReturnType<typeof setTimeout>
 }
 
 const encoder = new TextEncoder()
@@ -76,7 +93,7 @@ function serializedBytes(value: unknown): number {
   return encoder.encode(JSON.stringify(value)).byteLength
 }
 
-function writeMessage(message: ParentMessage | ExecutorMessage): void {
+function writeMessage(message: ExecutorMessage): void {
   process.stdout.write(`${JSON.stringify(message)}\n`)
 }
 
@@ -95,110 +112,185 @@ function programError(program: RuntimeProgram): IsolatedVmError | undefined {
   if (program.modules[program.entryModuleId] == null) return new IsolatedVmError('invalid-program', 'Runtime entry module is not part of the fixed closure.')
 }
 
-export async function invokeIsolatedVm(invocation: RuntimeInvocation, limits: IsolatedVmLimits = isolatedVmLimits): Promise<JsonValue> {
-  const invalid = programError(invocation.program)
-  if (invalid != null) throw invalid
-  if (serializedBytes(invocation.input) > limits.maxInputBytes) throw new IsolatedVmError('limit-exceeded', 'Runtime input exceeds the configured byte limit.')
-  if (serializedBytes(invocation.program) > limits.maxProgramBytes)
-    throw new IsolatedVmError('limit-exceeded', 'Runtime program exceeds the configured byte limit.')
+export class IsolatedVmHost {
+  #child?: ChildProcessWithoutNullStreams
+  #closed = false
+  #executionId = 0
+  #output?: Interface
+  readonly #pending = new Map<number, PendingInvocation>()
+  #stderr = ''
 
-  const executorPath = fileURLToPath(import.meta.url)
-  const child = spawn(process.execPath, ['--no-node-snapshot', executorPath, '--executor'], {
-    env: { NODE_ENV: 'production' },
-    stdio: ['pipe', 'pipe', 'pipe'],
-  })
-  const output = createInterface({ input: child.stdout })
-  let capabilityCalls = 0
-  let finished = false
-  let stderr = ''
-  const capabilitySignals = new Set<AbortController>()
-
-  const stopCapabilities = (reason: unknown): void => {
-    for (const controller of capabilitySignals) controller.abort(reason)
-    capabilitySignals.clear()
-  }
-  const send = (message: ParentMessage): void => {
-    if (!child.stdin.destroyed) child.stdin.write(`${JSON.stringify(message)}\n`)
-  }
-
-  return await new Promise<JsonValue>((resolve, reject) => {
-    const finish = (operation: () => void): void => {
-      if (finished) return
-      finished = true
-      clearTimeout(wallTimer)
-      invocation.signal?.removeEventListener('abort', cancel)
-      stopCapabilities(new IsolatedVmError('canceled', 'Runtime invocation is no longer active.'))
-      output.close()
-      if (!child.killed) child.kill()
-      operation()
+  async invoke(invocation: RuntimeInvocation, limits: IsolatedVmLimits = isolatedVmLimits): Promise<JsonValue> {
+    if (this.#closed) throw new IsolatedVmError('executor-crashed', 'Runtime Host is closed.')
+    const invalid = programError(invocation.program)
+    if (invalid != null) throw invalid
+    if (serializedBytes(invocation.input) > limits.maxInputBytes) {
+      throw new IsolatedVmError('limit-exceeded', 'Runtime input exceeds the configured byte limit.')
     }
-    const cancel = (): void => {
-      const reason = invocation.signal?.reason ?? new IsolatedVmError('canceled', 'Runtime invocation was canceled.')
-      send({ type: 'cancel' })
-      finish(() => reject(reason))
+    if (serializedBytes(invocation.program) > limits.maxProgramBytes) {
+      throw new IsolatedVmError('limit-exceeded', 'Runtime program exceeds the configured byte limit.')
     }
-    const wallTimer = setTimeout(() => {
-      send({ type: 'cancel' })
-      finish(() => reject(new IsolatedVmError('limit-exceeded', 'Runtime invocation exceeded its wall-clock limit.')))
-    }, limits.wallMs)
+    if (invocation.signal?.aborted) throw invocation.signal.reason
 
+    const child = this.#child ?? this.#start()
+    const executionId = ++this.#executionId
+    return await new Promise<JsonValue>((resolve, reject) => {
+      const cancel = (): void => {
+        this.#send(child, { executionId, type: 'cancel' })
+        this.#finish(executionId, () => reject(invocation.signal?.reason ?? new IsolatedVmError('canceled', 'Runtime invocation was canceled.')))
+      }
+      const wallTimer = setTimeout(() => {
+        this.#send(child, { executionId, type: 'cancel' })
+        this.#finish(executionId, () => reject(new IsolatedVmError('limit-exceeded', 'Runtime invocation exceeded its wall-clock limit.')))
+      }, limits.wallMs)
+      this.#pending.set(executionId, {
+        capabilityCalls: 0,
+        capabilitySignals: new Set(),
+        cancel,
+        invocation,
+        limits,
+        reject,
+        resolve,
+        wallTimer,
+      })
+      invocation.signal?.addEventListener('abort', cancel, { once: true })
+      this.#send(child, { executionId, input: invocation.input, invocationId: invocation.invocationId, limits, program: invocation.program, type: 'invoke' })
+    })
+  }
+
+  async close(): Promise<void> {
+    if (this.#closed) return
+    this.#closed = true
+    const child = this.#child
+    const reason = new IsolatedVmError('canceled', 'Runtime Host is closed.')
+    for (const [executionId, pending] of this.#pending) this.#finish(executionId, () => pending.reject(reason))
+    if (child == null) return
+    this.#child = undefined
+    this.#output?.close()
+    this.#output = undefined
+    if (child.exitCode != null || child.signalCode != null) return
+    const closed = new Promise<void>((resolve) => child.once('close', () => resolve()))
+    child.kill()
+    await closed
+  }
+
+  #start(): ChildProcessWithoutNullStreams {
+    const modulePath = fileURLToPath(import.meta.url)
+    const executorPath = modulePath.endsWith('.ts') ? modulePath : fileURLToPath(new URL('./isolated-vm.js', import.meta.url))
+    const child = spawn(process.execPath, ['--no-node-snapshot', executorPath, '--executor'], {
+      env: { NODE_ENV: 'production' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const output = createInterface({ input: child.stdout })
+    this.#child = child
+    this.#output = output
+    this.#stderr = ''
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk: string) => {
-      if (stderr.length < 4_096) stderr += chunk
+      if (this.#child == child && this.#stderr.length < 4_096) this.#stderr += chunk
     })
-    child.once('error', (error) => finish(() => reject(error)))
+    child.once('error', (error) => this.#fail(child, normalizedError(error)))
     child.once('close', (code, signal) => {
-      if (finished) return
-      const detail = stderr.trim()
-      finish(() =>
-        reject(
-          new IsolatedVmError(
-            'executor-crashed',
-            `Runtime Executor exited before returning a result (${signal ?? code ?? 'unknown'}${detail.length == 0 ? '' : `: ${detail}`}).`,
-          ),
+      const detail = this.#stderr.trim()
+      this.#fail(
+        child,
+        new IsolatedVmError(
+          'executor-crashed',
+          `Runtime Executor exited before completing its work (${signal ?? code ?? 'unknown'}${detail.length == 0 ? '' : `: ${detail}`}).`,
         ),
       )
     })
-    output.on('line', (line) => {
-      let message: ExecutorMessage
-      try {
-        message = JSON.parse(line) as ExecutorMessage
-      } catch {
-        finish(() => reject(new IsolatedVmError('executor-crashed', 'Runtime Executor returned an invalid protocol message.')))
-        return
-      }
-      if (message.type == 'result') {
-        if (message.ok) finish(() => resolve(message.value))
-        else finish(() => reject(new IsolatedVmError(message.code, message.message)))
-        return
-      }
-      capabilityCalls += 1
-      if (capabilityCalls > limits.maxCapabilityCalls) {
-        send({ error: 'Capability call limit exceeded.', id: message.id, ok: false, type: 'capability.result' })
-        return
-      }
-      const controller = new AbortController()
-      capabilitySignals.add(controller)
-      void invocation
-        .capability({ invocationId: invocation.invocationId, kind: message.kind, payload: message.payload, signal: controller.signal })
-        .then((value) => {
-          if (finished) return
-          if (serializedBytes(value) > limits.maxCapabilityResponseBytes) {
-            send({ error: 'Capability response exceeds the configured byte limit.', id: message.id, ok: false, type: 'capability.result' })
-          } else send({ id: message.id, ok: true, type: 'capability.result', value })
-        })
-        .catch((error) => {
-          if (!finished) send({ error: normalizedError(error).message, id: message.id, ok: false, type: 'capability.result' })
-        })
-        .finally(() => capabilitySignals.delete(controller))
-    })
+    output.on('line', (line) => this.#receive(child, line))
+    return child
+  }
 
-    if (invocation.signal?.aborted) cancel()
-    else {
-      invocation.signal?.addEventListener('abort', cancel, { once: true })
-      send({ input: invocation.input, invocationId: invocation.invocationId, limits, program: invocation.program, type: 'invoke' })
+  #receive(child: ChildProcessWithoutNullStreams, line: string): void {
+    let message: ExecutorMessage
+    try {
+      message = JSON.parse(line) as ExecutorMessage
+    } catch {
+      this.#fail(child, new IsolatedVmError('executor-crashed', 'Runtime Executor returned an invalid protocol message.'))
+      child.kill()
+      return
     }
-  })
+    const pending = this.#pending.get(message.executionId)
+    if (pending == null) return
+    if (message.type == 'result') {
+      this.#finish(message.executionId, () => {
+        if (message.ok) pending.resolve(message.value)
+        else pending.reject(new IsolatedVmError(message.code, message.message))
+      })
+      return
+    }
+    pending.capabilityCalls += 1
+    if (pending.capabilityCalls > pending.limits.maxCapabilityCalls) {
+      this.#send(child, {
+        error: 'Capability call limit exceeded.',
+        executionId: message.executionId,
+        id: message.id,
+        ok: false,
+        type: 'capability.result',
+      })
+      return
+    }
+    const controller = new AbortController()
+    pending.capabilitySignals.add(controller)
+    void pending.invocation
+      .capability({
+        invocationId: pending.invocation.invocationId,
+        kind: message.kind,
+        payload: message.payload,
+        signal: controller.signal,
+      })
+      .then((value) => {
+        if (!this.#pending.has(message.executionId)) return
+        if (serializedBytes(value) > pending.limits.maxCapabilityResponseBytes) {
+          this.#send(child, {
+            error: 'Capability response exceeds the configured byte limit.',
+            executionId: message.executionId,
+            id: message.id,
+            ok: false,
+            type: 'capability.result',
+          })
+        } else this.#send(child, { executionId: message.executionId, id: message.id, ok: true, type: 'capability.result', value })
+      })
+      .catch((error) => {
+        if (this.#pending.has(message.executionId)) {
+          this.#send(child, {
+            error: normalizedError(error).message,
+            executionId: message.executionId,
+            id: message.id,
+            ok: false,
+            type: 'capability.result',
+          })
+        }
+      })
+      .finally(() => pending.capabilitySignals.delete(controller))
+  }
+
+  #send(child: ChildProcessWithoutNullStreams, message: ParentMessage): void {
+    if (this.#child == child && !child.stdin.destroyed) child.stdin.write(`${JSON.stringify(message)}\n`)
+  }
+
+  #finish(executionId: number, operation: () => void): void {
+    const pending = this.#pending.get(executionId)
+    if (pending == null) return
+    this.#pending.delete(executionId)
+    clearTimeout(pending.wallTimer)
+    pending.invocation.signal?.removeEventListener('abort', pending.cancel)
+    const reason = new IsolatedVmError('canceled', 'Runtime invocation is no longer active.')
+    for (const controller of pending.capabilitySignals) controller.abort(reason)
+    pending.capabilitySignals.clear()
+    operation()
+  }
+
+  #fail(child: ChildProcessWithoutNullStreams, error: Error): void {
+    if (this.#child != child) return
+    this.#child = undefined
+    this.#output?.close()
+    this.#output = undefined
+    for (const [executionId, pending] of this.#pending) this.#finish(executionId, () => pending.reject(error))
+  }
 }
 
 async function execute(request: InvokeRequest, canceled: AbortSignal, pending: Map<number, PendingCapability>): Promise<JsonValue> {
@@ -229,7 +321,7 @@ async function execute(request: InvokeRequest, canceled: AbortSignal, pending: M
     }
     canceled.addEventListener('abort', abort, { once: true })
     const capability = new ivm.Reference((sourceReference: IsolatedVM.Reference<string>, settle: IsolatedVM.Reference<(source: string) => void>): void => {
-      const settleResult = (result: CapabilityResult): void => {
+      const settleResult = (result: CapabilityOutcome): void => {
         if (!active) return
         const source = result.ok ? JSON.stringify({ ok: true, value: result.value }) : JSON.stringify({ error: result.error, ok: false })
         settle.applyIgnored(undefined, [source], { arguments: { copy: true } })
@@ -256,7 +348,7 @@ async function execute(request: InvokeRequest, canceled: AbortSignal, pending: M
             reject: (error) => settleResult({ error: error.message, id, ok: false, type: 'capability.result' }),
             resolve: settleResult,
           })
-          writeMessage({ id, kind: call.kind, payload: call.payload, type: 'capability' })
+          writeMessage({ executionId: request.executionId, id, kind: call.kind, payload: call.payload, type: 'capability' })
         })
         .catch((error) => settleResult({ error: normalizedError(error).message, id: 0, ok: false, type: 'capability.result' }))
         .finally(() => sourceReference.release())
@@ -369,46 +461,55 @@ export async function invoke(source) {
 
 async function runExecutor(): Promise<void> {
   const input = createInterface({ input: process.stdin })
-  const cancellation = new AbortController()
-  const pending = new Map<number, PendingCapability>()
-  let invoked = false
-  input.once('close', () => cancellation.abort(new IsolatedVmError('canceled', 'Runtime host disconnected.')))
+  const executions = new Map<number, { readonly cancellation: AbortController; readonly pending: Map<number, PendingCapability> }>()
+  input.once('close', () => {
+    const error = new IsolatedVmError('canceled', 'Runtime host disconnected.')
+    for (const execution of executions.values()) execution.cancellation.abort(error)
+  })
   input.on('line', (line) => {
     let message: ParentMessage
     try {
       message = JSON.parse(line) as ParentMessage
     } catch {
-      writeMessage({ code: 'executor-crashed', message: 'Executor received an invalid protocol message.', ok: false, type: 'result' })
+      process.stderr.write('Executor received an invalid protocol message.\n')
+      process.exitCode = 1
+      input.close()
       return
     }
     if (message.type == 'cancel') {
-      cancellation.abort(new IsolatedVmError('canceled', 'Runtime invocation was canceled.'))
+      executions.get(message.executionId)?.cancellation.abort(new IsolatedVmError('canceled', 'Runtime invocation was canceled.'))
       return
     }
     if (message.type == 'capability.result') {
-      const capability = pending.get(message.id)
-      pending.delete(message.id)
+      const pending = executions.get(message.executionId)?.pending
+      const capability = pending?.get(message.id)
+      pending?.delete(message.id)
       capability?.resolve(message)
       return
     }
-    if (invoked) {
-      writeMessage({ code: 'executor-crashed', message: 'Executor accepts exactly one invocation.', ok: false, type: 'result' })
+    if (executions.has(message.executionId)) {
+      writeMessage({
+        code: 'executor-crashed',
+        executionId: message.executionId,
+        message: 'Executor received a duplicate execution ID.',
+        ok: false,
+        type: 'result',
+      })
       return
     }
-    invoked = true
-    void executeWithCapabilities(message, cancellation.signal, pending)
+    const execution = { cancellation: new AbortController(), pending: new Map<number, PendingCapability>() }
+    executions.set(message.executionId, execution)
+    void executeWithCapabilities(message, execution.cancellation.signal, execution.pending).finally(() => executions.delete(message.executionId))
   })
 }
 
 async function executeWithCapabilities(request: InvokeRequest, signal: AbortSignal, pending: Map<number, PendingCapability>): Promise<void> {
   try {
     const value = await execute(request, signal, pending)
-    writeMessage({ ok: true, type: 'result', value })
+    writeMessage({ executionId: request.executionId, ok: true, type: 'result', value })
   } catch (error) {
     const failure = error instanceof IsolatedVmError ? error : new IsolatedVmError('executor-crashed', normalizedError(error).message)
-    writeMessage({ code: failure.code, message: failure.message, ok: false, type: 'result' })
-  } finally {
-    process.stdin.unref()
+    writeMessage({ code: failure.code, executionId: request.executionId, message: failure.message, ok: false, type: 'result' })
   }
 }
 

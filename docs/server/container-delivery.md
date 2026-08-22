@@ -19,7 +19,7 @@ docker build --file apps/server/Dockerfile --tag open-flow-server:dev .
 
 Dockerfile 使用多阶段构建。builder 生成可脱离 monorepo 运行的 `dist`，最终 Node.js 镜像只复制以下 release artifact：
 
-- `server/main.js`：包含普通 JavaScript runtime dependency 的服务端 bundle；
+- `server/main.js` 和 `server/isolated-vm.js`：服务端 bundle 与其长驻 Isolated VM Executor；
 - `public/`：Workbench 静态资源；
 - `migrations/`：按顺序执行的独立 SQL migration；
 - `node_modules/isolated-vm` 和 `node_modules/node-gyp-build`：当前平台的原生 Isolated VM runtime；

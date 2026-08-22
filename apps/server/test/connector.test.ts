@@ -5,8 +5,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ConnectorTaskError } from '../src/connector.ts'
-import { ServerService } from '../src/service.ts'
+import { ConnectorTaskError } from '../node/connector.ts'
+import { ServerService } from '../node/service.ts'
 import { createConnectorHost } from './connectorHost.ts'
 
 const directories: string[] = []

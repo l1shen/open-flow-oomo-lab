@@ -1,13 +1,17 @@
 import type { RuntimeHarness, RuntimeProgram } from '@oomol-lab/open-flow/runtime-contract'
 
 import { runtimeConformanceCases } from '@oomol-lab/open-flow/runtime-contract'
-import { describe, expect, it } from 'vitest'
-import { invokeIsolatedVm, isolatedVmEngineDigest, isolatedVmLimits, IsolatedVmError } from '../src/isolated-vm.ts'
+import { afterAll, describe, expect, it } from 'vitest'
+import { IsolatedVmError, isolatedVmEngineDigest, isolatedVmLimits, IsolatedVmHost } from '../node/isolated-vm.ts'
+
+const host = new IsolatedVmHost()
 
 const harness: RuntimeHarness = {
   engineDigest: isolatedVmEngineDigest,
-  invoke: invokeIsolatedVm,
+  invoke: (invocation) => host.invoke(invocation),
 }
+
+afterAll(async () => await host.close())
 
 function program(source: string): RuntimeProgram {
   return {
@@ -19,7 +23,7 @@ function program(source: string): RuntimeProgram {
 }
 
 function invoke(source: string, limits = isolatedVmLimits) {
-  return invokeIsolatedVm(
+  return host.invoke(
     {
       capability: async () => ({ body: null, status: 200 }),
       input: null,
@@ -60,12 +64,71 @@ describe('isolated-vm runtime conformance', () => {
 
   it('rejects an Engine digest not owned by this Executor before spawning user code', async () => {
     await expect(
-      invokeIsolatedVm({
+      host.invoke({
         capability: async () => ({ body: null, status: 200 }),
         input: null,
         invocationId: 'wrong-engine',
         program: { ...program('export default () => true'), engineDigest: 'sha256:other' },
       }),
     ).rejects.toEqual(expect.objectContaining<Partial<IsolatedVmError>>({ code: 'invalid-program' }))
+  })
+
+  it('routes concurrent invocations independently and gives each invocation a fresh isolate', async () => {
+    const first = host.invoke({
+      capability: async ({ payload }) => ({ body: payload, status: 200 }),
+      input: { value: 'first' },
+      invocationId: 'concurrent-first',
+      program: program(
+        `export default async (input, capability) => {
+  globalThis.count = (globalThis.count ?? 0) + 1
+  return { count: globalThis.count, response: await capability.connector(input) }
+}`,
+      ),
+    })
+    const second = host.invoke({
+      capability: async ({ payload }) => ({ body: payload, status: 200 }),
+      input: { value: 'second' },
+      invocationId: 'concurrent-second',
+      program: program(
+        `export default async (input, capability) => {
+  globalThis.count = (globalThis.count ?? 0) + 1
+  return { count: globalThis.count, response: await capability.connector(input) }
+}`,
+      ),
+    })
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { count: 1, response: { body: { value: 'first' }, status: 200 } },
+      { count: 1, response: { body: { value: 'second' }, status: 200 } },
+    ])
+  })
+
+  it('cancels one concurrent invocation without canceling another', async () => {
+    const cancellation = new AbortController()
+    let capabilityStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      capabilityStarted = resolve
+    })
+    const canceled = host.invoke({
+      capability: async ({ signal }) => {
+        capabilityStarted()
+        return await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+      },
+      input: null,
+      invocationId: 'concurrent-canceled',
+      program: program(`export default async (_input, capability) => capability.connector({ wait: true })`),
+      signal: cancellation.signal,
+    })
+    const completed = host.invoke({
+      capability: async () => ({ body: 'completed', status: 200 }),
+      input: null,
+      invocationId: 'concurrent-completed',
+      program: program(`export default async (_input, capability) => capability.connector({ wait: false })`),
+    })
+
+    await started
+    cancellation.abort(new Error('Cancel only the first invocation.'))
+    await expect(canceled).rejects.toThrow('Cancel only the first invocation.')
+    await expect(completed).resolves.toEqual({ body: 'completed', status: 200 })
   })
 })
