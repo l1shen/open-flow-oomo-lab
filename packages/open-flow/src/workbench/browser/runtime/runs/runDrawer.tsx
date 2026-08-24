@@ -9,6 +9,9 @@ import type { RunEventFilter } from './runStore.ts'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useLang, useTranslate } from 'val-i18n-react'
 import { OverlayScrollbar } from '../../../../designer/browser/components/overlayScrollbar.tsx'
+import { Button } from '../../../../ui/browser/button.tsx'
+import { Tabs, TabsList, TabsTrigger } from '../../../../ui/browser/tabs.tsx'
+import { ToggleGroup, ToggleGroupItem } from '../../../../ui/browser/toggle-group.tsx'
 import { Icon } from '../icons.tsx'
 import { eventSubject } from '../workspace.ts'
 import { downloadRunLog } from './runLogExport.ts'
@@ -92,16 +95,6 @@ type EventCategory = Exclude<RunEventFilter, 'all'>
 
 const eventFilters: readonly RunEventFilter[] = ['all', 'lifecycle', 'progress', 'log', 'output', 'artifact']
 
-export function navigateRunTabs(event: KeyboardEvent<HTMLDivElement>): void {
-  if (event.key != 'ArrowLeft' && event.key != 'ArrowRight' && event.key != 'Home' && event.key != 'End') return
-  const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-  const current = tabs.indexOf(document.activeElement as HTMLButtonElement)
-  const index = event.key == 'Home' ? 0 : event.key == 'End' ? tabs.length - 1 : (current + (event.key == 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
-  event.preventDefault()
-  tabs[index]?.focus()
-  tabs[index]?.click()
-}
-
 function eventObservation(events: readonly RunEvent[], historyComplete: boolean): EventObservation | undefined {
   if (!historyComplete) return 'expired'
   return events.some((event) => event.kind == 'run.events-truncated') ? 'truncated' : undefined
@@ -178,23 +171,25 @@ export function RunEventFilters({
     counts.set(category, (counts.get(category) ?? 0) + 1)
   }
   return (
-    <div aria-label={t('run.filterEvents')} className="event-filters" role="group">
+    <ToggleGroup
+      aria-label={t('run.filterEvents')}
+      className="event-filters"
+      onValueChange={(next) => {
+        if (next[0] != null) onChange(next[0] as RunEventFilter)
+      }}
+      size="sm"
+      value={[filter]}
+    >
       {eventFilters.map((candidate) => {
         const count = candidate == 'all' ? groupedEvents.length : (counts.get(candidate) ?? 0)
         return (
-          <button
-            aria-pressed={filter == candidate}
-            className={`event-filter ${filter == candidate ? 'active' : ''}`}
-            key={candidate}
-            onClick={() => onChange(candidate)}
-            type="button"
-          >
+          <ToggleGroupItem className="event-filter" key={candidate} value={candidate}>
             {t(`run.filter.${candidate}`)}
             <span>{count}</span>
-          </button>
+          </ToggleGroupItem>
         )
       })}
-    </div>
+    </ToggleGroup>
   )
 }
 
@@ -211,15 +206,16 @@ export function RunLogButton({
 }): ReactElement {
   const t = useTranslate()
   return (
-    <button
+    <Button
       aria-label={t('run.exportLog')}
-      className="icon-button"
       onClick={() => downloadRunLog(run, events, historyComplete, eventsExpiresAt)}
+      size="icon-sm"
       title={t('run.exportLog')}
       type="button"
+      variant="ghost"
     >
       <Icon name="download" size={15} />
-    </button>
+    </Button>
   )
 }
 
@@ -391,21 +387,23 @@ export function RunDetails({
                 <div className="event-row" role="row">
                   {nodeId == null ? (
                     <span className="event-subject">
-                      <Icon name={eventIcon(event)} size={16} />
+                      <Icon data-icon="inline-start" name={eventIcon(event)} />
                       {subject}
                     </span>
                   ) : (
-                    <button
+                    <Button
                       aria-label={t('run.locateNode', { name: subject })}
                       className="event-subject event-locate"
                       onClick={() => onLocateEvent(event.sequence)}
+                      size="xs"
                       title={t('run.locateNode', { name: subject })}
                       type="button"
+                      variant="ghost"
                     >
                       <Icon name={eventIcon(event)} size={16} />
                       <span>{subject}</span>
-                      <Icon name="fit" size={13} />
-                    </button>
+                      <Icon data-icon="inline-end" name="fit" />
+                    </Button>
                   )}
                   <code>{event.kind}</code>
                   <span className="event-summary">{eventSummary(event, t)}</span>
@@ -428,9 +426,9 @@ export function RunDetails({
       {observationFailed && (
         <div className="run-observation-error" role="alert">
           <span>{t('run.observationFailed')}</span>
-          <button className="button secondary small" onClick={onRetryObservation} type="button">
+          <Button onClick={onRetryObservation} size="sm" type="button" variant="secondary">
             {t('empty.retry')}
-          </button>
+          </Button>
         </div>
       )}
       {content}
@@ -560,46 +558,30 @@ export function RunDrawer({
         <span className="run-header-spacer" />
         {run != null && <RunLogButton events={events} eventsExpiresAt={eventsExpiresAt} historyComplete={historyComplete} run={run} />}
         {canCancelRun(run) && (
-          <button className="button secondary small danger" disabled={cancelDisabled} onClick={onCancel} type="button">
+          <Button disabled={cancelDisabled} onClick={onCancel} size="sm" variant="destructive">
             {t(canceling ? 'run.canceling' : 'run.cancel')}
-          </button>
+          </Button>
         )}
-        <button aria-label={t(open ? 'run.collapse' : 'run.expand')} className="icon-button" onClick={onToggle} type="button">
+        <Button aria-label={t(open ? 'run.collapse' : 'run.expand')} onClick={onToggle} size="icon-sm" variant="ghost">
           <Icon name={open ? 'chevron-down' : 'chevron-up'} size={16} />
-        </button>
-        <button aria-label={t('run.close')} className="icon-button" onClick={onClose} type="button">
+        </Button>
+        <Button aria-label={t('run.close')} onClick={onClose} size="icon-sm" variant="ghost">
           <Icon name="close" size={16} />
-        </button>
+        </Button>
       </header>
       {open && (
         <div className="run-content">
           <div className="run-toolbar">
-            <div aria-label={t('run.detailViews')} className="run-tabs" onKeyDown={navigateRunTabs} role="tablist">
-              <button
-                aria-controls="run-drawer-timeline-panel"
-                aria-selected={tab == 'timeline'}
-                className={`run-tab ${tab == 'timeline' ? 'active' : ''}`}
-                id="run-drawer-timeline-tab"
-                onClick={() => setTab('timeline')}
-                role="tab"
-                tabIndex={tab == 'timeline' ? 0 : -1}
-                type="button"
-              >
-                {t('run.timeline')}
-              </button>
-              <button
-                aria-controls="run-drawer-output-panel"
-                aria-selected={tab == 'output'}
-                className={`run-tab ${tab == 'output' ? 'active' : ''}`}
-                id="run-drawer-output-tab"
-                onClick={() => setTab('output')}
-                role="tab"
-                tabIndex={tab == 'output' ? 0 : -1}
-                type="button"
-              >
-                {t('run.output')}
-              </button>
-            </div>
+            <Tabs className="run-tabs-root" onValueChange={(value) => value != null && setTab(value as 'output' | 'timeline')} value={tab}>
+              <TabsList aria-label={t('run.detailViews')} className="run-tabs" variant="line">
+                <TabsTrigger aria-controls="run-drawer-timeline-panel" id="run-drawer-timeline-tab" value="timeline">
+                  {t('run.timeline')}
+                </TabsTrigger>
+                <TabsTrigger aria-controls="run-drawer-output-panel" id="run-drawer-output-tab" value="output">
+                  {t('run.output')}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
             {tab == 'timeline' && <RunEventFilters events={events} filter={eventFilter} onChange={onEventFilterChange} />}
           </div>
           <RunDetails

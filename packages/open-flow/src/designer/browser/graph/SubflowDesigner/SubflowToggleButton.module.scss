@@ -13,8 +13,5 @@
 
 .segments {
   border: 1px solid var(--fill-5);
-
-  &:global(.ant-segmented) {
-    color: var(--widget-segmented-inactive-color);
-  }
+  color: var(--widget-segmented-inactive-color);
 }

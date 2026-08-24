@@ -48,6 +48,7 @@
     "name": "Name",
     "none": "None",
     "rename": "Rename",
+    "refresh": "Refresh",
     "save": "Save",
     "subflow": "Subflow",
     "unset": "Unset"

@@ -5,7 +5,7 @@
 
 ## Select 与原生 label
 
-项目的共享 `Select` 基于 `react-select`，单选模式同时启用以下行为：
+项目的共享 `Select` 基于 shadcn/Base UI `Combobox`，单选模式同时启用以下行为：
 
 - 选择后关闭菜单；
 - 选择后 blur 内部 input；
@@ -34,9 +34,21 @@
 </div>
 ```
 
-不要通过修改共享 Select 的 `closeMenuOnSelect`、`blurInputOnSelect` 或 `openMenuOnFocus` 掩盖这个问题；
-这些行为被普通 Handle Editor 和其他现有调用依赖。
+不要通过关闭 Combobox 的选中后收起、输入 focus 后打开或 keyboard navigation 行为来掩盖这个问题；这些行为被普通 Handle Editor
+和其他现有调用依赖。
 
-Select 菜单需要越过滚动容器时，优先保持现有 absolute menu 和 popup container 约定，并让必要祖先
-`overflow: visible`。不要仅为修复层叠或裁剪问题把菜单改成全局 portal；portal 会改变 outside-click
+Select 菜单需要越过滚动容器时，优先保持现有局部 popup container 与必要祖先 `overflow: visible` 约定。不要仅为修复层叠或裁剪问题把菜单改成全局 portal；portal 会改变 outside-click
 边界、缩放和主题变量继承。
+
+## Designer 节点控件密度
+
+Designer 节点内部的字段网格、Handle 行和卡片高度共同依赖 `styles/root.scss` 对所有 `button`、`input`、`select` 和 `textarea` 的紧凑归一化，包括
+`--widget-height`、宽度、padding 和基础边框。共享 shadcn/Base UI primitive 也会出现在这些节点内部；它们带有 `data-slot`，但仍必须继续接受这套
+Designer 归一化，才能与既有节点布局保持一致。
+
+不要在 `styles/root.scss` 用 `:not([data-slot])` 或类似 selector 把所有 shadcn primitive 排除出这套规则。这样会让 Input、Select 和 Button 回到各自的默认
+高度，同时节点父级仍按紧凑行高布局，导致字段溢出、列错位和节点尺寸失控。唯一允许的例外是 `[data-canvas-control-scope]` 内的 Button 和 Toggle；
+Canvas overlay 不参与节点的紧凑字段网格，必须保留 shadcn 自己的尺寸、圆角和 pressed state。
+
+需要调整节点内某个控件时，应在该控件或节点的局部布局中明确处理，并同时验证对应 Handle 行和节点尺寸；不要通过修改根级控件 selector 隔离整个
+primitive 家族。页面级和 Canvas overlay 的 shadcn 组件可以采用自己的原生尺寸，但不能借此改变节点内部的密度合同。

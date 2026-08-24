@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import type { TFunction } from 'val-i18n'
 import type { Flow } from '../api.ts'
 import type { WorkbenchLanguage } from '../contract.ts'
@@ -8,6 +8,8 @@ import type { WorkspaceStatus } from '../stores/workspaceModel.ts'
 import { useEffect, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
+import { Button } from '../../../../ui/browser/button.tsx'
+import { Tabs, TabsList, TabsTrigger } from '../../../../ui/browser/tabs.tsx'
 import { Icon } from '../icons.tsx'
 import { DiagnosticsPanel } from './diagnosticsPanel.tsx'
 import { LanguageSelect } from './resourceBrowser.tsx'
@@ -39,16 +41,6 @@ function validationLabel(valid: boolean | undefined, issueCount: number, loading
   if (valid == null) return t('workspace.notChecked')
   if (valid) return t('workspace.valid')
   return issueCount == 1 ? t('workspace.issueSingle') : t('workspace.issues', { count: issueCount })
-}
-
-function navigateTabs(event: KeyboardEvent<HTMLDivElement>): void {
-  if (event.key != 'ArrowLeft' && event.key != 'ArrowRight' && event.key != 'Home' && event.key != 'End') return
-  const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)')]
-  const current = tabs.indexOf(document.activeElement as HTMLButtonElement)
-  const index = event.key == 'Home' ? 0 : event.key == 'End' ? tabs.length - 1 : (current + (event.key == 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
-  event.preventDefault()
-  tabs[index]?.focus()
-  tabs[index]?.click()
 }
 
 function useDisplayedStatus(status: WorkspaceStatus): WorkspaceStatus {
@@ -123,16 +115,22 @@ export function WorkspaceHeader({
     if (runInputRequest != null) setDiagnosticsOpen(false)
   }, [runInputRequest])
 
+  const openView = (view: string | null): void => {
+    if (view == 'design') onOpenDesign()
+    else if (view == 'runs') onOpenRuns()
+    else if (view == 'publications') onOpenPublications()
+  }
+
   return (
     <header className="workspace-header">
       <div className="workspace-title">
-        <button onClick={onOpenProjects} type="button">
+        <Button onClick={onOpenProjects} size="sm" variant="link">
           {t('resource.workflows')}
-        </button>
+        </Button>
         <span>/</span>
-        <button onClick={onOpenProject} type="button">
+        <Button onClick={onOpenProject} size="sm" variant="link">
           {project?.name ?? project?.projectId ?? t('resource.projects')}
-        </button>
+        </Button>
         <span>/</span>
         <strong>{targetName ?? t('workspace.workbench')}</strong>
         {target?.kind == 'subflow' && <span>{t('workspace.subflowDraft')}</span>}
@@ -143,49 +141,27 @@ export function WorkspaceHeader({
           </span>
         )}
       </div>
-      <div aria-label={t('workspace.views')} className="workspace-tabs" onKeyDown={navigateTabs} role="tablist">
-        <button
-          aria-controls="workspace-panel-design"
-          aria-selected={activeView == 'design'}
-          className={activeView == 'design' ? 'active' : ''}
-          disabled={targetFlow != null && targetFlow.draft == null}
-          id="workspace-tab-design"
-          onClick={onOpenDesign}
-          role="tab"
-          tabIndex={activeView == 'design' ? 0 : -1}
-          type="button"
-        >
-          {t('workspace.design')}
-        </button>
-        <button
-          aria-controls="workspace-panel-runs"
-          aria-selected={activeView == 'runs'}
-          className={activeView == 'runs' ? 'active' : ''}
-          id="workspace-tab-runs"
-          onClick={onOpenRuns}
-          role="tab"
-          tabIndex={activeView == 'runs' ? 0 : -1}
-          type="button"
-        >
-          {t('workspace.runs')}
-        </button>
-        <button
-          aria-controls="workspace-panel-publications"
-          aria-selected={activeView == 'publications'}
-          className={activeView == 'publications' ? 'active' : ''}
-          disabled={targetFlow == null}
-          id="workspace-tab-publications"
-          onClick={onOpenPublications}
-          role="tab"
-          tabIndex={activeView == 'publications' ? 0 : -1}
-          type="button"
-        >
-          {t('workspace.publications')}
-        </button>
-      </div>
+      <Tabs className="workspace-tabs-root" onValueChange={openView} value={activeView}>
+        <TabsList aria-label={t('workspace.views')} className="workspace-tabs">
+          <TabsTrigger
+            aria-controls="workspace-panel-design"
+            disabled={targetFlow != null && targetFlow.draft == null}
+            id="workspace-tab-design"
+            value="design"
+          >
+            {t('workspace.design')}
+          </TabsTrigger>
+          <TabsTrigger aria-controls="workspace-panel-runs" id="workspace-tab-runs" value="runs">
+            {t('workspace.runs')}
+          </TabsTrigger>
+          <TabsTrigger aria-controls="workspace-panel-publications" disabled={targetFlow == null} id="workspace-tab-publications" value="publications">
+            {t('workspace.publications')}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
       <div className="workspace-actions">
         <LanguageSelect language={language} onLanguageChange={onLanguageChange} />
-        <button
+        <Button
           aria-controls="diagnostics-panel"
           aria-expanded={diagnosticsOpen}
           className={`validation-state ${diagnostics?.valid == false ? 'invalid' : ''}`}
@@ -196,29 +172,28 @@ export function WorkspaceHeader({
           }}
           ref={diagnosticsButton}
           title={t('diagnostics.open')}
-          type="button"
+          variant="ghost"
         >
-          <Icon name={diagnostics?.valid == false ? 'alert' : 'check'} size={15} />
+          <Icon data-icon="inline-start" name={diagnostics?.valid == false ? 'alert' : 'check'} />
           {validationLabel(diagnostics?.valid, diagnostics?.diagnostics.length ?? 0, checkLoading, t)}
-        </button>
+        </Button>
         <span aria-atomic="true" aria-live="polite" className="saved-state">
           {workspaceLoading || draft == null ? null : <Icon name="check" size={16} />}
           {t(`workspace.status.${displayedStatus}`)}
         </span>
         {targetFlow?.draft != null && (
           <span className="action-help" title={draftRunUnavailable}>
-            <button
+            <Button
               aria-controls="run-input-panel"
               aria-expanded={runInputRequest?.source == 'draft'}
               aria-describedby={draftRunUnavailable == null ? undefined : 'draft-run-unavailable'}
-              className="button secondary"
               disabled={busy != null || invalid || runInputRequest != null}
               onClick={onRunDraft}
-              type="button"
+              variant="outline"
             >
-              <Icon name="play" size={15} />
+              <Icon data-icon="inline-start" name="play" />
               {t(busy == 'run' ? 'workspace.starting' : 'workspace.runDraft')}
-            </button>
+            </Button>
             {draftRunUnavailable != null && (
               <span className="sr-only" id="draft-run-unavailable">
                 {draftRunUnavailable}
@@ -228,18 +203,17 @@ export function WorkspaceHeader({
         )}
         {targetFlow?.live != null && (
           <span className="action-help" title={liveRunUnavailable}>
-            <button
+            <Button
               aria-controls="run-input-panel"
               aria-expanded={runInputRequest?.source == 'live'}
               aria-describedby={liveRunUnavailable == null ? undefined : 'live-run-unavailable'}
-              className="button secondary"
               disabled={busy != null || targetFlow.live.status == 'suspended' || runInputRequest != null}
               onClick={onRunLive}
-              type="button"
+              variant="outline"
             >
-              <Icon name="play" size={15} />
+              <Icon data-icon="inline-start" name="play" />
               {t(busy == 'run' ? 'workspace.starting' : 'workspace.runLive')}
-            </button>
+            </Button>
             {liveRunUnavailable != null && (
               <span className="sr-only" id="live-run-unavailable">
                 {liveRunUnavailable}
@@ -248,16 +222,14 @@ export function WorkspaceHeader({
           </span>
         )}
         <span className="action-help" title={publishUnavailable}>
-          <button
+          <Button
             aria-describedby={publishUnavailable == null ? undefined : 'publish-unavailable'}
-            className="button primary"
             disabled={busy != null || targetFlow?.draft == null || invalid || !targetFlow.hasUnpublishedChanges}
             onClick={() => void store.publications.publish()}
-            type="button"
           >
-            <Icon name="publish" size={15} />
+            <Icon data-icon="inline-start" name="publish" />
             {t(busy == 'publish' ? 'workspace.publishing' : 'publication.publishDraft')}
-          </button>
+          </Button>
           {publishUnavailable != null && (
             <span className="sr-only" id="publish-unavailable">
               {publishUnavailable}

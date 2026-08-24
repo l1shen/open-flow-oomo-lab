@@ -5,7 +5,7 @@ import { memo } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { NODE_HANDLE_CLASSNAME } from '../../../base/designer.ts'
-import { Input2 } from '../../../components/input2.tsx'
+import { TranslationInput } from '../../../components/input2.tsx'
 import { DEFAULT_NODE_WIDTH } from '../../../stores/node/constants.ts'
 import { useNodeStore } from '../NodeStoreContext.tsx'
 
@@ -21,7 +21,7 @@ export const NodeDescriptionPopup: React.FC<NodeDescriptionProps> = /* @__PURE__
   const width = useVal(nodeStore.uiStore.$$.contentWidth) || DEFAULT_NODE_WIDTH
 
   return (
-    <Input2
+    <TranslationInput
       multiline
       disabled={!editable}
       doubleClickToSelect

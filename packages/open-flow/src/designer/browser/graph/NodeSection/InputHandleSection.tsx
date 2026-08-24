@@ -8,9 +8,9 @@ import type { DragNDropContext } from './dragNDrop.ts'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { setValue } from 'value-enhancer'
+import { Button } from '../../../../ui/browser/button.tsx'
 import { stopEvent, stopPropagation } from '../../base/dom.ts'
 import { toRFHandleName } from '../../base/rfHelpers.ts'
-import { Button } from '../../components/button.tsx'
 import { Handle } from '../../components/handle.tsx'
 import { iconOf } from '../../jsonSchema/preset.ts'
 import { SchemaEditor } from '../../jsonSchema/schemaEditor.tsx'
@@ -72,13 +72,15 @@ export function InputHandleSection(props: InputHandleSectionProps): React.ReactE
         props.showSchemaSettings !== false && (
           <div className={styles.showSettings}>
             <Button
-              active={showSettings}
+              aria-label={t('inputHandleEditor.configPanelTitle')}
               disabled={!handle.context.canViewSchema}
-              title={t('inputHandleEditor.configPanelTitle')}
               onClick={(event) => {
                 stopPropagation(event)
                 setValue(handle.showSettings$, !showSettings)
               }}
+              size="icon-xs"
+              title={t('inputHandleEditor.configPanelTitle')}
+              variant={showSettings ? 'default' : 'ghost'}
             >
               <i className={iconOf('settings')} />
             </Button>

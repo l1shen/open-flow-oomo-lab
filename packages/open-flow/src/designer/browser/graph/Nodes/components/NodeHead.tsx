@@ -1,15 +1,14 @@
 import styles from './NodeHead.module.scss'
 
-import { Tooltip } from 'antd'
 import { memo } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
+import { Button } from '../../../../../ui/browser/button.tsx'
 import { NODE_HANDLE_CLASSNAME } from '../../../base/designer.ts'
 import { toTrue } from '../../../base/trivial.ts'
-import { Button } from '../../../components/button.tsx'
 import { DesignerIcon2 } from '../../../components/designerIcon2.tsx'
-import { Input2 } from '../../../components/input2.tsx'
-import { defaultTooltipProps } from '../../../components/label.tsx'
+import { TranslationInput } from '../../../components/input2.tsx'
+import { DesignerTooltip } from '../../../components/tooltip.tsx'
 import { FlowDesignerStore } from '../../../stores/designer/flowDesigner.store.ts'
 import { SUBFLOW_VIEW_MODE } from '../../../stores/designer/subflowDesigner.store.ts'
 import { DESIGNER_TYPE, FLOW_RUN_STATUS } from '../../../stores/designer/typings.ts'
@@ -45,7 +44,7 @@ export const NodeHead: React.FC = /* @__PURE__ */ memo(function NodeHead() {
   const executor = useVal(task != null && typeof task == 'object' ? task.executor : undefined)
 
   const nodeTitle = nodeStore.display$ ? (
-    <Input2
+    <TranslationInput
       returnToCommit
       doubleClickToSelect
       className={styles.title}
@@ -56,7 +55,7 @@ export const NodeHead: React.FC = /* @__PURE__ */ memo(function NodeHead() {
       useRealChange
     />
   ) : (
-    <Input2
+    <TranslationInput
       returnToCommit
       doubleClickToSelect
       className={styles.title}
@@ -72,11 +71,11 @@ export const NodeHead: React.FC = /* @__PURE__ */ memo(function NodeHead() {
     <header className={`${styles.container} ${NODE_HANDLE_CLASSNAME}`}>
       {nodeStore.display$ &&
         (showError ? (
-          <Tooltip {...defaultTooltipProps} placement="top" title={t('nodeStatus.hasError')}>
+          <DesignerTooltip placement="top" title={t('nodeStatus.hasError')}>
             <span className={styles.errorIcon}>
               <i className="i-codicon:warning" />
             </span>
-          </Tooltip>
+          </DesignerTooltip>
         ) : (
           <DesignerIcon2
             rawIcon$={toTrue(editable) && nodeStore.manifest$?.icon}
@@ -94,14 +93,27 @@ export const NodeHead: React.FC = /* @__PURE__ */ memo(function NodeHead() {
         <ConnectorConnectionBadge action={executor.options.action} className={styles.connection} connection={executor.options.connection} />
       )}
       {FlowDesignerStore.is(designerStore) && nodeStore.execute ? (
-        <Button onClick={() => nodeStore.execute!(true)} disabled={skip || runStatus !== FLOW_RUN_STATUS.Idle}>
+        <Button
+          aria-label={t('nodeActions.execute')}
+          disabled={skip || runStatus !== FLOW_RUN_STATUS.Idle}
+          onClick={() => nodeStore.execute!(true)}
+          size="icon-xs"
+          title={t('nodeActions.execute')}
+          variant="ghost"
+        >
           <i className="i-codicon:play" />
         </Button>
       ) : (
         isInBlock &&
         TaskNodeStore.is(nodeStore) &&
         nodeStore.openSharedTaskSource && (
-          <Button onClick={nodeStore.openSharedTaskSource}>
+          <Button
+            aria-label={t('nodeActions.openSharedBlockCode')}
+            onClick={nodeStore.openSharedTaskSource}
+            size="icon-xs"
+            title={t('nodeActions.openSharedBlockCode')}
+            variant="ghost"
+          >
             <i className="i-codicon:code" />
           </Button>
         )

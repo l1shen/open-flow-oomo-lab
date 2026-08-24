@@ -4,7 +4,7 @@ import type { JSX } from 'react/jsx-runtime'
 import type { Val } from 'value-enhancer'
 import type { HandleName } from '../../../schema/index.ts'
 import type { HandleRowProps, IHandleAction } from '../components/handleRow.tsx'
-import type { IBasicOption } from '../components/select.tsx'
+import type { DesignerOption as IBasicOption } from '../components/select.tsx'
 import type { ConditionRowStore } from '../stores/conditionHandle/conditionRow.store.ts'
 import type { ConditionOperator } from '../stores/conditionHandle/constants.ts'
 import type { ConditionExpressionStore, ConditionWidgetStore } from '../stores/conditionHandle/widget.store.ts'
@@ -12,7 +12,6 @@ import type { WidgetContext } from '../stores/conditionHandle/widgetContext.ts'
 import type { HandleIndex } from '../stores/node/constants.ts'
 import type { PrimitiveType } from './preset.ts'
 
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useDerived, useVal } from 'use-value-enhancer'
@@ -26,11 +25,12 @@ import { Button } from '../components/button.tsx'
 import { Handle } from '../components/handle.tsx'
 import { HandleRow } from '../components/handleRow.tsx'
 import { Input } from '../components/input.tsx'
-import { Input2 } from '../components/input2.tsx'
-import { defaultTooltipProps, Label } from '../components/label.tsx'
+import { TranslationInput } from '../components/input2.tsx'
+import { Label } from '../components/label.tsx'
 import { Null } from '../components/null.tsx'
-import { Select } from '../components/select.tsx'
-import { ToggleSwitch } from '../components/toggleSwitch.tsx'
+import { DesignerCombobox as Select } from '../components/select.tsx'
+import { LabeledSwitch } from '../components/toggleSwitch.tsx'
+import { DesignerTooltip } from '../components/tooltip.tsx'
 import {
   doesOperatorHasValue,
   logicalSelectOptions,
@@ -108,7 +108,7 @@ export function ConditionEditor({
         expanded={context.isDefault ? null : !collapsed}
         onExpandedChange={(e) => setValue(widget.collapsed$, !e)}
         name={
-          <Tooltip {...defaultTooltipProps} placement="left" autoAdjustOverflow={false} title={renameError} open={!!renameError}>
+          <DesignerTooltip open={!!renameError} placement="left" title={renameError}>
             <div className={styles.nameWrapper}>
               <Input
                 id={labelId}
@@ -125,7 +125,7 @@ export function ConditionEditor({
                 }}
               />
             </div>
-          </Tooltip>
+          </DesignerTooltip>
         }
         value={
           <div className={styles.value}>
@@ -242,7 +242,7 @@ function SettingsContent({ level, store, validate, onRename }: SettingsContentPr
   return (
     <>
       <Field level={level} isLast={false} context={context} name={t('inputHandleEditor.handleName')}>
-        <Tooltip {...defaultTooltipProps} placement="bottomLeft" autoAdjustOverflow={false} title={renameError} open={!!renameError}>
+        <DesignerTooltip open={!!renameError} placement="bottomLeft" title={renameError}>
           <div className={styles.nameWrapper}>
             <Input
               className={clsx(styles.nameInput, renameError && styles.renameError)}
@@ -257,7 +257,7 @@ function SettingsContent({ level, store, validate, onRename }: SettingsContentPr
               }}
             />
           </div>
-        </Tooltip>
+        </DesignerTooltip>
       </Field>
       <Field
         level={level}
@@ -277,7 +277,7 @@ function SettingsContent({ level, store, validate, onRename }: SettingsContentPr
           level={level ? '|' + level : ' '}
           variant="value-only"
           value={
-            <Input2
+            <TranslationInput
               multiline
               className={styles.input}
               rawValue$={store.description$}
@@ -520,7 +520,13 @@ function ValueBoolean(props: ValueProps) {
   const value = useDerived(props.store.value$, asTrue)
 
   return (
-    <ToggleSwitch isSuffix={props.isSuffix} checked={value} onChange={props.store.value$?.set} label={trueFalse} disabled={!props.store.context.canEditValue} />
+    <LabeledSwitch
+      isSuffix={props.isSuffix}
+      checked={value}
+      onChange={props.store.value$?.set}
+      label={trueFalse}
+      disabled={!props.store.context.canEditValue}
+    />
   )
 }
 
@@ -710,13 +716,7 @@ function tryAutoFocusElementUnder(ev: React.MouseEvent<HTMLElement>) {
 
 // Limit automatic focus to known-safe controls, excluding elements such as a Boolean checkbox.
 function shouldFocus(element: HTMLElement): boolean {
-  if (element.tagName === 'INPUT') {
-    return true
-  }
-  if (element.tagName === 'DIV' && element.className.includes('react-select__input-container')) {
-    return true
-  }
-  return false
+  return element.tagName === 'INPUT'
 }
 
 function simulateClick(element: HTMLElement): void {

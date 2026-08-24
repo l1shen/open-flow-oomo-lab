@@ -30,6 +30,21 @@
   --brand-color: var(--brand-4);
   --brand-highlight-color: #9290ef;
   --brand-hover-color: color-mix(in srgb, var(--brand-5) 50%, transparent);
+  --ui-background: var(--fill-1);
+  --ui-foreground: var(--text-5);
+  --ui-primary: var(--brand-highlight-color);
+  --ui-primary-foreground: var(--fill-1);
+  --ui-secondary: var(--fill-4);
+  --ui-secondary-foreground: var(--text-4);
+  --ui-muted: var(--fill-4);
+  --ui-muted-foreground: var(--text-2);
+  --ui-accent: var(--fill-5);
+  --ui-accent-foreground: var(--text-5);
+  --ui-destructive: var(--accent-red-1);
+  --ui-border: var(--border-2);
+  --ui-input: var(--border-2);
+  --ui-ring: var(--brand-highlight-color);
+  --ui-radius: 6px;
 
   --node-background-color: var(--fill-1);
   --node-border-color: #41413d;
@@ -109,11 +124,13 @@
   --edge-error: var(--seti-red);
   --flow-bg: var(--fill-3);
 
-  --rf-controls-border: var(--border-1);
-  --rf-button-bg: var(--fill-1);
-  --rf-button-fg: var(--text-3);
-  --rf-button-border: var(--border-1);
-  --rf-button-hover: var(--widget-background-highlight-color);
+  // React Flow consumes these compatibility tokens, but their values must stay
+  // aligned with the shared UI token contract.
+  --rf-controls-border: var(--ui-border);
+  --rf-button-bg: var(--ui-background);
+  --rf-button-fg: var(--ui-muted-foreground);
+  --rf-button-border: var(--ui-border);
+  --rf-button-hover: var(--ui-muted);
   --rf-minimap-bg: var(--node-background-color);
   --rf-minimap-node: var(--widget-background);
 

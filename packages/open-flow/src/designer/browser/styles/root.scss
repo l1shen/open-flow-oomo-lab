@@ -62,7 +62,7 @@
     font-family: var(--font-monospace);
   }
 
-  :where(button, input, select, textarea) {
+  :where(button:not([data-canvas-control-scope] button), input, select, textarea) {
     border: none;
     width: 100%;
     color: inherit;
@@ -87,7 +87,7 @@
     user-select: none;
   }
 
-  :where(button) {
+  :where(button:not([data-canvas-control-scope] button)) {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -99,7 +99,7 @@
     white-space: nowrap;
   }
 
-  :where(button:has(> i)) {
+  :where(button:not([data-canvas-control-scope] button):has(> i)) {
     padding: 0;
     color: var(--text-2);
     width: var(--icon-size);
@@ -148,7 +148,7 @@
     }
   }
 
-  :where(:is(button, input, select, textarea):hover) {
+  :where(:is(button:not([data-canvas-control-scope] button), input, select, textarea):hover) {
     background-color: var(--widget-background-highlight-color);
     transition-duration: 0s;
   }
@@ -200,17 +200,17 @@
     background-color: var(--brand-highlight-color);
   }
 
-  :where(button:focus-visible) {
+  :where(button:not([data-canvas-control-scope] button):focus-visible) {
     border: 1px solid var(--brand-highlight-color);
     transition-duration: 0s;
   }
 
-  :where(button:active) {
+  :where(button:not([data-canvas-control-scope] button):active) {
     background-color: var(--widget-active-background);
     transition-duration: 0s;
   }
 
-  :where(:is(button, input, select, textarea):disabled) {
+  :where(:is(button:not([data-canvas-control-scope] button), input, select, textarea):disabled) {
     color: var(--widget-font-disable-color);
     background: var(--widget-background);
     cursor: default;
@@ -221,7 +221,7 @@
     pointer-events: none;
   }
 
-  :where(button:has(> i):disabled) {
+  :where(button:not([data-canvas-control-scope] button):has(> i):disabled) {
     background-color: transparent;
     opacity: 0.5;
   }

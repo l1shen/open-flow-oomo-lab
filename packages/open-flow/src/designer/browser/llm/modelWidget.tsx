@@ -1,6 +1,6 @@
 import styles from './modelWidget.module.scss'
 import type { TFunction } from 'val-i18n'
-import type { IBasicOption } from '../components/select.tsx'
+import type { DesignerOption as IBasicOption } from '../components/select.tsx'
 import type { ProductInputWidgetRendererProps } from './llmHandleEditor.tsx'
 
 import { useEffect, useState } from 'react'
@@ -8,10 +8,11 @@ import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { isUnknownRecord } from '../../../base/common/type.ts'
 import { defaultLlmMaxTokens, defaultLlmTemperature, defaultLlmTopP, maximumLlmOutputTokens } from '../../../llm/common/model.ts'
-import { Button } from '../components/button.tsx'
+import { Button } from '../../../ui/browser/button.tsx'
 import { Input } from '../components/input.tsx'
 import { Range } from '../components/range.tsx'
-import { Select } from '../components/select.tsx'
+import { DesignerCombobox as Select } from '../components/select.tsx'
+import { DesignerTooltip } from '../components/tooltip.tsx'
 import { useLlmModelCatalog } from './modelCatalog.tsx'
 import { ModelMark } from './modelMark.tsx'
 
@@ -98,18 +99,23 @@ export function ModelWidget({ store }: ProductInputWidgetRendererProps): React.R
           />
         )}
         {useCustomInput && catalogState.available && catalogState.models.length > 0 && (
-          <Button ariaLabel={t('llmEditor.chooseModel')} title={t('llmEditor.chooseModel')} onClick={() => setCustomModel(false)}>
-            <i className="i-carbon:list" />
-          </Button>
+          <DesignerTooltip placement="top" title={t('llmEditor.chooseModel')}>
+            <Button aria-label={t('llmEditor.chooseModel')} onClick={() => setCustomModel(false)} size="icon-xs" variant="ghost">
+              <i className="i-carbon:list" />
+            </Button>
+          </DesignerTooltip>
         )}
-        <Button
-          active={expanded}
-          ariaLabel={t('llmEditor.modelOptions')}
-          title={t('llmEditor.modelOptions')}
-          onClick={() => setExpanded((current) => !current)}
-        >
-          <i className="i-carbon:settings-adjust" />
-        </Button>
+        <DesignerTooltip placement="top" title={t('llmEditor.modelOptions')}>
+          <Button
+            aria-label={t('llmEditor.modelOptions')}
+            aria-pressed={expanded}
+            onClick={() => setExpanded((current) => !current)}
+            size="icon-xs"
+            variant="ghost"
+          >
+            <i className="i-carbon:settings-adjust" />
+          </Button>
+        </DesignerTooltip>
       </div>
       {expanded && (
         <div className={styles.modelPanel}>

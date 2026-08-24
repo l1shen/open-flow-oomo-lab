@@ -4,7 +4,8 @@ import type { CommentNodeStore } from '../../../stores/node/commentNode.store.ts
 
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
-import { Button } from '../../../components/button.tsx'
+import { Button } from '../../../../../ui/browser/button.tsx'
+import { DesignerTooltip } from '../../../components/tooltip.tsx'
 
 interface CommentNodeActionsProps {
   readonly designerStore: DesignerStore
@@ -19,8 +20,10 @@ export function CommentNodeActions({ designerStore, nodeStore }: CommentNodeActi
   if (!editable) return null
 
   return (
-    <Button onClick={nodeStore.togglePreview} disabled={!editable} title={sourceCode ? t('comment.preview') : t('comment.source')} titlePlacement="bottom">
-      <i className={sourceCode ? 'i-codicon:wand' : 'i-codicon:go-to-file'} />
-    </Button>
+    <DesignerTooltip placement="bottom" title={sourceCode ? t('comment.preview') : t('comment.source')}>
+      <Button disabled={!editable} onClick={nodeStore.togglePreview} size="icon-xs" variant="ghost">
+        <i className={sourceCode ? 'i-codicon:wand' : 'i-codicon:go-to-file'} />
+      </Button>
+    </DesignerTooltip>
   )
 }

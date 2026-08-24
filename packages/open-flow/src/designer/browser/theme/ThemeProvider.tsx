@@ -1,25 +1,24 @@
 import type { JSX } from 'react/jsx-runtime'
-import type { AntdProviderProps } from './AntdProvider.tsx'
 
 import { createContext, useContext, useMemo } from 'react'
-import { AntdProvider } from './AntdProvider.tsx'
 
 export interface ThemeData {
   isDark: boolean
 }
 
-export interface ThemeProviderProps extends AntdProviderProps {}
+export interface ThemeProviderProps {
+  readonly children?: React.ReactNode
+  readonly dark: boolean
+  /** Retained for callers that provide local overlay roots. Shared primitives receive this directly. */
+  readonly getPopupContainer?: (triggerNode?: HTMLElement) => HTMLElement
+}
 
 const ThemeContext = createContext<ThemeData | null>({ isDark: false })
 
-export function ThemeProvider(props: ThemeProviderProps): JSX.Element {
-  const theme = useMemo(() => ({ isDark: props.dark }), [props.dark])
+export function ThemeProvider({ children, dark }: ThemeProviderProps): JSX.Element {
+  const theme = useMemo(() => ({ isDark: dark }), [dark])
 
-  return (
-    <ThemeContext.Provider value={theme}>
-      <AntdProvider {...props} />
-    </ThemeContext.Provider>
-  )
+  return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>
 }
 
 export const useThemeData = (): ThemeData => {

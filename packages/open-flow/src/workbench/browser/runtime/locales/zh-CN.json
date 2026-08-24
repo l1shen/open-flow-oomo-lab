@@ -48,6 +48,7 @@
     "name": "名称",
     "none": "无",
     "rename": "重命名",
+    "refresh": "刷新",
     "save": "保存",
     "subflow": "Subflow",
     "unset": "未设置"

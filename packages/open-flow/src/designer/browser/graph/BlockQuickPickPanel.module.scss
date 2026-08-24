@@ -184,26 +184,11 @@
 
 .menu {
   max-width: 200px;
+  max-height: min(360px, calc(100vh - 24px));
+  font-size: var(--base-font-size);
 
-  :global(.ant-dropdown-menu) {
-    max-height: min(360px, calc(100vh - 24px));
-    overflow-y: auto;
-  }
-
-  :global(.ant-dropdown-menu-item) {
-    padding: 4px 8px !important;
-    font-size: var(--base-font-size) !important;
-    border-radius: var(--widget-radius) !important;
-  }
-
-  :global(.ant-dropdown-menu-item-icon) {
-    margin-inline-end: 0 !important;
-    font-size: var(--base-font-size) !important;
-  }
-
-  :global(.ant-dropdown-menu-title-content) {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+  :global([data-slot='dropdown-menu-item']),
+  :global([data-slot='dropdown-menu-sub-trigger']) {
+    padding: 4px 8px;
   }
 }

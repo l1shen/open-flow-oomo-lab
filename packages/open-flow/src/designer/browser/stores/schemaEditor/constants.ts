@@ -1,4 +1,4 @@
-import type { IBasicOption } from '../../components/select.tsx'
+import type { DesignerOption as IBasicOption } from '../../components/select.tsx'
 import type { WidgetType } from '../../jsonSchema/preset.ts'
 
 export const typeHasSubpanel: Set<WidgetType> = /*#__PURE__*/ new Set([

@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import type { TFunction } from 'val-i18n'
 import type { TriggerSettings } from '../../../../project/common/nodeChanges.ts'
 import type { ConditionNode, ConnectorAction, ConnectorConnection, Diagnostic, JsonValue } from '../api.ts'
+import type { WorkbenchTheme } from '../contract.ts'
 import type { IconName } from '../icons.tsx'
 import type { ResolvedNode, ResolvedSelection, RevisionView } from '../revisionView.ts'
 import type { ConnectorStore } from '../stores/connectorStore.ts'
@@ -14,6 +15,12 @@ import type { ConditionSettings, DesignerTarget, TaskSettings } from './projectC
 import { useEffect, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
+import { Button } from '../../../../ui/browser/button.tsx'
+import { Checkbox } from '../../../../ui/browser/checkbox.tsx'
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '../../../../ui/browser/field.tsx'
+import { Input } from '../../../../ui/browser/input.tsx'
+import { NativeSelect, NativeSelectOption } from '../../../../ui/browser/native-select.tsx'
+import { Textarea } from '../../../../ui/browser/textarea.tsx'
 import { Icon } from '../icons.tsx'
 import { CodeEditor } from './codeEditor.tsx'
 
@@ -90,6 +97,7 @@ function GeneralSettings({
   const [concurrency, setConcurrency] = useState(String(node.concurrency))
   const [timeout, setTimeoutValue] = useState(node.timeoutMs == null ? '' : String(node.timeoutMs))
   const [error, setError] = useState<string>()
+  const fieldIdPrefix = `node-${nodeId}`
 
   useEffect(() => {
     setName(node.name ?? '')
@@ -129,32 +137,48 @@ function GeneralSettings({
           })
         }}
       >
-        <label>
-          {t('inspector.node.displayName')}
-          <input disabled={disabled} onChange={(event) => setName(event.target.value)} placeholder={t('inspector.node.displayNamePlaceholder')} value={name} />
-        </label>
-        <div className="field-pair">
-          <label>
-            {t('inspector.node.concurrency')}
-            <input disabled={disabled} min="1" onChange={(event) => setConcurrency(event.target.value)} type="number" value={concurrency} />
-          </label>
-          <label>
-            {t('inspector.node.timeout')}
-            <input
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`${fieldIdPrefix}-name`}>{t('inspector.node.displayName')}</FieldLabel>
+            <Input
               disabled={disabled}
-              min="1"
-              onChange={(event) => setTimeoutValue(event.target.value)}
-              placeholder={t('common.default')}
-              type="number"
-              value={timeout}
+              id={`${fieldIdPrefix}-name`}
+              onChange={(event) => setName(event.target.value)}
+              placeholder={t('inspector.node.displayNamePlaceholder')}
+              value={name}
             />
-          </label>
-        </div>
-        {error != null && <p className="form-error">{error}</p>}
+          </Field>
+          <div className="field-pair">
+            <Field>
+              <FieldLabel htmlFor={`${fieldIdPrefix}-concurrency`}>{t('inspector.node.concurrency')}</FieldLabel>
+              <Input
+                disabled={disabled}
+                id={`${fieldIdPrefix}-concurrency`}
+                min="1"
+                onChange={(event) => setConcurrency(event.target.value)}
+                type="number"
+                value={concurrency}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`${fieldIdPrefix}-timeout`}>{t('inspector.node.timeout')}</FieldLabel>
+              <Input
+                disabled={disabled}
+                id={`${fieldIdPrefix}-timeout`}
+                min="1"
+                onChange={(event) => setTimeoutValue(event.target.value)}
+                placeholder={t('common.default')}
+                type="number"
+                value={timeout}
+              />
+            </Field>
+          </div>
+          {error != null && <FieldError>{error}</FieldError>}
+        </FieldGroup>
         <div className="form-actions">
-          <button className="button secondary small" disabled={disabled} type="submit">
+          <Button disabled={disabled} size="sm" type="submit" variant="secondary">
             {t('inspector.node.save')}
-          </button>
+          </Button>
         </div>
       </form>
     </details>
@@ -175,6 +199,7 @@ function TaskDefinition({
   focus,
   selection,
   store,
+  theme,
 }: {
   readonly children: ReactElement
   readonly connectorAction: ConnectorAction | undefined
@@ -189,6 +214,7 @@ function TaskDefinition({
   readonly focus?: DiagnosticFocus
   readonly selection: Extract<ResolvedNode, { readonly kind: 'task' }>
   readonly store: WorkspaceStore
+  readonly theme: WorkbenchTheme
 }): ReactElement | null {
   const t = useTranslate()
   const node = selection.node
@@ -200,6 +226,7 @@ function TaskDefinition({
   const [inputs, setInputs] = useState(json(task?.inputs ?? {}))
   const [outputs, setOutputs] = useState(json(task?.outputs ?? {}))
   const [definitionError, setDefinitionError] = useState<string>()
+  const fieldIdPrefix = `task-${selection.id}`
   const moduleDiagnostics = useVal(store.$.moduleDiagnostics)
   const moduleEditor = useVal(store.$.moduleEditor)
   const moduleLocation = focus?.section == 'module' ? focus.diagnostic : focus == null ? moduleDiagnostics[0] : undefined
@@ -229,84 +256,78 @@ function TaskDefinition({
           ) : connectorActionError != null || connectorAction == null ? (
             <>
               <p>{connectorActionError ?? t('inspector.account.statusUnavailable', { action: connector.action })}</p>
-              <button className="button secondary small" disabled={disabled} onClick={() => void connectors.refresh(true)} type="button">
+              <Button disabled={disabled} onClick={() => void connectors.refresh(true)} size="sm" type="button" variant="secondary">
                 {t('inspector.account.retry')}
-              </button>
+              </Button>
             </>
           ) : connectorConnectionError != null ? (
             <>
               <p>{t('inspector.account.refreshFailed')}</p>
               <p className="connection-detail">{connectorConnectionError}</p>
-              <button className="button secondary small" disabled={disabled} onClick={() => void connectors.refresh(true)} type="button">
+              <Button disabled={disabled} onClick={() => void connectors.refresh(true)} size="sm" type="button" variant="secondary">
                 {t('inspector.account.retry')}
-              </button>
+              </Button>
             </>
           ) : connector.connectionId == null ? (
             activeConnections.length > 0 ? (
               <>
                 {connectorAuthorizationPending && <p>{t('inspector.account.authorizationPending')}</p>}
-                <div className="connection-field">
-                  <span>{t('inspector.account.connection')}</span>
-                  <div className="select-wrap">
-                    <select
-                      aria-label={t('inspector.account.connection')}
-                      disabled={disabled}
-                      onChange={(event) => void connectors.setConnection(taskId!, event.target.value)}
-                      value=""
-                    >
-                      <option disabled value="">
-                        {t('inspector.account.chooseAccount')}
-                      </option>
-                      {activeConnections.map((connection) => (
-                        <option key={connection.connectionId} value={connection.connectionId}>
-                          {connection.displayName}
-                          {connection.isDefault ? ` (${t('inspector.account.teamDefault')})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <Icon name="chevron-down" size={15} />
-                  </div>
-                </div>
-                <button className="button secondary small" disabled={disabled} onClick={() => void connectors.connect(connectorAction.serviceId)} type="button">
-                  <Icon name="plus" size={14} /> {t('inspector.account.addConnection')}
-                </button>
+                <Field className="connection-field">
+                  <FieldLabel htmlFor={`${fieldIdPrefix}-connection`}>{t('inspector.account.connection')}</FieldLabel>
+                  <NativeSelect
+                    disabled={disabled}
+                    id={`${fieldIdPrefix}-connection`}
+                    onChange={(event) => void connectors.setConnection(taskId!, event.target.value)}
+                    value=""
+                  >
+                    <NativeSelectOption disabled value="">
+                      {t('inspector.account.chooseAccount')}
+                    </NativeSelectOption>
+                    {activeConnections.map((connection) => (
+                      <NativeSelectOption key={connection.connectionId} value={connection.connectionId}>
+                        {connection.displayName}
+                        {connection.isDefault ? ` (${t('inspector.account.teamDefault')})` : ''}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                <Button disabled={disabled} onClick={() => void connectors.connect(connectorAction.serviceId)} size="sm" type="button" variant="secondary">
+                  <Icon data-icon="inline-start" name="plus" size={14} /> {t('inspector.account.addConnection')}
+                </Button>
               </>
             ) : (
               <>
                 {connectorAuthorizationPending && <p>{t('inspector.account.authorizationPending')}</p>}
                 <p>{t('inspector.account.connectBeforeRun', { service: connectorAction.serviceName })}</p>
-                <button className="button primary small" disabled={disabled} onClick={() => void connectors.connect(connectorAction.serviceId)} type="button">
+                <Button disabled={disabled} onClick={() => void connectors.connect(connectorAction.serviceId)} size="sm" type="button">
                   {t('inspector.account.connectService', { service: connectorAction.serviceName })}
-                </button>
+                </Button>
               </>
             )
           ) : (
             <>
               {connectorAuthorizationPending && <p>{t('inspector.account.authorizationPending')}</p>}
-              <div className="connection-field">
-                <span>{t('inspector.account.connection')}</span>
-                <div className="select-wrap">
-                  <select
-                    aria-label={t('inspector.account.connection')}
-                    disabled={disabled || activeConnections.length == 0}
-                    onChange={(event) => void connectors.setConnection(taskId!, event.target.value)}
-                    value={connector.connectionId}
-                  >
-                    {connectorConnection?.status != 'active' && (
-                      <option disabled value={connector.connectionId}>
-                        {connectorConnection?.displayName ?? connector.connectionId} ({t('inspector.account.unavailable')})
-                      </option>
-                    )}
-                    {activeConnections.map((connection) => (
-                      <option key={connection.connectionId} value={connection.connectionId}>
-                        {connection.displayName}
-                        {connection.isDefault ? ` (${t('inspector.account.teamDefault')})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <Icon name="chevron-down" size={15} />
-                </div>
-              </div>
+              <Field className="connection-field">
+                <FieldLabel htmlFor={`${fieldIdPrefix}-connection`}>{t('inspector.account.connection')}</FieldLabel>
+                <NativeSelect
+                  disabled={disabled || activeConnections.length == 0}
+                  id={`${fieldIdPrefix}-connection`}
+                  onChange={(event) => void connectors.setConnection(taskId!, event.target.value)}
+                  value={connector.connectionId}
+                >
+                  {connectorConnection?.status != 'active' && (
+                    <NativeSelectOption disabled value={connector.connectionId}>
+                      {connectorConnection?.displayName ?? connector.connectionId} ({t('inspector.account.unavailable')})
+                    </NativeSelectOption>
+                  )}
+                  {activeConnections.map((connection) => (
+                    <NativeSelectOption key={connection.connectionId} value={connection.connectionId}>
+                      {connection.displayName}
+                      {connection.isDefault ? ` (${t('inspector.account.teamDefault')})` : ''}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
               {connectorConnection == null ? (
                 <p>{t('inspector.account.missing')}</p>
               ) : connectorConnection.status == 'active' ? (
@@ -314,9 +335,9 @@ function TaskDefinition({
               ) : (
                 <p>{t(`inspector.account.status.${connectorConnection.status}`)}</p>
               )}
-              <button className="button secondary small" disabled={disabled} onClick={() => void connectors.connect(connectorAction.serviceId)} type="button">
-                <Icon name="plus" size={14} /> {t('inspector.account.addConnection')}
-              </button>
+              <Button disabled={disabled} onClick={() => void connectors.connect(connectorAction.serviceId)} size="sm" type="button" variant="secondary">
+                <Icon data-icon="inline-start" name="plus" size={14} /> {t('inspector.account.addConnection')}
+              </Button>
             </>
           )}
         </section>
@@ -343,19 +364,20 @@ function TaskDefinition({
             loadingLabel={t('inspector.task.editorLoading')}
             location={moduleLocation == null ? undefined : { column: moduleLocation.column, line: moduleLocation.line }}
             onChange={(value) => store.updateModuleSource(value)}
+            theme={theme}
             uri={`open-flow://project/modules/${moduleEditor.moduleId}.js`}
             value={moduleEditor.source}
           />
           <span className="code-source-note">{t('inspector.task.importsFromSource')}</span>
           <div className="form-actions">
             {(moduleEditor.status == 'dirty' || moduleEditor.status == 'failed') && (
-              <button className="button secondary small" disabled={disabled} onClick={() => store.discardModuleChanges()} type="button">
+              <Button disabled={disabled} onClick={() => store.discardModuleChanges()} size="sm" type="button" variant="secondary">
                 {t('inspector.task.discardCode')}
-              </button>
+              </Button>
             )}
-            <button className="button primary small" disabled={disabled || moduleEditor.status == 'saved' || moduleEditor.status == 'saving'} type="submit">
+            <Button disabled={disabled || moduleEditor.status == 'saved' || moduleEditor.status == 'saving'} size="sm" type="submit">
               {t('inspector.task.saveCode')}
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -406,38 +428,59 @@ function TaskDefinition({
             }
           }}
         >
-          <label>
-            {t('common.name')}
-            <input disabled={disabled} onChange={(event) => setName(event.target.value)} value={name} />
-          </label>
-          {'executor' in task && task.executor.kind == 'llm' && (
-            <label>
-              {t('inspector.task.responseMode')}
-              <select disabled={disabled} onChange={(event) => setLlmMode(event.target.value as 'chat' | 'json')} value={llmMode}>
-                <option value="chat">{t('inspector.task.chatText')}</option>
-                <option value="json">{t('inspector.task.structuredJson')}</option>
-              </select>
-            </label>
-          )}
-          {'executor' in task && task.executor.kind == 'connector' && (
-            <div className="field-group">
-              <span>{t('inspector.task.connectorAction')}</span>
-              <p className="reference-value">{connectorAction?.name ?? task.executor.action}</p>
-            </div>
-          )}
-          <label>
-            {t('inspector.task.inputPorts')}
-            <textarea disabled={disabled} onChange={(event) => setInputs(event.target.value)} rows={7} spellCheck={false} value={inputs} />
-          </label>
-          <label>
-            {t('inspector.task.outputPorts')}
-            <textarea disabled={disabled} onChange={(event) => setOutputs(event.target.value)} rows={7} spellCheck={false} value={outputs} />
-          </label>
-          {definitionError != null && <p className="form-error">{definitionError}</p>}
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor={`${fieldIdPrefix}-name`}>{t('common.name')}</FieldLabel>
+              <Input disabled={disabled} id={`${fieldIdPrefix}-name`} onChange={(event) => setName(event.target.value)} value={name} />
+            </Field>
+            {'executor' in task && task.executor.kind == 'llm' && (
+              <Field>
+                <FieldLabel htmlFor={`${fieldIdPrefix}-response-mode`}>{t('inspector.task.responseMode')}</FieldLabel>
+                <NativeSelect
+                  disabled={disabled}
+                  id={`${fieldIdPrefix}-response-mode`}
+                  onChange={(event) => setLlmMode(event.target.value as 'chat' | 'json')}
+                  value={llmMode}
+                >
+                  <NativeSelectOption value="chat">{t('inspector.task.chatText')}</NativeSelectOption>
+                  <NativeSelectOption value="json">{t('inspector.task.structuredJson')}</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+            )}
+            {'executor' in task && task.executor.kind == 'connector' && (
+              <Field>
+                <FieldLabel>{t('inspector.task.connectorAction')}</FieldLabel>
+                <FieldDescription className="reference-value">{connectorAction?.name ?? task.executor.action}</FieldDescription>
+              </Field>
+            )}
+            <Field>
+              <FieldLabel htmlFor={`${fieldIdPrefix}-inputs`}>{t('inspector.task.inputPorts')}</FieldLabel>
+              <Textarea
+                disabled={disabled}
+                id={`${fieldIdPrefix}-inputs`}
+                onChange={(event) => setInputs(event.target.value)}
+                rows={7}
+                spellCheck={false}
+                value={inputs}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`${fieldIdPrefix}-outputs`}>{t('inspector.task.outputPorts')}</FieldLabel>
+              <Textarea
+                disabled={disabled}
+                id={`${fieldIdPrefix}-outputs`}
+                onChange={(event) => setOutputs(event.target.value)}
+                rows={7}
+                spellCheck={false}
+                value={outputs}
+              />
+            </Field>
+            {definitionError != null && <FieldError>{definitionError}</FieldError>}
+          </FieldGroup>
           <div className="form-actions">
-            <button className="button secondary small" disabled={disabled || name.trim() == ''} type="submit">
+            <Button disabled={disabled || name.trim() == ''} size="sm" type="submit" variant="secondary">
               {t('inspector.task.save')}
-            </button>
+            </Button>
           </div>
         </form>
       </details>
@@ -499,33 +542,48 @@ function ConditionDefinition({
       }}
     >
       <h3>{t('inspector.condition.title')}</h3>
-      <div className="field-pair">
-        <label>
-          {t('inspector.condition.inputHandle')}
-          <input disabled={disabled} onChange={(event) => setInputHandle(event.target.value)} value={inputHandle} />
-        </label>
-        <label>
-          {t('inspector.condition.defaultOutput')}
-          <input disabled={disabled} onChange={(event) => setDefaultOutput(event.target.value)} placeholder={t('common.none')} value={defaultOutput} />
-        </label>
-      </div>
-      <label className="checkbox-field">
-        <input checked={nullable} disabled={disabled} onChange={(event) => setNullable(event.target.checked)} type="checkbox" />
-        {t('inspector.condition.acceptNull')}
-      </label>
-      <label>
-        {t('inspector.condition.inputSchema')}
-        <textarea disabled={disabled} onChange={(event) => setSchema(event.target.value)} rows={5} spellCheck={false} value={schema} />
-      </label>
-      <label>
-        {t('inspector.condition.cases')}
-        <textarea disabled={disabled} onChange={(event) => setCases(event.target.value)} rows={12} spellCheck={false} value={cases} />
-      </label>
-      {error != null && <p className="form-error">{error}</p>}
+      <FieldGroup>
+        <div className="field-pair">
+          <Field>
+            <FieldLabel htmlFor={`${nodeId}-input-handle`}>{t('inspector.condition.inputHandle')}</FieldLabel>
+            <Input disabled={disabled} id={`${nodeId}-input-handle`} onChange={(event) => setInputHandle(event.target.value)} value={inputHandle} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${nodeId}-default-output`}>{t('inspector.condition.defaultOutput')}</FieldLabel>
+            <Input
+              disabled={disabled}
+              id={`${nodeId}-default-output`}
+              onChange={(event) => setDefaultOutput(event.target.value)}
+              placeholder={t('common.none')}
+              value={defaultOutput}
+            />
+          </Field>
+        </div>
+        <Field orientation="horizontal">
+          <Checkbox checked={nullable} disabled={disabled} id={`${nodeId}-accept-null`} onCheckedChange={setNullable} />
+          <FieldLabel htmlFor={`${nodeId}-accept-null`}>{t('inspector.condition.acceptNull')}</FieldLabel>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${nodeId}-input-schema`}>{t('inspector.condition.inputSchema')}</FieldLabel>
+          <Textarea
+            disabled={disabled}
+            id={`${nodeId}-input-schema`}
+            onChange={(event) => setSchema(event.target.value)}
+            rows={5}
+            spellCheck={false}
+            value={schema}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${nodeId}-cases`}>{t('inspector.condition.cases')}</FieldLabel>
+          <Textarea disabled={disabled} id={`${nodeId}-cases`} onChange={(event) => setCases(event.target.value)} rows={12} spellCheck={false} value={cases} />
+        </Field>
+        {error != null && <FieldError>{error}</FieldError>}
+      </FieldGroup>
       <div className="form-actions">
-        <button className="button secondary small" disabled={disabled || inputHandle.trim() == ''} type="submit">
+        <Button disabled={disabled || inputHandle.trim() == ''} size="sm" type="submit" variant="secondary">
           {t('inspector.condition.save')}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -571,23 +629,39 @@ function SubflowDefinition({
       }}
     >
       <h3>{t('inspector.subflow.definition')}</h3>
-      <label>
-        {t('common.name')}
-        <input disabled={disabled} onChange={(event) => setName(event.target.value)} value={name} />
-      </label>
-      <label>
-        {t('inspector.subflow.inputPorts')}
-        <textarea disabled={disabled} onChange={(event) => setInputs(event.target.value)} rows={8} spellCheck={false} value={inputs} />
-      </label>
-      <label>
-        {t('inspector.subflow.outputPorts')}
-        <textarea disabled={disabled} onChange={(event) => setOutputs(event.target.value)} rows={10} spellCheck={false} value={outputs} />
-      </label>
-      {error != null && <p className="form-error">{error}</p>}
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor={`${subflowId}-name`}>{t('common.name')}</FieldLabel>
+          <Input disabled={disabled} id={`${subflowId}-name`} onChange={(event) => setName(event.target.value)} value={name} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${subflowId}-inputs`}>{t('inspector.subflow.inputPorts')}</FieldLabel>
+          <Textarea
+            disabled={disabled}
+            id={`${subflowId}-inputs`}
+            onChange={(event) => setInputs(event.target.value)}
+            rows={8}
+            spellCheck={false}
+            value={inputs}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${subflowId}-outputs`}>{t('inspector.subflow.outputPorts')}</FieldLabel>
+          <Textarea
+            disabled={disabled}
+            id={`${subflowId}-outputs`}
+            onChange={(event) => setOutputs(event.target.value)}
+            rows={10}
+            spellCheck={false}
+            value={outputs}
+          />
+        </Field>
+        {error != null && <FieldError>{error}</FieldError>}
+      </FieldGroup>
       <div className="form-actions">
-        <button className="button secondary small" disabled={disabled || name.trim() == ''} type="submit">
+        <Button disabled={disabled || name.trim() == ''} size="sm" type="submit" variant="secondary">
           {t('inspector.subflow.save')}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -617,6 +691,7 @@ function TriggerDefinition({
   const [name, setName] = useState(trigger.name)
   const [description, setDescription] = useState(trigger.description ?? '')
   const providerTrigger = trigger.kind == 'poll' || trigger.kind == 'integration' ? trigger : undefined
+  const fieldIdPrefix = `trigger-${selection.id}`
 
   useEffect(() => {
     setName(trigger.name)
@@ -636,56 +711,43 @@ function TriggerDefinition({
           <>
             <p>{t('inspector.account.refreshFailed')}</p>
             <p className="connection-detail">{connectionError}</p>
-            <button className="button secondary small" disabled={disabled} onClick={() => void triggers.refresh(true)} type="button">
+            <Button disabled={disabled} onClick={() => void triggers.refresh(true)} size="sm" type="button" variant="secondary">
               {t('inspector.account.retry')}
-            </button>
+            </Button>
           </>
         ) : (activeConnections?.length ?? 0) == 0 ? (
           <>
             <p>{t('inspector.account.connectBeforeRun', { service: providerTrigger.definition.provider })}</p>
-            <button
-              className="button primary small"
-              disabled={disabled}
-              onClick={() => void triggers.connect(providerTrigger.definition.provider)}
-              type="button"
-            >
+            <Button disabled={disabled} onClick={() => void triggers.connect(providerTrigger.definition.provider)} size="sm" type="button">
               {t('inspector.account.connectService', { service: providerTrigger.definition.provider })}
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <div className="connection-field">
-              <span>{t('inspector.account.connection')}</span>
-              <div className="select-wrap">
-                <select
-                  aria-label={t('inspector.account.connection')}
-                  disabled={disabled}
-                  onChange={(event) => void triggers.setConnection(selection.id, event.target.value)}
-                  value={connection?.connectionId ?? ''}
-                >
-                  {connection == null && (
-                    <option disabled value="">
-                      {t('inspector.account.chooseAccount')}
-                    </option>
-                  )}
-                  {activeConnections!.map((candidate) => (
-                    <option key={candidate.connectionId} value={candidate.connectionId}>
-                      {candidate.displayName}
-                      {candidate.isDefault ? ` (${t('inspector.account.teamDefault')})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <Icon name="chevron-down" size={15} />
-              </div>
-            </div>
-            <button
-              className="button secondary small"
-              disabled={disabled}
-              onClick={() => void triggers.connect(providerTrigger.definition.provider)}
-              type="button"
-            >
-              <Icon name="plus" size={14} /> {t('inspector.account.addConnection')}
-            </button>
+            <Field className="connection-field">
+              <FieldLabel htmlFor={`${fieldIdPrefix}-connection`}>{t('inspector.account.connection')}</FieldLabel>
+              <NativeSelect
+                disabled={disabled}
+                id={`${fieldIdPrefix}-connection`}
+                onChange={(event) => void triggers.setConnection(selection.id, event.target.value)}
+                value={connection?.connectionId ?? ''}
+              >
+                {connection == null && (
+                  <NativeSelectOption disabled value="">
+                    {t('inspector.account.chooseAccount')}
+                  </NativeSelectOption>
+                )}
+                {activeConnections!.map((candidate) => (
+                  <NativeSelectOption key={candidate.connectionId} value={candidate.connectionId}>
+                    {candidate.displayName}
+                    {candidate.isDefault ? ` (${t('inspector.account.teamDefault')})` : ''}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Button disabled={disabled} onClick={() => void triggers.connect(providerTrigger.definition.provider)} size="sm" type="button" variant="secondary">
+              <Icon data-icon="inline-start" name="plus" size={14} /> {t('inspector.account.addConnection')}
+            </Button>
           </>
         )}
       </section>
@@ -730,18 +792,20 @@ function TriggerDefinition({
         }}
       >
         <h3>{t('inspector.trigger.title')}</h3>
-        <label>
-          {t('common.name')}
-          <input disabled={disabled} onChange={(event) => setName(event.target.value)} value={name} />
-        </label>
-        <label>
-          {t('inspector.trigger.description')}
-          <input disabled={disabled} onChange={(event) => setDescription(event.target.value)} value={description} />
-        </label>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`${fieldIdPrefix}-name`}>{t('common.name')}</FieldLabel>
+            <Input disabled={disabled} id={`${fieldIdPrefix}-name`} onChange={(event) => setName(event.target.value)} value={name} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${fieldIdPrefix}-description`}>{t('inspector.trigger.description')}</FieldLabel>
+            <Input disabled={disabled} id={`${fieldIdPrefix}-description`} onChange={(event) => setDescription(event.target.value)} value={description} />
+          </Field>
+        </FieldGroup>
         <div className="form-actions">
-          <button className="button secondary small" disabled={disabled || name.trim() == ''} type="submit">
+          <Button disabled={disabled || name.trim() == ''} size="sm" type="submit" variant="secondary">
             {t('inspector.trigger.save')}
-          </button>
+          </Button>
         </div>
       </form>
     </>
@@ -763,6 +827,7 @@ interface Props {
   readonly revision: RevisionView
   readonly selection: ResolvedSelection | undefined
   readonly store: WorkspaceStore
+  readonly theme: WorkbenchTheme
   readonly target: DesignerTarget
   readonly triggerActiveConnections?: readonly ConnectorConnection[]
   readonly triggerAuthorizationPending: boolean
@@ -787,6 +852,7 @@ export function NodeInspector({
   revision,
   selection,
   store,
+  theme,
   target,
   triggerActiveConnections,
   triggerAuthorizationPending,
@@ -847,6 +913,7 @@ export function NodeInspector({
               focus={focus}
               selection={selection}
               store={store}
+              theme={theme}
             >
               <GeneralSettings disabled={disabled} node={selection.node} nodeId={selection.id} store={store} />
             </TaskDefinition>

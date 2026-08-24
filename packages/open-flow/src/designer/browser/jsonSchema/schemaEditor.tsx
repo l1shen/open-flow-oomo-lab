@@ -18,7 +18,6 @@ import { disposableStore } from '@wopjs/disposable'
 import Ajv from 'ajv'
 import ajvEN from 'ajv-i18n/localize/en/index.js'
 import ajvZH from 'ajv-i18n/localize/zh/index.js'
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { isEqual } from 'radash'
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -32,11 +31,12 @@ import { colorTypeOptions, dateTimeFormatOptions, optionOfColorType, optionOfDat
 import { CssWrapper } from '../components/cssWrapper.tsx'
 import { HandleRow } from '../components/handleRow.tsx'
 import { Input } from '../components/input.tsx'
-import { Input2 } from '../components/input2.tsx'
-import { defaultTooltipProps, Label } from '../components/label.tsx'
+import { TranslationInput } from '../components/input2.tsx'
+import { Label } from '../components/label.tsx'
 import { Null } from '../components/null.tsx'
-import { Select } from '../components/select.tsx'
-import { ToggleSwitch } from '../components/toggleSwitch.tsx'
+import { DesignerCombobox as Select } from '../components/select.tsx'
+import { LabeledSwitch } from '../components/toggleSwitch.tsx'
+import { DesignerTooltip } from '../components/tooltip.tsx'
 import { optionOfStringFormat, stringFormatOptions, typeHasSubpanel } from '../stores/schemaEditor/constants.ts'
 import { getBaseSchema, iconOf, isUndecidable, optionOf, ui_options, widgetSelectOptions } from './preset.ts'
 import { useHandleTrack } from './useHandleTrack.ts'
@@ -237,7 +237,7 @@ export function LowCodeEditor({ store, level, nameFactor = 1, valueFactor = 1, h
     <CssWrapper css={{ '--name-factor': nameFactor, '--value-factor': valueFactor }}>
       {hideHandle ? null : (
         <Field level={level} isLast={false} context={context} name={t('inputHandleEditor.handleName')}>
-          <Tooltip {...defaultTooltipProps} placement="bottomLeft" autoAdjustOverflow={false} title={renameError} open={!!renameError}>
+          <DesignerTooltip open={!!renameError} placement="bottomLeft" title={renameError}>
             <div className={styles.handleNameWrapper}>
               <Input
                 className={clsx(renameError && styles.renameError)}
@@ -251,11 +251,11 @@ export function LowCodeEditor({ store, level, nameFactor = 1, valueFactor = 1, h
                 }}
               />
             </div>
-          </Tooltip>
+          </DesignerTooltip>
         </Field>
       )}
       <Field level={level} isLast={false} context={context} name={t('inputHandleEditor.nullable')}>
-        <ToggleSwitch
+        <LabeledSwitch
           checked={nullable}
           onChange={store.nullable$.set}
           disabled={restricted || !context.canEditSchema}
@@ -279,11 +279,11 @@ export function LowCodeEditor({ store, level, nameFactor = 1, valueFactor = 1, h
         context={context}
         name={t('schemaEditor.kind')}
         labelSuffix={
-          <Tooltip {...defaultTooltipProps} title={t('schemaEditor.kindTooltip')} placement="top">
+          <DesignerTooltip placement="top" title={t('schemaEditor.kindTooltip')}>
             <div className={styles.question}>
               <i className="i-codicon:question" />
             </div>
-          </Tooltip>
+          </DesignerTooltip>
         }
         title="kind"
       >
@@ -312,7 +312,7 @@ export function LowCodeEditor({ store, level, nameFactor = 1, valueFactor = 1, h
           level={level ? '|' + level : ' '}
           variant="value-only"
           value={
-            <Input2
+            <TranslationInput
               multiline
               className={styles.input}
               rawValue$={store.description$}
@@ -774,7 +774,7 @@ function SubpanelObject(props: SubpanelProps) {
         title="additionalProperties"
         actions={toTrue(fields.length > 0 && store.context.canEditSchema) && [actionAdd]}
       >
-        <ToggleSwitch
+        <LabeledSwitch
           checked={additionalProperties}
           onChange={(v) => setValue(additionalProperties$, v ? undefined : v)}
           label={trueFalse}
@@ -863,7 +863,7 @@ function ObjectField(props: {
         expanded={hasSubpanel ? expanded : null}
         onExpandedChange={widget.expanded$.set}
         name={
-          <Tooltip {...defaultTooltipProps} placement="left" autoAdjustOverflow={false} title={renameError} open={!!renameError}>
+          <DesignerTooltip open={!!renameError} placement="left" title={renameError}>
             <div className={styles.objectFieldNameWrapper}>
               <Input
                 className={clsx(renameError && styles.renameError)}
@@ -877,7 +877,7 @@ function ObjectField(props: {
                 }}
               />
             </div>
-          </Tooltip>
+          </DesignerTooltip>
         }
         actions={[actionAdd, actionDelete]}
       >

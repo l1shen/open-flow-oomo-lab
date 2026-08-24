@@ -10,7 +10,6 @@ import { useTranslate } from 'val-i18n-react'
 import { NODE_HANDLE_CLASSNAME } from '../../base/designer.ts'
 import { stopPropagation } from '../../base/dom.ts'
 import { arrayFindIndexOrLength, isBannedName, toTrue } from '../../base/trivial.ts'
-import { Button } from '../../components/button.tsx'
 import { HandleIcon } from '../../components/handleIcon.tsx'
 import { HandleEditor } from '../../jsonSchema/handleEditor.tsx'
 import { SUBFLOW_VIEW_MODE } from '../../stores/designer/subflowDesigner.store.ts'
@@ -20,7 +19,7 @@ import { HandleRowStore } from '../../stores/nodeHandle/handleRow.store.ts'
 import { useDesignerStore } from '../DesignerStoreContext.tsx'
 import { useNodeStore } from '../Nodes/NodeStoreContext.tsx'
 import { useSubflowViewMode } from '../SubflowDesigner/SubflowViewModeContext.ts'
-import { Card } from './card.tsx'
+import { Card, NodeSectionActionButton } from './card.tsx'
 import { useDragAndDrop } from './dragNDrop.ts'
 import { GroupedHandles } from './GroupedHandles.tsx'
 
@@ -119,18 +118,7 @@ export const OutputSection: React.FC<OutputSectionProps> = /* @__PURE__ */ memo(
           {additional ? <i className="i-carbon:chevron-down" /> : <i className="i-carbon:chevron-right" />}
         </button>
         <span>{t('blockEditor.defaultAdditionalOutputs')}</span>
-        <Button
-          key={action.title}
-          titlePlacement="top"
-          wrapperClassName={styles.action}
-          title={action.title}
-          onClick={(ev) => {
-            stopPropagation(ev)
-            action.onClick(ev)
-          }}
-        >
-          <i className={action.icon} />
-        </Button>
+        <NodeSectionActionButton action={action} />
       </div>
     )
   }

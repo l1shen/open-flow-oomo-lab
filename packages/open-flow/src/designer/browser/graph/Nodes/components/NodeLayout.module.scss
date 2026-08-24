@@ -45,7 +45,7 @@
   background: var(--node-background-color);
   box-shadow: var(--node-shadow);
 
-  &:has(:global(.react-select__menu)) {
+  &:has(:global([data-slot='combobox-content'])) {
     overflow: visible;
   }
 

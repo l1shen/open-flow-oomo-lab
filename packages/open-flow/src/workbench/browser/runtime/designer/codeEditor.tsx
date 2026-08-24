@@ -1,9 +1,8 @@
 import type { ReactElement } from 'react'
+import type { WorkbenchTheme } from '../contract.ts'
 
 import { useEffect, useRef, useState } from 'react'
 import { CodeMirrorStringEditorFactory } from '../../codeMirrorStringEditor.ts'
-
-const editorFactory = import('@uiw/codemirror-theme-github').then(({ githubLight }) => new CodeMirrorStringEditorFactory({ theme: githubLight }))
 
 type Editor = Awaited<ReturnType<CodeMirrorStringEditorFactory['create']>>
 
@@ -14,11 +13,12 @@ interface Props {
   readonly loadingLabel: string
   readonly location?: { readonly column: number; readonly line: number }
   readonly onChange: (value: string) => void
+  readonly theme: WorkbenchTheme
   readonly uri: string
   readonly value: string
 }
 
-export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, location, onChange, uri, value }: Props): ReactElement {
+export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, location, onChange, theme, uri, value }: Props): ReactElement {
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<Editor>()
   const syncing = useRef(false)
@@ -40,9 +40,9 @@ export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, loca
     let disposed = false
     setFailed(false)
     setLoading(true)
-    void editorFactory
-      .then((factory) =>
-        factory.create(container, uri, {
+    void import('@uiw/codemirror-theme-github')
+      .then(({ githubDark, githubLight }) =>
+        new CodeMirrorStringEditorFactory({ theme: theme == 'dark' ? githubDark : githubLight }).create(container, uri, {
           ariaLabel,
           automaticLayout: true,
           language: 'javascript',
@@ -78,7 +78,7 @@ export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, loca
       current?.dispose()
       if (editor.current === current) editor.current = undefined
     }
-  }, [ariaLabel, uri])
+  }, [ariaLabel, theme, uri])
 
   useEffect(() => {
     const current = editor.current

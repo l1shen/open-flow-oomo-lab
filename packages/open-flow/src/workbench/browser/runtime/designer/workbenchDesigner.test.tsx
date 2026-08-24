@@ -38,7 +38,7 @@ describe('WorkbenchDesigner', () => {
   it('does not route externally managed Code Tasks through inline Scriptlet setup', async () => {
     const onAddNode = vi.fn(async () => 'created')
     const onOpenBlocks = vi.fn()
-    renderToStaticMarkup(
+    const markup = renderToStaticMarkup(
       <I18nProvider i18n={createI18n('en')}>
         <WorkbenchDesigner
           addNodeOptions={[codeTask]}
@@ -70,21 +70,67 @@ describe('WorkbenchDesigner', () => {
           provideAddNodeOptions={async () => undefined}
           selectedNodeIds={[]}
           target={{ id: 'main', kind: 'flow' }}
+          theme="dark"
         />
       </I18nProvider>,
     )
 
+    expect(markup).toContain('aria-expanded="false"')
+    expect(markup).not.toContain('aria-pressed=')
+    expect(markup).toContain('data-slot="canvas-control-group"')
     expect(captured.props?.addItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ icon: ':carbon:code:', id: 'javascript', type: 'block' }),
         expect.objectContaining({ id: 'workbench:browse-provider-triggers', type: 'trigger' }),
       ]),
     )
+    expect(captured.props?.dark).toBe(true)
     await captured.props?.onAddNode('javascript', { x: 10, y: 20 }, connection)
     expect(onAddNode).toHaveBeenCalledWith(codeTask, { x: 10, y: 20 }, connection)
 
     await captured.props?.onAddNode('workbench:browse-provider-triggers', { x: 10, y: 20 })
     expect(onOpenBlocks).toHaveBeenCalledOnce()
+  })
+
+  it('reports both canvas panels as expanded when they are visible', () => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider i18n={createI18n('en')}>
+        <WorkbenchDesigner
+          addNodeOptions={[]}
+          blocksOpen
+          disabled={false}
+          inspectorOpen
+          model={{ edges: [], nodes: [], viewport: { x: 0, y: 0, zoom: 1 } }}
+          onAddNode={async () => undefined}
+          onChangeComment={() => undefined}
+          onChangeInput={() => undefined}
+          onChangeTaskPorts={() => undefined}
+          onChangeNodeDescription={() => undefined}
+          onChangeTriggerConfig={() => undefined}
+          onChangeTriggerSchedule={() => undefined}
+          onChangeValue={() => undefined}
+          onChangeWebhook={() => undefined}
+          onConnect={() => undefined}
+          onCopy={() => undefined}
+          onDeleteEdge={() => undefined}
+          onDeleteNodes={() => undefined}
+          onDuplicate={() => undefined}
+          onMoveNodes={() => undefined}
+          onMoveViewport={() => undefined}
+          onOpenBlocks={() => undefined}
+          onOpenInspector={() => undefined}
+          onPaste={() => undefined}
+          onSelectNodes={() => undefined}
+          onToggleInspector={() => undefined}
+          provideAddNodeOptions={async () => undefined}
+          selectedNodeIds={[]}
+          target={{ id: 'main', kind: 'flow' }}
+          theme="dark"
+        />
+      </I18nProvider>,
+    )
+
+    expect(markup.match(/aria-expanded="true"/g)).toHaveLength(2)
   })
 
   it('rejects connections whose output schema cannot satisfy the input schema', () => {
@@ -143,6 +189,7 @@ describe('WorkbenchDesigner', () => {
           provideAddNodeOptions={async () => undefined}
           selectedNodeIds={[]}
           target={{ id: 'main', kind: 'flow' }}
+          theme="light"
         />
       </I18nProvider>,
     )

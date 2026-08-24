@@ -55,28 +55,8 @@
 }
 
 .menu {
-  &:global(.ant-dropdown-menu-submenu),
-  &:global(.ant-dropdown-menu) {
-    font-size: var(--base-font-size);
-  }
-
-  :global(.ant-dropdown-menu-item),
-  :global(.ant-dropdown-menu-submenu-title) {
-    font-size: var(--base-font-size) !important;
-    border-radius: var(--widget-radius) !important;
-  }
-
-  :global(.ant-dropdown-menu-item-icon) {
-    font-size: var(--base-font-size) !important;
-  }
-
-  :global(.ant-dropdown-menu-submenu-title) {
-    align-items: center;
-  }
-
-  :global(.ant-dropdown-menu-title-content) {
-    white-space: nowrap;
-  }
+  font-size: var(--base-font-size);
+  white-space: nowrap;
 }
 
 .menuButton {

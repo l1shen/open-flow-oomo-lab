@@ -2,14 +2,13 @@ import styles from './OverviewNode.module.scss'
 import type { NodeStore } from '../../../stores/node/node.store.ts'
 
 import { useUpdateNodeInternals } from '@xyflow/react'
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { memo, useEffect, useRef } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { NODE_HANDLE_CLASSNAME } from '../../../base/designer.ts'
 import { Handle } from '../../../components/handle.tsx'
-import { defaultTooltipProps } from '../../../components/label.tsx'
+import { DesignerTooltip } from '../../../components/tooltip.tsx'
 import { DesignerIcon } from '../../../icons/DesignerIcon.tsx'
 import { OVERVIEW_INPUT_HANDLE_ID, OVERVIEW_OUTPUT_HANDLE_ID } from '../../../stores/edge/overviewEdges.ts'
 import { isPseudoNodeType, NODE_STATUS, NODE_TYPE } from '../../../stores/node/constants.ts'
@@ -131,9 +130,9 @@ export const OverviewNode: React.FC<OverviewNodeProps> = /* @__PURE__ */ memo(fu
         />
       )}
       {showError ? (
-        <Tooltip {...defaultTooltipProps} placement="top" title={t('nodeStatus.hasError')}>
+        <DesignerTooltip placement="top" title={t('nodeStatus.hasError')}>
           {icon}
-        </Tooltip>
+        </DesignerTooltip>
       ) : (
         icon
       )}

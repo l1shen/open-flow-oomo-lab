@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite'
 import UnoCSS from '@unocss/vite'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -90,7 +91,12 @@ async function buildRuntime(
     css: { modules: { generateScopedName } },
     define: { 'process.env': '{}' },
     logLevel: options.quiet ? 'silent' : 'info',
-    plugins: [esmExternalRequirePlugin({ external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/] }), twemojiCollectionPlugin(), UnoCSS(designerUnoConfig)],
+    plugins: [
+      esmExternalRequirePlugin({ external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/] }),
+      twemojiCollectionPlugin(),
+      tailwindcss(),
+      UnoCSS(designerUnoConfig),
+    ],
     root: options.sourceRoot,
   })
   if (entryPath == workbenchEntryPath) await extractFonts(path.join(outputPath, `${outputName}.css`), outputPath)

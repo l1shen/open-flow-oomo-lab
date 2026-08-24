@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import type { FlowDesignerViewInput, FlowDesignerViewOutput } from '../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import type { JsonValue } from './api.ts'
-import type { WorkbenchLanguage } from './contract.ts'
+import type { WorkbenchLanguage, WorkbenchTheme } from './contract.ts'
 import type { AddNodeOption } from './designer/addNodeOptions.ts'
 import type { CodeTaskPorts } from './designer/projectChanges.ts'
 import type { WorkbenchDesignerHandle } from './designer/workbenchDesigner.tsx'
@@ -105,12 +105,14 @@ function Editor({
   runDrawerOpen,
   runDrawerVisible,
   store,
+  theme,
 }: {
   readonly onCloseRuns: () => void
   readonly onToggleRuns: () => void
   readonly runDrawerOpen: boolean
   readonly runDrawerVisible: boolean
   readonly store: WorkbenchStore
+  readonly theme: WorkbenchTheme
 }): ReactElement {
   const t = useTranslate()
   const addNodeOptions = useVal(store.workspace.$.addNodeOptions)
@@ -230,10 +232,10 @@ function Editor({
     >
       <WorkbenchDesigner
         addNodeOptions={addNodeOptions}
-        blocksOpen={contextPanelMode == 'blocks'}
+        blocksOpen={contextPanelVisible && contextPanelMode == 'blocks'}
         disabled={authoringDisabled}
         focusNodeRequest={diagnosticFocus ?? nodeFocus}
-        inspectorOpen={contextPanelMode == 'inspector'}
+        inspectorOpen={contextPanelVisible && contextPanelMode == 'inspector'}
         model={designer}
         onAddNode={async (option, position, connection) => {
           const nodeId = await store.addNode(option, position, connection)
@@ -263,12 +265,14 @@ function Editor({
         ref={designerRef}
         selectedNodeIds={selectedNodeIds}
         target={target}
+        theme={theme}
       />
       {contextPanelVisible && (
         <ContextPanel
           focusOnOpen={contextPanelMode == 'inspector' && focusInspectorOnOpen.current}
           icon={contextPanelMode == 'blocks' ? 'plus' : inspectorIcon(selection, target)}
           onClose={() => closeContextPanel()}
+          theme={theme}
           title={contextPanelMode == 'blocks' ? t('contextPanel.blocks') : (selectedDesignerNode?.title ?? targetName ?? t('inspector.title'))}
         >
           {contextPanelMode == 'blocks' ? (
@@ -299,6 +303,7 @@ function Editor({
                 selection={selection}
                 store={store.workspace}
                 target={target}
+                theme={theme}
                 triggerActiveConnections={triggerActiveConnections}
                 triggerAuthorizationPending={triggerAuthorizationPending}
                 triggerConnection={triggerConnection}
@@ -320,11 +325,13 @@ export default function FlowWorkspace({
   navigation,
   onLanguageChange,
   store,
+  theme,
 }: {
   readonly language: WorkbenchLanguage
   readonly navigation: NavigationStore
   readonly onLanguageChange?: ((language: WorkbenchLanguage) => void) | undefined
   readonly store: WorkbenchStore
+  readonly theme: WorkbenchTheme
 }): ReactElement {
   const [runDrawerVisible, setRunDrawerVisible] = useState(false)
   const [runDrawerOpen, setRunDrawerOpen] = useState(true)
@@ -413,6 +420,7 @@ export default function FlowWorkspace({
             runDrawerOpen={runDrawerOpen}
             runDrawerVisible={runDrawerVisible}
             store={store}
+            theme={theme}
           />
         ) : view == 'runs' ? (
           <RunsView onLocateEvent={locateRunEvent} store={store} />

@@ -6,20 +6,22 @@ import type { InputProps } from './input.tsx'
 import type { TranslateKeyEvent } from './userLocales.tsx'
 
 import { send } from '@wopjs/event'
-import { Dropdown, Popover } from 'antd'
 import { clsx } from 'clsx'
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useLang, useTranslate } from 'val-i18n-react'
 import { compute } from 'value-enhancer'
 import { shallowPlainObjectEqual } from '../../../base/common/equality.ts'
+import { Button } from '../../../ui/browser/button.tsx'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../../ui/browser/dropdown-menu.tsx'
+import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/browser/popover.tsx'
 import { fixTranslateKey, generateTranslateKey, getOwnValue, isBannedName, toUserTranslateKey } from '../base/trivial.ts'
 import { useGetStaticPopupContainer } from '../graph/ReactFlowContainer/useGetPopupContainer.ts'
 import { getProperLocale$ } from '../stores/designer/l10n.ts'
 import { Input } from './input.tsx'
 import { useUserLocalesContext } from './userLocales.tsx'
 
-export interface Input2Props extends Omit<InputProps, 'value' | 'onChange' | 'onRealChange'> {
+export interface TranslationInputProps extends Omit<InputProps, 'value' | 'onChange' | 'onRealChange'> {
   rawValue$?: Val<string | undefined>
   displayValue$: ReadonlyVal<string | undefined>
   useRealChange?: boolean
@@ -29,7 +31,7 @@ export interface Input2Props extends Omit<InputProps, 'value' | 'onChange' | 'on
 }
 
 /** A `%key%` `rawValue$` resolves its display value through `userLocales`. */
-export const Input2: React.FC<Input2Props> = /*#__PURE__*/ memo(function Input$({
+export const TranslationInput: React.FC<TranslationInputProps> = /*#__PURE__*/ memo(function TranslationInput({
   className,
   rawValue$,
   displayValue$,
@@ -37,7 +39,7 @@ export const Input2: React.FC<Input2Props> = /*#__PURE__*/ memo(function Input$(
   translateKeyHint,
   translationFallback,
   ...props
-}: Input2Props) {
+}: TranslationInputProps) {
   const currentLang = useLang()
   const l10n = useUserLocalesContext()
   const rawValue = useVal(rawValue$)
@@ -253,33 +255,27 @@ function TranslateButton({
 
   if (translateKey == null) {
     return (
-      <Dropdown
-        open={open}
-        trigger={['click']}
-        classNames={{ root: styles.translateMenu }}
-        align={{ points: ['tr', 'br'], offset: [0, 0] }}
-        arrow={false}
-        getPopupContainer={getPopupContainer}
-        menu={{
-          items: [
-            {
-              key: 'create',
-              label: t('l10n.createKey'),
-              onClick: () => onCreateKey(resolveTranslationSeed(displayValue, translationFallback), currentLang),
-            },
-          ],
-        }}
-        onOpenChange={onOpen}
-      >
-        <button
-          title={t('l10n.createKey')}
-          className={clsx(styles.translateButton, 'oo-designer-translate-btn')}
-          onBlur={() => onFocus(false)}
-          onFocus={() => onFocus(true)}
-        >
-          <i className="i-carbon:translate" />
-        </button>
-      </Dropdown>
+      <DropdownMenu open={open} onOpenChange={(nextOpen) => onOpen(nextOpen)}>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              title={t('l10n.createKey')}
+              className={clsx(styles.translateButton, 'oo-designer-translate-btn')}
+              onBlur={() => onFocus(false)}
+              onFocus={() => onFocus(true)}
+              size="icon-xs"
+              variant="ghost"
+            >
+              <i className="i-carbon:translate" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" className={styles.translateMenu} container={getPopupContainer()} side="bottom" sideOffset={0}>
+          <DropdownMenuItem onClick={() => onCreateKey(resolveTranslationSeed(displayValue, translationFallback), currentLang)}>
+            {t('l10n.createKey')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     )
   }
 
@@ -289,10 +285,6 @@ function TranslateButton({
   return (
     <Popover
       open={open}
-      align={{ points: ['tr', 'br'], offset: [0, 0] }}
-      arrow={false}
-      trigger={['click']}
-      classNames={{ root: styles.translatePanel }}
       onOpenChange={(nextOpen) => {
         if (!nextOpen && keyInputRef.current?.value === '') {
           onDeleteKey()
@@ -300,8 +292,22 @@ function TranslateButton({
           onOpen(nextOpen)
         }
       }}
-      getPopupContainer={getPopupContainer}
-      content={
+    >
+      <PopoverTrigger
+        render={
+          <Button
+            title={t('l10n.openPanel')}
+            className={clsx(styles.translateButton, 'oo-designer-translate-btn')}
+            onBlur={() => onFocus(false)}
+            onFocus={() => onFocus(true)}
+            size="icon-xs"
+            variant="ghost"
+          >
+            <i className="i-carbon:translate" />
+          </Button>
+        }
+      />
+      <PopoverContent align="end" className={styles.translatePanel} container={getPopupContainer()} side="bottom" sideOffset={0}>
         <div className={styles.translations}>
           <div className={styles.translateKey} title={translateKey}>
             <div className={styles.translateKeyId}>{t('l10n.translateKey')}</div>
@@ -311,7 +317,7 @@ function TranslateButton({
                 className={styles.translateKeyInput}
                 value={translateKey}
                 warning={error}
-                // Nested Tooltip cannot render above this Ant Design Popover, so show the warning as a placeholder.
+                // Show validation beside the edited key without creating a competing focus overlay.
                 placeholder={error}
                 isClearable
                 onChange={(key: string | null, setValue) => {
@@ -328,20 +334,17 @@ function TranslateButton({
           {Languages.map((language) => (
             <div key={language} data-lang={language} className={styles.translation}>
               <div className={styles.language}>{t(`l10n.${language}`)}</div>
-              <TranslationInput autoFocus={autoFocusLang === language} multiline={multiline} lang={language} translations={translations} onChange={onChange} />
+              <TranslationValueInput
+                autoFocus={autoFocusLang === language}
+                multiline={multiline}
+                lang={language}
+                translations={translations}
+                onChange={onChange}
+              />
             </div>
           ))}
         </div>
-      }
-    >
-      <button
-        title={t('l10n.openPanel')}
-        className={clsx(styles.translateButton, 'oo-designer-translate-btn')}
-        onBlur={() => onFocus(false)}
-        onFocus={() => onFocus(true)}
-      >
-        <i className="i-carbon:translate" />
-      </button>
+      </PopoverContent>
     </Popover>
   )
 }
@@ -350,7 +353,7 @@ export function resolveTranslationSeed(value: string | undefined, fallback: stri
   return value || fallback || ''
 }
 
-interface TranslationInputProps {
+interface TranslationValueInputProps {
   readonly autoFocus?: boolean
   readonly multiline?: boolean
   readonly lang: string
@@ -358,7 +361,7 @@ interface TranslationInputProps {
   readonly onChange: (value: string, lang: string) => void
 }
 
-function TranslationInput({ autoFocus, multiline, lang, translations, onChange }: TranslationInputProps) {
+function TranslationValueInput({ autoFocus, multiline, lang, translations, onChange }: TranslationValueInputProps) {
   const t = useTranslate()
 
   return (

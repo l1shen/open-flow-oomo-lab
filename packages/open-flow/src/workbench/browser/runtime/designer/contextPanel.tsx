@@ -1,14 +1,22 @@
+import darkTheme from '../../../../designer/browser/styles/dark.module.scss'
+import lightTheme from '../../../../designer/browser/styles/light.module.scss'
 import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode } from 'react'
 import type { IAddNodeMenuItem } from '../../../../designer/browser/stores/designer/designer.store.ts'
+import type { WorkbenchTheme } from '../contract.ts'
 import type { IconName } from '../icons.tsx'
 import type { AddNodeOption } from './addNodeOptions.ts'
 
+import { clsx } from 'clsx'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslate } from 'val-i18n-react'
 import { OverlayScrollbar } from '../../../../designer/browser/components/overlayScrollbar.tsx'
 import { filterBlockPickerItems, useBlockPickerItems } from '../../../../designer/browser/graph/blockPicker.ts'
 import { BlockPickerRow } from '../../../../designer/browser/graph/BlockQuickPickPanel.tsx'
 import { setAddItemId } from '../../../../designer/browser/graph/ReactFlowContainer/addItemDrag.ts'
+import { ThemeProvider } from '../../../../designer/browser/theme/ThemeProvider.tsx'
+import { Button } from '../../../../ui/browser/button.tsx'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '../../../../ui/browser/input-group.tsx'
+import { Spinner } from '../../../../ui/browser/spinner.tsx'
 import { Icon } from '../icons.tsx'
 import { indexAddNodeOptions } from './addNodeOptions.ts'
 
@@ -17,6 +25,7 @@ interface ContextPanelProps {
   readonly focusOnOpen: boolean
   readonly icon: IconName
   readonly onClose: () => void
+  readonly theme: WorkbenchTheme
   readonly title: string
 }
 
@@ -54,7 +63,7 @@ function useOverlayPanel(): boolean {
   return overlay
 }
 
-export function ContextPanel({ children, focusOnOpen, icon, onClose, title }: ContextPanelProps): ReactElement {
+export function ContextPanel({ children, focusOnOpen, icon, onClose, theme, title }: ContextPanelProps): ReactElement {
   const t = useTranslate()
   const overlay = useOverlayPanel()
   const panel = useRef<HTMLElement>(null)
@@ -106,29 +115,32 @@ export function ContextPanel({ children, focusOnOpen, icon, onClose, title }: Co
   }
 
   return (
-    <>
-      <div aria-hidden="true" className="context-panel-backdrop" onClick={onClose} />
-      <aside
-        aria-labelledby={titleId}
-        aria-modal={overlay || undefined}
-        className="context-panel"
-        onKeyDown={keyDown}
-        ref={panel}
-        role={overlay ? 'dialog' : 'complementary'}
-        tabIndex={-1}
-      >
-        <header>
-          <span className="node-icon small">
-            <Icon name={icon} size={16} />
-          </span>
-          <strong id={titleId}>{title}</strong>
-          <button aria-label={t('contextPanel.close')} className="icon-button" onClick={onClose} type="button">
-            <Icon name="close" size={16} />
-          </button>
-        </header>
-        <div className="context-panel-content">{children}</div>
-      </aside>
-    </>
+    <ThemeProvider dark={theme == 'dark'}>
+      <>
+        <div aria-hidden="true" className="context-panel-backdrop" onClick={onClose} />
+        <aside
+          aria-labelledby={titleId}
+          aria-modal={overlay || undefined}
+          className={clsx('context-panel', theme == 'dark' ? darkTheme.theme : lightTheme.theme)}
+          data-theme={theme}
+          onKeyDown={keyDown}
+          ref={panel}
+          role={overlay ? 'dialog' : 'complementary'}
+          tabIndex={-1}
+        >
+          <header>
+            <span className="node-icon small">
+              <Icon name={icon} size={16} />
+            </span>
+            <strong id={titleId}>{title}</strong>
+            <Button aria-label={t('contextPanel.close')} onClick={onClose} size="icon-sm" type="button" variant="ghost">
+              <Icon name="close" size={16} />
+            </Button>
+          </header>
+          <div className="context-panel-content">{children}</div>
+        </aside>
+      </>
+    </ThemeProvider>
   )
 }
 
@@ -232,16 +244,18 @@ function LibraryItem({ disabled, item, onAdd, onDrag, onLoadChoices }: LibraryIt
           {choices?.map((choice) => {
             const choiceItem = { ...item, choices: undefined, data: choice.data, description: choice.description, label: choice.label }
             return (
-              <button
+              <Button
+                className="block-library-item h-auto min-h-0 justify-start whitespace-normal"
                 disabled={disabled}
                 draggable={!disabled}
                 key={choice.data}
                 onClick={() => onAdd(choice.data)}
                 onDragStart={(event) => onDrag(event, choice.data)}
                 type="button"
+                variant="ghost"
               >
                 <BlockPickerRow disabled={disabled} item={choiceItem} />
-              </button>
+              </Button>
             )
           })}
           {loading && (
@@ -250,9 +264,9 @@ function LibraryItem({ disabled, item, onAdd, onDrag, onLoadChoices }: LibraryIt
           {!loading && error && (
             <div className="block-library-choice-feedback" role="alert">
               <span>{t(connectionChoices ? 'contextPanel.loadConnectionsFailed' : 'contextPanel.loadActionsFailed')}</span>
-              <button className="button secondary small" onClick={load} type="button">
+              <Button onClick={load} size="sm" type="button" variant="secondary">
                 {t('contextPanel.retry')}
-              </button>
+              </Button>
             </div>
           )}
           {!loading && !error && loaded && choices?.length == 0 && (
@@ -263,16 +277,17 @@ function LibraryItem({ disabled, item, onAdd, onDrag, onLoadChoices }: LibraryIt
     )
   }
   return (
-    <button
-      className="block-library-item"
+    <Button
+      className="block-library-item h-auto min-h-0 justify-start whitespace-normal"
       disabled={disabled}
       draggable={!disabled}
       onClick={() => item.data != null && onAdd(item.data)}
       onDragStart={(event) => item.data != null && onDrag(event, item.data)}
       type="button"
+      variant="ghost"
     >
       <BlockPickerRow disabled={disabled} item={item} />
-    </button>
+    </Button>
   )
 }
 
@@ -338,17 +353,21 @@ export function BlockLibrary({ browseOptions, disabled, focusRequest, onAdd, onR
 
   return (
     <div aria-busy={adding || loading} className="block-library">
-      <label className="search-field block-library-search">
-        <span className="sr-only">{t('contextPanel.search')}</span>
-        <Icon name="search" size={15} />
-        <input
-          aria-label={t('contextPanel.search')}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={t('contextPanel.searchPlaceholder')}
-          ref={search}
-          value={query}
-        />
-      </label>
+      <div className="mx-3.5 mb-2 mt-3 flex-none">
+        <InputGroup className="block-library-search">
+          <span className="sr-only">{t('contextPanel.search')}</span>
+          <InputGroupAddon>
+            <Icon name="search" size={15} />
+          </InputGroupAddon>
+          <InputGroupInput
+            aria-label={t('contextPanel.search')}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t('contextPanel.searchPlaceholder')}
+            ref={search}
+            value={query}
+          />
+        </InputGroup>
+      </div>
       <OverlayScrollbar className="block-library-list" defer={false} tabIndex={-1}>
         <div className="block-library-list-content">
           {items.map((item) =>
@@ -367,16 +386,16 @@ export function BlockLibrary({ browseOptions, disabled, focusRequest, onAdd, onR
           )}
           {loading && (
             <div className="block-library-feedback" role="status">
-              <span className="block-library-spinner" />
+              <Spinner data-icon="inline-start" />
               {t('contextPanel.loading')}
             </div>
           )}
           {!loading && error && (
             <div className="block-library-feedback" role="alert">
               <span>{t('contextPanel.loadFailed')}</span>
-              <button className="button secondary small" onClick={retry} type="button">
+              <Button onClick={retry} size="sm" type="button" variant="secondary">
                 {t('contextPanel.retry')}
-              </button>
+              </Button>
             </div>
           )}
           {!loading && !error && items.length == 0 && <div className="block-library-feedback">{t('contextPanel.empty')}</div>}

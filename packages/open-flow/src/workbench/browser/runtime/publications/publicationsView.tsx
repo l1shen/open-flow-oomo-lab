@@ -8,6 +8,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useLang, useTranslate } from 'val-i18n-react'
 import { collapseAllNested, JSONViewer } from '../../../../designer/browser/jsonViewer/index.ts'
+import { Button } from '../../../../ui/browser/button.tsx'
 import { Icon } from '../icons.tsx'
 
 function compactId(value: string): string {
@@ -167,14 +168,14 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
         {loadFailed ? (
           <div className="publication-load-error">
             <span>{t('publication.loadFailed')}</span>
-            <button
-              className="button secondary small"
+            <Button
               disabled={projectId == null}
               onClick={() => projectId != null && void store.publications.load(projectId, flow.flowId)}
-              type="button"
+              size="sm"
+              variant="outline"
             >
               {t('empty.retry')}
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="publication-precondition">
@@ -185,10 +186,10 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                   {flow.hasUnpublishedChanges && <span>{t(invalid ? 'workspace.fixIssuesToPublish' : 'publication.publishDescription')}</span>}
                 </div>
                 {flow.hasUnpublishedChanges && (
-                  <button className="button primary" disabled={busy != null || invalid} onClick={() => void store.publications.publish()} type="button">
-                    <Icon name="publish" size={15} />
+                  <Button disabled={busy != null || invalid} onClick={() => void store.publications.publish()}>
+                    <Icon data-icon="inline-start" name="publish" />
                     {t(publishing ? 'workspace.publishing' : 'publication.publishDraft')}
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -246,24 +247,25 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
               return (
                 <Fragment key={binding.triggerNodeId}>
                   <div className={`trigger-binding-row${selected ? ' selected' : ''}`}>
-                    <button
+                    <Button
                       aria-expanded={selected}
                       className="trigger-binding-summary"
                       onClick={() => (selected ? store.publications.closeTrigger() : void store.publications.openTrigger(binding.triggerNodeId))}
                       type="button"
+                      variant="ghost"
                     >
                       <span className={`status-dot ${triggerClass(binding)}`} />
                       <strong title={binding.triggerNodeId}>{triggerName(binding, flow.flowId, revision)}</strong>
                       <span className={'trigger-binding-state ' + triggerClass(binding)}>{triggerLabel(binding, t)}</span>
                       <code className="trigger-binding-kind">{binding.kind}</code>
                       <span className="trigger-binding-detail-label">{t(selected ? 'publication.hideTriggerDetails' : 'publication.triggerDetails')}</span>
-                    </button>
+                    </Button>
                     {binding.currentPublicationId != null && (
-                      <button
-                        className="button secondary small"
+                      <Button
                         disabled={busy != null || changingTriggerId != null}
                         onClick={() => void store.publications.toggleTrigger(binding)}
-                        type="button"
+                        size="sm"
+                        variant="outline"
                       >
                         {t(
                           changing
@@ -274,7 +276,7 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                               ? 'publication.resumeTrigger'
                               : 'publication.pauseTrigger',
                         )}
-                      </button>
+                      </Button>
                     )}
                   </div>
                   {selected && (
@@ -317,16 +319,16 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                               <span>{t('publication.webhookUrl')}</span>
                               <div>
                                 <code title={detail.binding.endpointUrl}>{detail.binding.endpointUrl}</code>
-                                <button
-                                  className="button secondary small"
+                                <Button
                                   onClick={async () => {
                                     await navigator.clipboard.writeText(detail.binding.endpointUrl!)
                                     setCopiedEndpoint(detail.binding.endpointUrl)
                                   }}
-                                  type="button"
+                                  size="sm"
+                                  variant="outline"
                                 >
                                   {t(copiedEndpoint == detail.binding.endpointUrl ? 'publication.webhookCopied' : 'publication.webhookCopy')}
-                                </button>
+                                </Button>
                               </div>
                             </div>
                           )}
@@ -338,14 +340,9 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                                     <h3>{t('publication.pollTest')}</h3>
                                     <p>{t('publication.pollTestDescription')}</p>
                                   </div>
-                                  <button
-                                    className="button secondary small"
-                                    disabled={testingTriggerId != null}
-                                    onClick={() => void store.publications.testTrigger()}
-                                    type="button"
-                                  >
+                                  <Button disabled={testingTriggerId != null} onClick={() => void store.publications.testTrigger()} size="sm" variant="outline">
                                     {t(testingTriggerId == detail.binding.triggerNodeId ? 'publication.pollTesting' : 'publication.pollTest')}
-                                  </button>
+                                  </Button>
                                 </header>
                                 {testResult != null && (
                                   <div className="trigger-test-result">
@@ -391,15 +388,16 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                                 </div>
                               )}
                               {(activitiesNextCursor != null || activitiesLoadFailed) && !activitiesLoading && (
-                                <button
-                                  className="button secondary small trigger-activities-more"
+                                <Button
+                                  className="trigger-activities-more"
                                   disabled={activitiesLoadingMore}
                                   onClick={() =>
                                     void (activitiesNextCursor == null
                                       ? store.publications.openTrigger(detail.binding.triggerNodeId)
                                       : store.publications.loadMoreTriggerActivities())
                                   }
-                                  type="button"
+                                  size="sm"
+                                  variant="outline"
                                 >
                                   {t(
                                     activitiesLoadingMore
@@ -408,7 +406,7 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                                         ? 'empty.retry'
                                         : 'publication.loadMoreActivities',
                                   )}
-                                </button>
+                                </Button>
                               )}
                             </section>
                           </div>
@@ -482,14 +480,14 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                         </td>
                         <td>
                           {!current && currentPublicationId != null && (
-                            <button
-                              className="button secondary small"
+                            <Button
                               disabled={busy != null}
                               onClick={() => setConfirming(confirm ? undefined : publication.publicationId)}
-                              type="button"
+                              size="sm"
+                              variant="outline"
                             >
                               {t('publication.rollback')}
-                            </button>
+                            </Button>
                           )}
                         </td>
                       </tr>
@@ -507,22 +505,12 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                                 </span>
                               </div>
                               <div>
-                                <button
-                                  className="button secondary small"
-                                  disabled={rollingBackPublicationId != null}
-                                  onClick={() => setConfirming(undefined)}
-                                  type="button"
-                                >
+                                <Button disabled={rollingBackPublicationId != null} onClick={() => setConfirming(undefined)} size="sm" variant="outline">
                                   {t('common.cancel')}
-                                </button>
-                                <button
-                                  className="button secondary small danger"
-                                  disabled={busy != null}
-                                  onClick={() => void store.publications.rollback(publication)}
-                                  type="button"
-                                >
+                                </Button>
+                                <Button disabled={busy != null} onClick={() => void store.publications.rollback(publication)} size="sm" variant="destructive">
                                   {t(rollingBackPublicationId == publication.publicationId ? 'publication.rollingBack' : 'publication.rollback')}
-                                </button>
+                                </Button>
                               </div>
                             </div>
                           </td>
@@ -536,9 +524,9 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
           </div>
         )}
         {nextCursor != null && (
-          <button className="publication-load-more" disabled={loadingMore} onClick={() => void store.publications.loadMore()} type="button">
+          <Button className="publication-load-more" disabled={loadingMore} onClick={() => void store.publications.loadMore()} variant="outline">
             {t(loadingMore ? 'run.loadingMore' : loadMoreFailed ? 'run.retryLoadMore' : 'run.loadMore')}
-          </button>
+          </Button>
         )}
       </section>
     </section>

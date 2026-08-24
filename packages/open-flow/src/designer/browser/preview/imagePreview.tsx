@@ -9,5 +9,5 @@ export interface ImagePreviewProps {
 }
 
 export const ImagePreview: FC<ImagePreviewProps> = ({ src, className }) => {
-  return <img className={clsx('block w-full h-full p-0 object-contain', className)} src={makeFreshMediaUrl(src)} />
+  return <img alt="" className={clsx('block w-full h-full p-0 object-contain', className)} src={makeFreshMediaUrl(src)} />
 }

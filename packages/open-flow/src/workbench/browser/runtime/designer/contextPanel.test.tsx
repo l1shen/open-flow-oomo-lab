@@ -46,7 +46,7 @@ describe('Context Panel', () => {
   it('renders one panel shell and a browsable list with descriptions and choices', () => {
     const markup = renderToStaticMarkup(
       <I18nProvider i18n={createI18n('en')}>
-        <ContextPanel focusOnOpen={false} icon="plus" onClose={() => undefined} title="Blocks">
+        <ContextPanel focusOnOpen={false} icon="plus" onClose={() => undefined} theme="dark" title="Blocks">
           <BlockLibrary
             browseOptions={async () => []}
             disabled={false}
@@ -60,9 +60,11 @@ describe('Context Panel', () => {
       </I18nProvider>,
     )
 
-    expect(markup.match(/class="context-panel"/g)).toHaveLength(1)
+    expect(markup.match(/class="context-panel /g)).toHaveLength(1)
     expect(markup).toContain('aria-hidden="true" class="context-panel-backdrop"')
+    expect(markup).toContain('data-theme="dark"')
     expect(markup).toContain('Search blocks')
+    expect(markup).toContain('mx-3.5')
     expect(markup).toContain('GitHub actions.')
     expect(markup).toContain('Create issue')
     expect(markup).toContain('<details')

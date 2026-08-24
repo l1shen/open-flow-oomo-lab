@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react'
+import type { ReactElement, ReactNode, SVGProps } from 'react'
 
 export type IconName =
   | 'alert'
@@ -22,6 +22,7 @@ export type IconName =
   | 'plus'
   | 'project'
   | 'publish'
+  | 'refresh'
   | 'run'
   | 'search'
   | 'settings'
@@ -157,6 +158,15 @@ function glyph(name: IconName): ReactNode {
           <path d="M5 14v5h14v-5" />
         </>
       )
+    case 'refresh':
+      return (
+        <>
+          <path d="M20 11a8 8 0 0 0-14.7-4.4L3 9" />
+          <path d="M3 4v5h5" />
+          <path d="M4 13a8 8 0 0 0 14.7 4.4L21 15" />
+          <path d="M21 20v-5h-5" />
+        </>
+      )
     case 'search':
       return (
         <>
@@ -200,9 +210,9 @@ function glyph(name: IconName): ReactNode {
   }
 }
 
-export function Icon({ name, size = 18 }: { readonly name: IconName; readonly size?: number }): ReactElement {
+export function Icon({ name, size = 18, ...props }: { readonly name: IconName; readonly size?: number } & SVGProps<SVGSVGElement>): ReactElement {
   return (
-    <svg aria-hidden="true" fill="none" height={size} viewBox="0 0 24 24" width={size}>
+    <svg aria-hidden="true" fill="none" height={size} viewBox="0 0 24 24" width={size} {...props}>
       <g stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7">
         {glyph(name)}
       </g>

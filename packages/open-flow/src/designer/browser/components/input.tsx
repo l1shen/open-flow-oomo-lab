@@ -1,12 +1,14 @@
 import styles from './input.module.scss'
 
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Button } from '../../../ui/browser/button.tsx'
+import { Input as ShadcnInput } from '../../../ui/browser/input.tsx'
+import { Textarea } from '../../../ui/browser/textarea.tsx'
 import { stopEvent } from '../base/dom.ts'
 import { forwardRef2 } from '../base/react.ts'
 import { isFunction, MAX_I32 } from '../base/trivial.ts'
-import { defaultTooltipProps } from './label.tsx'
+import { DesignerTooltip } from './tooltip.tsx'
 
 export interface InputProps<Clear extends boolean = false> {
   id?: string
@@ -169,7 +171,11 @@ export const Input: <Clear extends boolean = false>(props: InputProps<Clear> & R
     }
     sharedProps['aria-label'] = props.ariaLabel
 
-    const input = props.multiline ? <textarea ref={ref} {...(sharedProps as any)} /> : <input ref={ref} {...sharedProps} />
+    const input = props.multiline ? (
+      <Textarea ref={ref as React.Ref<HTMLTextAreaElement>} {...(sharedProps as any)} />
+    ) : (
+      <ShadcnInput ref={ref} {...sharedProps} />
+    )
 
     useEffect(() => {
       if (wrapperRef.current && props.onResize) {
@@ -242,9 +248,16 @@ export const Input: <Clear extends boolean = false>(props: InputProps<Clear> & R
         {(props.suffix || props.isClearable) && (
           <div className={styles.suffix}>
             {props.isClearable && (
-              <button tabIndex={-1} className={styles.clear} onMouseDown={stopEvent} onClick={() => (props as InputProps<true>).onChange?.(null, setValue)}>
+              <Button
+                className={styles.clear}
+                onClick={() => (props as InputProps<true>).onChange?.(null, setValue)}
+                onMouseDown={stopEvent}
+                size="icon-xs"
+                tabIndex={-1}
+                variant="ghost"
+              >
                 <i className="i-codicon:close" />
-              </button>
+              </Button>
             )}
             {props.isClearable && props.suffix && <div className={styles.clearIndicator} />}
             {props.suffix}
@@ -254,8 +267,8 @@ export const Input: <Clear extends boolean = false>(props: InputProps<Clear> & R
     )
 
     return (
-      <Tooltip {...defaultTooltipProps} placement="top" title={props.warning}>
+      <DesignerTooltip placement="top" title={props.warning}>
         {element}
-      </Tooltip>
+      </DesignerTooltip>
     )
   })

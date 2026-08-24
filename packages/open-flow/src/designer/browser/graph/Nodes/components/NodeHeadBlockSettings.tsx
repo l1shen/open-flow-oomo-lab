@@ -5,11 +5,10 @@ import type { TFunction } from 'val-i18n'
 import type { Val } from 'value-enhancer'
 import type { HandleName } from '../../../../../schema/index.ts'
 import type { InputHandleDef, OutputHandleDef } from '../../../../../schema/interface.d.ts'
-import type { IBasicOption } from '../../../components/select.tsx'
+import type { DesignerOption as IBasicOption } from '../../../components/select.tsx'
 import type { SubflowNodeStore } from '../../../stores/node/subflowNode.store.ts'
 import type { InlineTask, TaskNodeStore } from '../../../stores/node/taskNode.store.ts'
 
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
@@ -23,10 +22,11 @@ import { CssWrapper } from '../../../components/cssWrapper.tsx'
 import { HandleNoActions } from '../../../components/handleNoActions.tsx'
 import { HandleRow } from '../../../components/handleRow.tsx'
 import { Input } from '../../../components/input.tsx'
-import { Input2 } from '../../../components/input2.tsx'
-import { defaultTooltipProps, Label } from '../../../components/label.tsx'
-import { Select } from '../../../components/select.tsx'
-import { ToggleSwitch } from '../../../components/toggleSwitch.tsx'
+import { TranslationInput } from '../../../components/input2.tsx'
+import { Label } from '../../../components/label.tsx'
+import { DesignerCombobox as Select } from '../../../components/select.tsx'
+import { LabeledSwitch } from '../../../components/toggleSwitch.tsx'
+import { DesignerTooltip } from '../../../components/tooltip.tsx'
 import { useConnectorConnections } from '../../../connectorConnection.ts'
 import { DesignerIcon } from '../../../icons/DesignerIcon.tsx'
 import { useHandleTrack } from '../../../jsonSchema/useHandleTrack.ts'
@@ -285,7 +285,7 @@ function MetadataConfigs() {
         }
         value={
           nodeStore.display$ && (
-            <Input2
+            <TranslationInput
               className={styles.input}
               displayValue$={nodeStore.display$.title}
               rawValue$={toTrue(editable) && nodeStore.manifest$?.title}
@@ -313,15 +313,15 @@ function MetadataConfigs() {
           name={
             <Label className={styles.label} tooltipClassName={styles.labelTooltip} title="private">
               {t('blockEditor.privateField')}{' '}
-              <Tooltip {...defaultTooltipProps} title={t('blockEditor.privateHelp')} placement="top">
+              <DesignerTooltip placement="top" title={t('blockEditor.privateHelp')}>
                 <span className="cursor-help mr-1 text-[1.2em]">
                   <i className="i-codicon:question" />
                 </span>
-              </Tooltip>
+              </DesignerTooltip>
             </Label>
           }
           value={
-            <ToggleSwitch
+            <LabeledSwitch
               label={{ true: t('blockEditor.private'), false: t('blockEditor.public') }}
               checked={asTrue(privateValue)}
               onChange={nodeStore.manifest$.private.set}
@@ -362,7 +362,7 @@ function MetadataConfigs() {
                 onRealChange={(value) => nodeStore.changeDescription?.(value.trim() == '' ? undefined : value.trim())}
               />
             ) : (
-              <Input2
+              <TranslationInput
                 multiline
                 className={styles.input}
                 displayValue$={nodeStore.display$.description}
@@ -551,7 +551,7 @@ function NodeIdOrDirRenameInput() {
   const renameError = useVal(renameError$)
 
   return (
-    <Tooltip {...defaultTooltipProps} placement="bottomLeft" autoAdjustOverflow={false} title={renameError} open={!!renameError}>
+    <DesignerTooltip open={!!renameError} placement="bottomLeft" title={renameError}>
       <div className={styles.nodeIdWrapper}>
         <Input
           returnToCommit
@@ -566,7 +566,7 @@ function NodeIdOrDirRenameInput() {
           }}
         />
       </div>
-    </Tooltip>
+    </DesignerTooltip>
   )
 }
 

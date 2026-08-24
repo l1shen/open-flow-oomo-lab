@@ -3,16 +3,16 @@ import type { JSX } from 'react/jsx-runtime'
 import type { Val } from 'value-enhancer'
 
 import { isDefined } from '@wopjs/cast'
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { useVal } from 'use-value-enhancer'
+import { Badge } from '../../../../ui/browser/badge.tsx'
+import { Button } from '../../../../ui/browser/button.tsx'
 import { NODE_HANDLE_CLASSNAME } from '../../base/designer.ts'
 import { stopPropagation } from '../../base/dom.ts'
 import { isEmptyReactNode } from '../../base/react.ts'
 import { asArray, filterString, toTrue } from '../../base/trivial.ts'
-import { Button } from '../../components/button.tsx'
-import { defaultTooltipProps } from '../../components/label.tsx'
 import { useNodeMiniMapPhase } from '../../components/minimap.tsx'
+import { DesignerTooltip } from '../../components/tooltip.tsx'
 import { NodeMiniMapPhase } from '../../stores/designer/nodeMiniMap.ts'
 
 export interface ICardAction {
@@ -46,6 +46,28 @@ export interface CardProps {
   readonly dragPosition?: number
 }
 
+export function NodeSectionActionButton({ action }: { readonly action: ICardAction }): JSX.Element {
+  return (
+    <DesignerTooltip placement="top" title={action.title}>
+      <Button
+        aria-label={action.title}
+        aria-pressed={action.active}
+        className={styles.action}
+        disabled={action.disabled}
+        onClick={(event) => {
+          stopPropagation(event)
+          action.onClick(event)
+        }}
+        size="icon-xs"
+        variant={action.active ? 'default' : 'ghost'}
+      >
+        <i className={action.icon} />
+        {action.count != null && <Badge variant="secondary">{action.count}</Badge>}
+      </Button>
+    </DesignerTooltip>
+  )
+}
+
 export function Card(props: CardProps): JSX.Element {
   const storedCollapsed = useVal(props.collapsed$)
   const collapsed = props.forceCollapsed ?? storedCollapsed
@@ -71,30 +93,13 @@ export function Card(props: CardProps): JSX.Element {
         {props.titleSuffix}
       </span>
       {props.help && (
-        <Tooltip {...defaultTooltipProps} title={props.help} placement="top">
+        <DesignerTooltip placement="top" title={props.help}>
           <div className={styles.question}>
             <i className="i-codicon:question" />
           </div>
-        </Tooltip>
+        </DesignerTooltip>
       )}
-      {props.actions &&
-        asArray(props.actions).map((action) => (
-          <Button
-            key={action.title}
-            titlePlacement="top"
-            wrapperClassName={styles.action}
-            title={action.title}
-            count={action.count}
-            active={action.active}
-            onClick={(ev) => {
-              stopPropagation(ev)
-              action.onClick(ev)
-            }}
-            disabled={action.disabled}
-          >
-            <i className={action.icon} />
-          </Button>
-        ))}
+      {props.actions && asArray(props.actions).map((action) => <NodeSectionActionButton action={action} key={action.title} />)}
     </h4>
   )
 

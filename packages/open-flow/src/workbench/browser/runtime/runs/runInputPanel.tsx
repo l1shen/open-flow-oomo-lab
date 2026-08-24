@@ -4,6 +4,9 @@ import type { RunInputGroup, RunInputRequest, RunRequestStore } from './runReque
 import { useEffect, useRef } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
+import { Alert, AlertDescription } from '../../../../ui/browser/alert.tsx'
+import { Button } from '../../../../ui/browser/button.tsx'
+import { Spinner } from '../../../../ui/browser/spinner.tsx'
 import { FlowRunInputEditor } from '../../flowRunInputEditor.tsx'
 import { Icon } from '../icons.tsx'
 
@@ -75,30 +78,30 @@ function Panel({ onStarted, request, store }: Props & { readonly request: RunInp
               {request.flow.draft?.name ?? request.flow.flowId} · {t(request.source == 'draft' ? 'run.sourceDraft' : 'run.sourceLive')}
             </span>
           </div>
-          <button aria-label={t('runInput.close')} className="icon-button" disabled={starting} onClick={close} type="button">
+          <Button aria-label={t('runInput.close')} disabled={starting} onClick={close} size="icon-sm" type="button" variant="ghost">
             <Icon name="close" size={16} />
-          </button>
+          </Button>
         </header>
         <div className="run-input-content">
           <p id="run-input-description">{t('runInput.description')}</p>
           {request.attempted && !valid && (
-            <div className="run-input-error" role="alert">
+            <Alert className="run-input-error" variant="destructive">
               <Icon name="alert" size={15} />
-              <span>{t('runInput.invalid')}</span>
-            </div>
+              <AlertDescription>{t('runInput.invalid')}</AlertDescription>
+            </Alert>
           )}
           {request.groups.map((group) => (
             <InputGroup attempted={request.attempted} group={group} key={group.nodeId} />
           ))}
         </div>
         <footer>
-          <button className="button secondary" disabled={starting} onClick={close} type="button">
+          <Button disabled={starting} onClick={close} type="button" variant="secondary">
             {t('common.cancel')}
-          </button>
-          <button className="button primary" disabled={starting} type="submit">
-            <Icon name="play" size={15} />
+          </Button>
+          <Button disabled={starting} type="submit">
+            {starting ? <Spinner data-icon="inline-start" /> : <Icon data-icon="inline-start" name="play" size={15} />}
             {t(starting ? 'workspace.starting' : request.source == 'draft' ? 'workspace.runDraft' : 'workspace.runLive')}
-          </button>
+          </Button>
         </footer>
       </form>
     </aside>

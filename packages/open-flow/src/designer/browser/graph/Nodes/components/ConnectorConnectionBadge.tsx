@@ -1,9 +1,9 @@
 import styles from './ConnectorConnectionBadge.module.scss'
 
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { useTranslate } from 'val-i18n-react'
-import { defaultTooltipProps, defaultTooltipRootClassName } from '../../../components/label.tsx'
+import { defaultTooltipClassName } from '../../../components/label.tsx'
+import { DesignerTooltip } from '../../../components/tooltip.tsx'
 import { useConnectorConnections } from '../../../connectorConnection.ts'
 
 export interface ConnectorConnectionBadgeProps {
@@ -22,10 +22,8 @@ export function ConnectorConnectionBadge(props: ConnectorConnectionBadgeProps) {
   const status = selected?.status ?? (connections === undefined ? undefined : 'unresolved')
 
   return (
-    <Tooltip
-      {...defaultTooltipProps}
-      classNames={{ root: `${defaultTooltipRootClassName} ${styles.tooltip}` }}
-      mouseLeaveDelay={0.15}
+    <DesignerTooltip
+      className={clsx(defaultTooltipClassName, styles.tooltip)}
       placement="top"
       title={
         <div>
@@ -53,7 +51,7 @@ export function ConnectorConnectionBadge(props: ConnectorConnectionBadgeProps) {
         <i className={unresolved ? 'i-codicon:warning' : 'i-carbon:user-avatar'} />
         <span>{label}</span>
       </span>
-    </Tooltip>
+    </DesignerTooltip>
   )
 }
 

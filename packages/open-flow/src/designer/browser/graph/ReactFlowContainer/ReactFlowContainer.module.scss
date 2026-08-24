@@ -2,10 +2,6 @@
   width: 100%;
   height: 100%;
   position: relative;
-
-  :global(.ant-dropdown-menu-title-content) {
-    white-space: nowrap;
-  }
 }
 
 .flow {
@@ -52,9 +48,9 @@
 
   :global(.react-flow__controls) {
     width: var(--canvas-control-container-size);
-    border: 1px solid var(--rf-controls-border);
+    border: 1px solid var(--ui-border);
     box-shadow: var(--floating-control-shadow);
-    border-radius: var(--canvas-control-radius);
+    border-radius: calc(var(--ui-radius) + 2px);
     overflow: hidden;
   }
 
@@ -62,15 +58,19 @@
     width: var(--canvas-control-size);
     height: var(--canvas-control-size);
     padding: var(--canvas-control-padding);
-    background-color: var(--rf-button-bg);
-    color: var(--rf-button-fg);
-    // border-bottom: 1px solid var(--rf-button-border);
+    background-color: var(--ui-background);
+    color: var(--ui-muted-foreground);
     border-radius: 0;
     font-size: 16px;
   }
 
   :global(.react-flow__controls-button:hover) {
-    background-color: var(--rf-button-hover);
+    background-color: var(--ui-muted);
+  }
+
+  :global(.react-flow__controls-button:focus-visible) {
+    outline: 2px solid var(--ui-ring);
+    outline-offset: -2px;
   }
 
   :global(.react-flow__controls-button path) {
@@ -100,11 +100,10 @@
     pointer-events: none;
   }
 
-  :global(.react-flow__viewport > [class^='ant-']:not([class*='ant-tooltip'])) {
+  :global(.react-flow__viewport > .isolate) {
     pointer-events: all;
   }
 
-  :global(.ant-btn-icon),
   button > i {
     cursor: inherit;
   }
@@ -128,21 +127,12 @@
 
 .contextMenu {
   min-width: 150px;
-
-  :global(.ant-dropdown-menu-item) {
-    font-size: var(--base-font-size) !important;
-    border-radius: var(--widget-radius) !important;
-  }
-
-  :global(.ant-popover-container) {
-    padding: 0;
-    box-shadow: 0px 2px 16px 0px var(--contextmenu-shadow);
-  }
+  padding: 0;
+  font-size: var(--base-font-size);
+  box-shadow: 0 2px 16px var(--contextmenu-shadow);
 }
 
 .quickPickPopover {
-  :global(.ant-popover-container) {
-    border: 1px solid var(--border-weak);
-    box-shadow: 0 3px 8px var(--contextmenu-shadow);
-  }
+  border: 1px solid var(--border-weak);
+  box-shadow: 0 3px 8px var(--contextmenu-shadow);
 }

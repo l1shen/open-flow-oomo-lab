@@ -53,13 +53,15 @@ import {
   useUpdateNodeInternals,
   ViewportPortal,
 } from '@xyflow/react'
-import { ConfigProvider, Dropdown, Popover } from 'antd'
 import { clsx } from 'clsx'
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { I18nProvider, useTranslate } from 'val-i18n-react'
 import { derive } from 'value-enhancer'
 import { shallowPlainObjectEqual } from '../../../../base/common/equality.ts'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../../../ui/browser/dropdown-menu.tsx'
+import { Popover, PopoverContent, PopoverTrigger } from '../../../../ui/browser/popover.tsx'
+import { TooltipProvider } from '../../../../ui/browser/tooltip.tsx'
 import { DESIGNER_CLASSNAME, HANDLE_ROW_CLASSNAME } from '../../base/designer.ts'
 import { getScriptletType, getSharedBlockPath, getTriggerType, isWithCommentType, isWithConditionType, isWithValueType } from '../../base/dragNDrop.ts'
 import { makeConnection, toManifestHandleName, toManifestNodeId } from '../../base/rfHelpers.ts'
@@ -159,17 +161,23 @@ export const ReactFlowContainer: React.FC<ReactFlowContainerProps> = (props: Rea
   }, [])
 
   return (
-    <div className={clsx(props.className, 'oo-designer-root', styles.container, props.dark ? darkTheme.theme : lightTheme.theme)} ref={wrapperRef}>
+    <div
+      className={clsx(props.className, 'oo-designer-root', styles.container, props.dark ? darkTheme.theme : lightTheme.theme)}
+      data-theme={props.dark ? 'dark' : 'light'}
+      ref={wrapperRef}
+    >
       <GetPopupContainerContext.Provider value={context}>
         <I18nProvider i18n={props.i18n}>
-          <ThemeProvider dark={props.dark} getPopupContainer={context.default}>
-            <ReactFlowProvider>
-              <HandleContextProvider Handle={Handle as HandleImpl}>
-                <EdgeDefs />
-                <ReactFlowContainerInner {...props} />
-              </HandleContextProvider>
-            </ReactFlowProvider>
-          </ThemeProvider>
+          <TooltipProvider delay={300}>
+            <ThemeProvider dark={props.dark} getPopupContainer={context.default}>
+              <ReactFlowProvider>
+                <HandleContextProvider Handle={Handle as HandleImpl}>
+                  <EdgeDefs />
+                  <ReactFlowContainerInner {...props} />
+                </HandleContextProvider>
+              </ReactFlowProvider>
+            </ThemeProvider>
+          </TooltipProvider>
         </I18nProvider>
       </GetPopupContainerContext.Provider>
     </div>
@@ -190,7 +198,6 @@ const FlowControls = /*#__PURE__*/ memo((props: FlowControlsProps) => {
   const t = useTranslate()
   const rf = useReactFlow()
   const { minZoomReached, maxZoomReached } = useStore(selector, shallowPlainObjectEqual)
-  const getStaticDesignerContainer = useGetStaticPopupContainer()
   const nodes = useNodes()
 
   // The SVG background pattern needs a document-unique identifier without CSS-special characters.
@@ -204,7 +211,7 @@ const FlowControls = /*#__PURE__*/ memo((props: FlowControlsProps) => {
   }
 
   return (
-    <ConfigProvider getPopupContainer={getStaticDesignerContainer}>
+    <>
       {props.dottedBackground && <Background id={bgId} color="var(--canvas-grid)" gap={GRID_GAP} variant={BackgroundVariant.Dots} />}
       <Controls showInteractive={false} showFitView={false} showZoom={false}>
         <ControlButton
@@ -263,7 +270,7 @@ const FlowControls = /*#__PURE__*/ memo((props: FlowControlsProps) => {
       </Controls>
       <BottomRight miniMapExpanded$={props.miniMapExpanded$} interactiveMode$={props.interactiveMode$} showSettings$={props.showSettings$} />
       {props.displayMode$ && <DisplayModeToggle displayMode$={props.displayMode$} />}
-    </ConfigProvider>
+    </>
   )
 })
 
@@ -678,32 +685,57 @@ interface EdgeContextMenuProps {
   readonly onDelete: () => void
 }
 
-function EdgeContextMenu(props: EdgeContextMenuProps) {
-  const t = useTranslate()
+interface ContextMenuItem {
+  readonly disabled?: boolean
+  readonly icon?: React.ReactNode
+  readonly key: string
+  readonly label: React.ReactNode
+  readonly onClick?: () => void
+}
+
+interface ContextMenuProps {
+  readonly items: ContextMenuItem[]
+  readonly onClose: () => void
+  readonly position: XYPosition
+}
+
+function ContextMenu({ items, onClose, position }: ContextMenuProps) {
   const getContextMenuContainer = useGetStaticPopupContainer()
 
   return (
-    <Dropdown
-      open
-      placement="bottomLeft"
-      arrow={false}
-      trigger={['contextMenu']}
-      onOpenChange={(open) => !open && props.onClose()}
-      classNames={{ root: styles.contextMenu }}
-      getPopupContainer={getContextMenuContainer}
-      menu={{
-        items: [
-          {
-            label: t('nodeActions.delete'),
-            key: '$delete',
-            icon: <i className="i-codicon:trash" />,
-            onClick: props.onDelete,
-          },
-        ],
-      }}
-    >
-      <div style={{ position: 'absolute', left: props.position?.x, top: props.position?.y }} />
-    </Dropdown>
+    <DropdownMenu open onOpenChange={(open) => !open && onClose()}>
+      <DropdownMenuTrigger render={<div style={{ position: 'absolute', left: position.x, top: position.y }} />} />
+      <DropdownMenuContent align="start" className={styles.contextMenu} container={getContextMenuContainer()} side="bottom" sideOffset={0}>
+        <DropdownMenuGroup>
+          {items.map((item) => (
+            <DropdownMenuItem
+              key={item.key}
+              disabled={item.disabled}
+              onClick={() => {
+                item.onClick?.()
+                onClose()
+              }}
+              variant={item.key === '$delete' ? 'destructive' : 'default'}
+            >
+              {item.icon}
+              {item.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function EdgeContextMenu(props: EdgeContextMenuProps) {
+  const t = useTranslate()
+
+  return (
+    <ContextMenu
+      items={[{ label: t('nodeActions.delete'), key: '$delete', icon: <i className="i-codicon:trash" />, onClick: props.onDelete }]}
+      onClose={props.onClose}
+      position={props.position}
+    />
   )
 }
 
@@ -719,7 +751,6 @@ const DEFAULT_DUPLICATE_NODE_OFFSET: XYPosition = { x: 50, y: 50 }
 
 function SelectionContextMenu(props: SelectionContextMenuProps) {
   const t = useTranslate()
-  const getContextMenuContainer = useGetStaticPopupContainer()
   const nodes = props.nodes.filter((node) => node.data.store && !isPseudoNodeType(node.type as NodeType))
   const hasDuplicate = nodes.every((node) => node.data.store?.duplicateNode)
   const [hasSkip, skip] = getSkipState(nodes)
@@ -757,39 +788,20 @@ function SelectionContextMenu(props: SelectionContextMenuProps) {
   }, [props.nodes, skip])
 
   return (
-    <Dropdown
-      open
-      placement="bottomLeft"
-      arrow={false}
-      trigger={['contextMenu']}
-      onOpenChange={(open) => !open && props.onClose()}
-      classNames={{ root: styles.contextMenu }}
-      getPopupContainer={getContextMenuContainer}
-      menu={{
-        items: coalesce([
-          toTrue(hasDuplicate) && {
-            label: t('nodeActions.duplicate'),
-            key: '$duplicate',
-            icon: <i className="i-codicon:copy" />,
-            onClick: duplicateNodes,
-          },
-          toTrue(hasSkip) && {
-            label: skip ? t('nodeActions.skipDisableAll') : t('nodeActions.skipEnableAll'),
-            key: '$skip',
-            icon: <i className={skip ? 'i-codicon:check' : 'i-codicon:circle-slash'} />,
-            onClick: toggleSkip,
-          },
-          {
-            label: t('nodeActions.delete'),
-            key: '$delete',
-            icon: <i className="i-codicon:trash" />,
-            onClick: props.onDelete,
-          },
-        ]),
-      }}
-    >
-      <div style={{ position: 'absolute', left: props.position?.x, top: props.position?.y }} />
-    </Dropdown>
+    <ContextMenu
+      items={coalesce<ContextMenuItem>([
+        toTrue(hasDuplicate) && { label: t('nodeActions.duplicate'), key: '$duplicate', icon: <i className="i-codicon:copy" />, onClick: duplicateNodes },
+        toTrue(hasSkip) && {
+          label: skip ? t('nodeActions.skipDisableAll') : t('nodeActions.skipEnableAll'),
+          key: '$skip',
+          icon: <i className={skip ? 'i-codicon:check' : 'i-codicon:circle-slash'} />,
+          onClick: toggleSkip,
+        },
+        { label: t('nodeActions.delete'), key: '$delete', icon: <i className="i-codicon:trash" />, onClick: props.onDelete },
+      ])}
+      onClose={props.onClose}
+      position={props.position}
+    />
   )
 }
 
@@ -817,38 +829,22 @@ interface PaneContextMenuProps {
 
 function PaneContextMenu(props: PaneContextMenuProps) {
   const t = useTranslate()
-  const getContextMenuContainer = useGetStaticPopupContainer()
 
   return (
-    <Dropdown
-      open
-      placement="bottomLeft"
-      arrow={false}
-      trigger={['contextMenu']}
-      onOpenChange={(open) => !open && props.onClose()}
-      classNames={{ root: styles.contextMenu }}
-      getPopupContainer={getContextMenuContainer}
-      menu={{
-        items: coalesce([
-          {
-            label: t('contextMenu.addNode'),
-            key: '$addNode',
-            icon: <i className="i-codicon:add" />,
-            disabled: !props.onAddNode,
-            onClick: props.onAddNode,
-          },
-          {
-            label: t('contextMenu.paste'),
-            key: '$paste',
-            icon: <i className="i-carbon:paste" />,
-            disabled: !props.onPaste,
-            onClick: () => props.onPaste?.(props.position),
-          },
-        ]),
-      }}
-    >
-      <div style={{ position: 'absolute', left: props.position?.x, top: props.position?.y }} />
-    </Dropdown>
+    <ContextMenu
+      items={[
+        { label: t('contextMenu.addNode'), key: '$addNode', icon: <i className="i-codicon:add" />, disabled: !props.onAddNode, onClick: props.onAddNode },
+        {
+          label: t('contextMenu.paste'),
+          key: '$paste',
+          icon: <i className="i-carbon:paste" />,
+          disabled: !props.onPaste,
+          onClick: () => props.onPaste?.(props.position),
+        },
+      ]}
+      onClose={props.onClose}
+      position={props.position}
+    />
   )
 }
 
@@ -913,17 +909,17 @@ function BlockQuickPickPanelPopover(props: BlockQuickPickPanelPopoverProps) {
   }
 
   return (
-    <Popover
-      open
-      align={{ points: ['tl', 'bl'], offset: [0, 0] }}
-      arrow={false}
-      trigger={['contextMenu']}
-      onOpenChange={(open) => !open && props.onClose()}
-      classNames={{ root: clsx(styles.contextMenu, styles.quickPickPopover) }}
-      getPopupContainer={getContextMenuContainer}
-      content={<BlockQuickPickPanel items={items} provideAsyncItems={provideAsyncItems} onClick={onClick} hideDescription />}
-    >
-      <div style={{ position: 'absolute', left: props.position?.x, top: props.position?.y }} />
+    <Popover open onOpenChange={(open) => !open && props.onClose()}>
+      <PopoverTrigger render={<div style={{ position: 'absolute', left: props.position.x, top: props.position.y }} />} />
+      <PopoverContent
+        align="start"
+        className={clsx(styles.contextMenu, styles.quickPickPopover)}
+        container={getContextMenuContainer()}
+        side="bottom"
+        sideOffset={0}
+      >
+        <BlockQuickPickPanel items={items} provideAsyncItems={provideAsyncItems} onClick={onClick} hideDescription />
+      </PopoverContent>
     </Popover>
   )
 }

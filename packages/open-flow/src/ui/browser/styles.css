@@ -1,0 +1,58 @@
+@layer theme, base, utilities;
+
+@config './tailwind.config.ts';
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@source './';
+
+@layer base {
+  :where(.open-flow-workbench, .oo-designer-root),
+  :where(.open-flow-workbench, .oo-designer-root) *,
+  :where(.open-flow-workbench, .oo-designer-root) ::before,
+  :where(.open-flow-workbench, .oo-designer-root) ::after {
+    box-sizing: border-box;
+  }
+
+  :where(.open-flow-workbench, .oo-designer-root) button,
+  :where(.open-flow-workbench, .oo-designer-root) input,
+  :where(.open-flow-workbench, .oo-designer-root) select,
+  :where(.open-flow-workbench, .oo-designer-root) textarea {
+    color: inherit;
+    font: inherit;
+  }
+
+  :where(.open-flow-workbench, .oo-designer-root) button {
+    appearance: none;
+    padding: 0;
+    border: 0 solid;
+    background-color: transparent;
+    background-image: none;
+  }
+
+  :where(.open-flow-workbench, .oo-designer-root) button:not(:disabled),
+  :where(.open-flow-workbench, .oo-designer-root) [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+}
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme inline {
+  --color-background: var(--ui-background);
+  --color-foreground: var(--ui-foreground);
+  --color-primary: var(--ui-primary);
+  --color-primary-foreground: var(--ui-primary-foreground);
+  --color-secondary: var(--ui-secondary);
+  --color-secondary-foreground: var(--ui-secondary-foreground);
+  --color-muted: var(--ui-muted);
+  --color-muted-foreground: var(--ui-muted-foreground);
+  --color-accent: var(--ui-accent);
+  --color-accent-foreground: var(--ui-accent-foreground);
+  --color-destructive: var(--ui-destructive);
+  --color-border: var(--ui-border);
+  --color-input: var(--ui-input);
+  --color-ring: var(--ui-ring);
+  --radius-sm: calc(var(--ui-radius) - 2px);
+  --radius-md: var(--ui-radius);
+  --radius-lg: calc(var(--ui-radius) + 2px);
+}

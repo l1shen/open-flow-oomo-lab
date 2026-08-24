@@ -8,7 +8,9 @@ import { memo } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { setValue } from 'value-enhancer'
-import { Button } from '../../components/button.tsx'
+import { Button } from '../../../../ui/browser/button.tsx'
+import { CanvasControlGroup } from '../../components/canvasControlGroup.tsx'
+import { DesignerTooltip } from '../../components/tooltip.tsx'
 import { iconOf } from '../../jsonSchema/preset.ts'
 
 export interface BottomRightProps {
@@ -27,43 +29,41 @@ export const BottomRight: React.FC<BottomRightProps> = /* @__PURE__ */ memo(func
   const settingsBtnTitle = t(showSettings ? 'settingsPanel.hide' : 'settingsPanel.show')
 
   return (
-    <div className={styles.container}>
+    <CanvasControlGroup className={clsx(styles.container, miniMapExpanded && styles.miniMapOpen)}>
       {!miniMapExpanded && (
-        <Button
-          onClick={() => props.interactiveMode$.set(isMouse ? 'touchpad' : 'mouse')}
-          className={styles.btn}
-          titlePlacement="top"
-          title={modeBtnTitle}
-          ariaLabel={modeBtnTitle}
-        >
-          {isMouse ? <i className={`${styles.interactionIcon} i-custom:mouse`} /> : <i className={`${styles.interactionIcon} i-custom:touchpad`} />}
-        </Button>
+        <DesignerTooltip placement="top" title={modeBtnTitle}>
+          <Button aria-label={modeBtnTitle} onClick={() => props.interactiveMode$.set(isMouse ? 'touchpad' : 'mouse')} size="icon-sm" variant="ghost">
+            {isMouse ? <i className={`${styles.interactionIcon} i-custom:mouse`} /> : <i className={`${styles.interactionIcon} i-custom:touchpad`} />}
+          </Button>
+        </DesignerTooltip>
       )}
       {props.miniMapExpanded$ && (
-        <Button
-          wrapperClassName={clsx(miniMapExpanded && styles.expanded)}
-          className={styles.btn}
-          titlePlacement="top"
-          title={t('miniMap')}
-          ariaLabel={t('miniMap')}
-          onClick={() => props.miniMapExpanded$?.set(!props.miniMapExpanded$?.value)}
-        >
-          {miniMapExpanded ? <i className={`${styles.miniMapIcon} i-carbon:shrink-screen`} /> : <i className={`${styles.miniMapIcon} i-custom:minimap`} />}
-        </Button>
+        <DesignerTooltip placement="top" title={t('miniMap')}>
+          <Button
+            aria-label={t('miniMap')}
+            className={miniMapExpanded ? styles.expanded : undefined}
+            onClick={() => props.miniMapExpanded$?.set(!props.miniMapExpanded$?.value)}
+            size="icon-sm"
+            variant="ghost"
+          >
+            {miniMapExpanded ? <i className={`${styles.miniMapIcon} i-carbon:shrink-screen`} /> : <i className={`${styles.miniMapIcon} i-custom:minimap`} />}
+          </Button>
+        </DesignerTooltip>
       )}
       {!miniMapExpanded && props.showSettings$ && (
-        <Button
-          onClick={() => setValue(props.showSettings$!, !showSettings)}
-          className={clsx(styles.btn, showSettings && styles.btnSelected)}
-          titlePlacement="top"
-          title={settingsBtnTitle}
-          ariaLabel={settingsBtnTitle}
-          ariaPressed={showSettings}
-        >
-          <i className={`${styles.settingsIcon} ${iconOf('settings')}`} />
-        </Button>
+        <DesignerTooltip placement="top" title={settingsBtnTitle}>
+          <Button
+            aria-label={settingsBtnTitle}
+            aria-expanded={showSettings}
+            onClick={() => setValue(props.showSettings$!, !showSettings)}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <i className={`${styles.settingsIcon} ${iconOf('settings')}`} />
+          </Button>
+        </DesignerTooltip>
       )}
       {props.miniMapExpanded$ && miniMapExpanded && <RFMiniMap className={styles.miniMap} pannable zoomable />}
-    </div>
+    </CanvasControlGroup>
   )
 })

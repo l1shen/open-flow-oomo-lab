@@ -1,203 +1,93 @@
 import styles from './select.module.scss'
-import type {
-  ClearIndicatorProps,
-  DropdownIndicatorProps,
-  GroupBase,
-  GroupProps,
-  MenuPlacement,
-  MenuPosition,
-  MenuProps,
-  OnChangeValue,
-  OptionsOrGroups,
-  Props,
-  PropsValue,
-  SelectInstance,
-  Theme,
-  ValueContainerProps,
-} from 'react-select'
-import type { ReadonlyVal } from 'value-enhancer'
 
-import { Popover } from 'antd'
 import { clsx } from 'clsx'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactSelect, { components, defaultTheme } from 'react-select'
-import { useVal } from 'use-value-enhancer'
+import { useMemo } from 'react'
 import { useTranslate } from 'val-i18n-react'
-import { val } from 'value-enhancer'
+import { Button } from '../../../ui/browser/button.tsx'
+import {
+  Combobox,
+  ComboboxClear,
+  ComboboxCollection,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxLabel,
+  ComboboxList,
+} from '../../../ui/browser/combobox.tsx'
 import { stopPropagation } from '../base/dom.ts'
 import { forwardRef2 } from '../base/react.ts'
 import { useGetStaticPopupContainer } from '../graph/ReactFlowContainer/useGetPopupContainer.ts'
 import { DesignerIcon } from '../icons/DesignerIcon.tsx'
-import { CssWrapper } from './cssWrapper.tsx'
 
-// TypeScript cannot patch "react-select/dist/declarations/src/Select" with bundler module resolution.
-// See https://github.com/JedWatson/react-select/issues/5743.
-interface ExtraProps {
-  readonly labelInMenu?: string
-  readonly searching$?: ReadonlyVal<boolean>
-}
-
-// See https://github.com/JedWatson/react-select/blob/-/packages/react-select/src/builtins.ts.
-export interface IBasicOption {
+export interface DesignerOption {
   readonly icon?: string | React.ReactNode
   readonly label?: string
   readonly value?: string
   readonly isDisabled?: boolean
-  // Derived from group label automatically.
   readonly group?: { label: string; value?: string }
 }
 
-export interface IBasicGroup<Option extends IBasicOption = IBasicOption> extends GroupBase<Option> {
-  readonly value?: string
+export interface DesignerOptionGroup<Option extends DesignerOption = DesignerOption> {
   readonly icon?: string | React.ReactNode
+  readonly label?: string
+  readonly options: readonly Option[]
+  readonly value?: string
 }
 
-export interface SelectProps<
-  Option extends IBasicOption = IBasicOption,
+type DesignerComboboxValue<Option extends DesignerOption, IsMulti extends boolean> = IsMulti extends true ? readonly Option[] : Option | null
+type DesignerComboboxDisplayValue<Option extends DesignerOption, IsMulti extends boolean> = IsMulti extends true
+  ? readonly Option[]
+  : Option | DesignerOption | null
+
+export interface DesignerComboboxProps<
+  Option extends DesignerOption = DesignerOption,
   IsMulti extends boolean = false,
-  Group extends IBasicGroup<Option> = IBasicGroup<Option>,
+  Group extends DesignerOptionGroup<Option> = DesignerOptionGroup<Option>,
 > {
   id?: string
   inputId?: string
   className?: string
+  placeholder?: string
   disabled?: boolean
   variant?: 'default' | 'danger'
-
   isMulti?: IsMulti
   isClearable?: boolean
-  menuPosition?: MenuPosition
-  menuPlacement?: MenuPlacement
+  menuPosition?: 'absolute' | 'fixed'
+  menuPlacement?: 'auto' | 'bottom' | 'top'
   defaultOpen?: boolean
-  defaultValue?: PropsValue<Option>
-  value?: PropsValue<Option>
-  options?: OptionsOrGroups<Option, Group>
-  onChange?: (value: OnChangeValue<Option, IsMulti>) => void
+  defaultValue?: DesignerComboboxValue<Option, IsMulti>
+  value?: DesignerComboboxDisplayValue<Option, IsMulti>
+  options?: readonly (Option | Group)[]
+  onChange?: (value: DesignerComboboxValue<Option, IsMulti>) => void
   onClose?: () => void
-
-  // Show text below menu.
   labelInMenu?: string
-  // Default to 200px.
   maxMenuHeight?: number
-  // Capitalize the label.
   capitalize?: boolean
-  // Adds extra padding left.
   isSuffix?: boolean
 }
 
-// See https://github.com/JedWatson/react-select/blob/-/storybook/stories/CustomDropdownIndicator.stories.tsx.
-function DropdownIndicator<Option extends IBasicOption = IBasicOption, IsMulti extends boolean = false>(props: DropdownIndicatorProps<Option, IsMulti>) {
+interface OptionGroup<Option extends DesignerOption> {
+  readonly icon?: string | React.ReactNode
+  readonly key: string
+  readonly label?: string
+  readonly options: readonly Option[]
+}
+
+function isOptionGroup<Option extends DesignerOption>(option: Option | DesignerOptionGroup<Option>): option is DesignerOptionGroup<Option> {
+  return 'options' in option
+}
+
+function matchSubstring<Option extends DesignerOption>(option: Option, input: string): boolean {
+  input = input.trim().toLowerCase()
   return (
-    <components.DropdownIndicator {...props}>
-      <i className="i-codicon:chevron-down" />
-    </components.DropdownIndicator>
+    (option.group?.label || '').toLowerCase().includes(input) ||
+    (option.group?.value || '').toLowerCase().includes(input) ||
+    (option.label || '').toLowerCase().includes(input) ||
+    (option.value || '').toLowerCase().includes(input)
   )
 }
-
-// See https://github.com/JedWatson/react-select/blob/-/storybook/stories/CustomClearIndicator.stories.tsx.
-function ClearIndicator<Option extends IBasicOption = IBasicOption, IsMulti extends boolean = false>(props: ClearIndicatorProps<Option, IsMulti>) {
-  return (
-    <components.ClearIndicator {...props}>
-      <i className="i-codicon:close" />
-    </components.ClearIndicator>
-  )
-}
-
-function Menu<Option extends IBasicOption = IBasicOption>(props: MenuProps<Option>) {
-  const selectProps = props.selectProps as ExtraProps
-  return (
-    <components.Menu {...props} className={clsx(props.className, 'nowheel')}>
-      {props.children}
-      {selectProps.labelInMenu && (
-        <div className={styles.labelInMenu} title={selectProps.labelInMenu}>
-          {selectProps.labelInMenu}
-        </div>
-      )}
-    </components.Menu>
-  )
-}
-
-function ValueContainer<Option extends IBasicOption = IBasicOption>(props: ValueContainerProps<Option>) {
-  const t = useTranslate()
-
-  if (props.isMulti && props.getValue().length > 1) {
-    const [value, input] = props.children as [value: React.ReactNode[], input: React.ReactNode]
-    return (
-      <components.ValueContainer {...props}>
-        <div className={styles.multiValue}>
-          <div className={styles.label}>{t('components.numOptions', { count: value.length })}</div>
-        </div>
-        {input}
-      </components.ValueContainer>
-    )
-  }
-
-  return <components.ValueContainer {...props}>{props.children}</components.ValueContainer>
-}
-
-function Group<Option extends IBasicOption = IBasicOption, IsMulti extends boolean = false, Group extends IBasicGroup<Option> = IBasicGroup<Option>>(
-  props: GroupProps<Option, IsMulti, Group>,
-) {
-  const { searching$ } = props.selectProps as ExtraProps
-  const searching = useVal(searching$)
-  const getPopupContainer = useGetStaticPopupContainer()
-
-  if (searching) {
-    return (
-      <div className={props.cx({ group: true }, props.getClassNames('group', props), props.className)} {...props.innerProps}>
-        <div className={styles.groupLabel}>
-          {props.data.icon && <span className={styles.icon}>{renderIcon(props.data.icon)}</span>}
-          <span className={styles.label}>{props.data.label}</span>
-        </div>
-        <div className={styles.grouped}>{props.children}</div>
-      </div>
-    )
-  }
-
-  return (
-    <Popover
-      classNames={{ root: styles.menu }}
-      trigger={['hover', 'click']}
-      mouseEnterDelay={0.1}
-      mouseLeaveDelay={0.1}
-      align={{ points: ['tl', 'tr'], offset: [-1, 0] }}
-      arrow={false}
-      destroyOnHidden
-      getPopupContainer={getPopupContainer}
-      content={<div className={styles.menuBody}>{props.children}</div>}
-    >
-      <div className={props.cx({ group: true }, props.getClassNames('group', props), props.className, styles.contextMenu)} {...props.innerProps}>
-        {props.label}
-      </div>
-    </Popover>
-  )
-}
-
-function formatOptionLabel<Option extends IBasicOption = IBasicOption>(option: Option) {
-  const { icon, label, value } = option
-  return (
-    <div className={styles.value} title={label || value}>
-      {icon && <span className={styles.icon}>{renderIcon(icon)}</span>}
-      <span className={styles.label}>{label || value}</span>
-    </div>
-  )
-}
-
-function formatGroupLabel<Option extends IBasicOption = IBasicOption>(group: IBasicGroup<Option>) {
-  const { icon, label } = group
-  return (
-    <div className={styles.group} title={label}>
-      {icon && <span className={styles.icon}>{renderIcon(icon)}</span>}
-      <span className={styles.label}>{label}</span>
-      <i className="i-codicon:chevron-right" />
-    </div>
-  )
-}
-
-const customTheme: Theme = { ...defaultTheme, spacing: { ...defaultTheme.spacing, controlHeight: 22 } }
-
-const customComponents = { DropdownIndicator, ClearIndicator, Menu, ValueContainer, Group }
-
-const customStyles = { menu: (base: {}) => ({ ...base, width: 'var(--menu-width)' }) }
 
 function renderIcon(icon: React.ReactNode) {
   if (typeof icon === 'string') {
@@ -206,134 +96,133 @@ function renderIcon(icon: React.ReactNode) {
   return icon
 }
 
-interface FilterOptionOption<Option> {
-  readonly label: string
-  readonly value: string
-  readonly data: Option
-}
-
-function matchSubstring<Option extends IBasicOption = IBasicOption>(option: FilterOptionOption<Option>, input: string): boolean {
-  input = input.trim().toLowerCase()
+function OptionLabel({ option }: { readonly option: DesignerOption }) {
   return (
-    (option.data.group?.label || '').toLowerCase().includes(input) ||
-    (option.data.group?.value || '').toLowerCase().includes(input) ||
-    (option.label || '').toLowerCase().includes(input) ||
-    (option.value || '').toLowerCase().includes(input)
+    <div className={styles.value} title={option.label || option.value}>
+      {option.icon && <span className={styles.icon}>{renderIcon(option.icon)}</span>}
+      <span className={styles.label}>{option.label || option.value}</span>
+    </div>
   )
 }
 
-export const Select: <Option extends IBasicOption = IBasicOption, IsMulti extends boolean = false>(
-  props: SelectProps<Option, IsMulti> & React.RefAttributes<SelectInstance<Option, IsMulti>>,
-) => React.ReactElement | null = /*#__PURE__*/ forwardRef2(function Select<Option extends IBasicOption = IBasicOption, IsMulti extends boolean = false>(
-  props: SelectProps<Option, IsMulti>,
-  ref?: React.Ref<SelectInstance<Option, IsMulti>>,
-) {
+export const DesignerCombobox: <Option extends DesignerOption = DesignerOption, IsMulti extends boolean = false>(
+  props: DesignerComboboxProps<Option, IsMulti> & React.RefAttributes<HTMLInputElement>,
+) => React.ReactElement | null = /*#__PURE__*/ forwardRef2(function DesignerCombobox<
+  Option extends DesignerOption = DesignerOption,
+  IsMulti extends boolean = false,
+>(props: DesignerComboboxProps<Option, IsMulti>, ref?: React.ForwardedRef<HTMLInputElement>) {
   const t = useTranslate()
-  const [searching$] = useState(() => val(false))
+  const getPopupContainer = useGetStaticPopupContainer()
+  const popupContainer = typeof document === 'undefined' ? undefined : getPopupContainer()
 
-  const innerRef = useRef<SelectInstance<Option, IsMulti>>(null)
+  const { groups, options } = useMemo(() => {
+    const menuGroups: OptionGroup<Option>[] = []
+    const ungrouped: Option[] = []
+    let flatOptions: Option[] = []
 
-  const mergedRef = useCallback(
-    (instance: SelectInstance<Option, IsMulti> | null) => {
-      type SelectRef = React.MutableRefObject<SelectInstance<Option, IsMulti> | null>
-      ;(innerRef as SelectRef).current = instance
-      if (typeof ref === 'function') {
-        ref(instance)
-      } else if (ref) {
-        ;(ref as SelectRef).current = instance
+    for (const entry of props.options || []) {
+      if (isOptionGroup(entry)) {
+        const groupOptions = entry.options.map((option) => ({ ...option, group: { label: entry.label || '', value: entry.value } }))
+        menuGroups.push({ icon: entry.icon, key: entry.value || entry.label || `group-${menuGroups.length}`, label: entry.label, options: groupOptions })
+        flatOptions = flatOptions.concat(groupOptions)
+      } else {
+        ungrouped.push(entry)
+        flatOptions.push(entry)
       }
-    },
-    [ref],
-  )
-
-  // Add group info to sub-options so that matchSubstring can search them.
-  const options = useMemo(() => {
-    if (props.options?.some((e) => 'options' in e)) {
-      return props.options.map((e) => {
-        if ('options' in e) {
-          return { ...e, options: e.options.map((o) => ({ ...o, group: { label: e.label, value: e.value } })) }
-        }
-        return e
-      })
     }
-    return props.options
+
+    if (ungrouped.length > 0) {
+      menuGroups.unshift({ key: '$options', options: ungrouped })
+    }
+
+    return { groups: menuGroups, options: flatOptions }
   }, [props.options])
 
-  const [menuWidth, setMenuWidth] = useState(0)
-
-  useEffect(() => {
-    if (innerRef.current?.controlRef) {
-      let timer = 0
-      const observer = new ResizeObserver((entries) => {
-        const width = entries[0].borderBoxSize[0].inlineSize
-        clearTimeout(timer)
-        timer = window.setTimeout(() => setMenuWidth(width), 0)
-      })
-      observer.observe(innerRef.current.controlRef)
-      return () => {
-        clearTimeout(timer)
-        observer.disconnect()
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    if (props.defaultOpen && innerRef.current) {
-      innerRef.current.focus()
-    }
-  }, [props.defaultOpen])
-
-  const css = { '--menu-width': `${menuWidth}px` }
-
-  const ReactSelectEx = ReactSelect as React.FC<Props<Option, IsMulti, IBasicGroup<Option>> & ExtraProps & { ref: React.Ref<SelectInstance<Option, IsMulti>> }>
+  const selectedCount = Array.isArray(props.value) ? props.value.length : 0
+  const selectedLabel = Array.isArray(props.value) && selectedCount === 1 ? props.value[0]?.label || props.value[0]?.value : undefined
+  const side = props.menuPlacement === 'top' ? 'top' : 'bottom'
 
   return (
-    <CssWrapper css={css}>
-      <ReactSelectEx
-        id={props.id}
-        inputId={props.inputId}
-        ref={mergedRef}
-        defaultValue={props.defaultValue}
-        value={props.value}
-        options={options}
-        onChange={props.onChange}
-        onMenuClose={props.onClose}
-        isDisabled={props.disabled}
-        isMulti={props.isMulti}
-        defaultMenuIsOpen={props.defaultOpen}
-        isClearable={props.isClearable}
-        tabSelectsValue={false}
-        closeMenuOnSelect={!props.isMulti}
-        blurInputOnSelect={!props.isMulti}
-        openMenuOnFocus
-        captureMenuScroll
-        hideSelectedOptions={false}
-        filterOption={matchSubstring}
-        menuPosition={props.menuPosition}
-        menuPlacement={props.menuPlacement}
-        // menuIsOpen // Toggle this line to test menu open styles.
+    <Combobox<Option, IsMulti>
+      autoHighlight
+      defaultOpen={props.defaultOpen}
+      defaultValue={props.defaultValue as never}
+      disabled={props.disabled}
+      filter={matchSubstring}
+      id={props.id}
+      isItemEqualToValue={(left, right) => left.value === right.value}
+      itemToStringLabel={(option) => option.label || option.value || ''}
+      itemToStringValue={(option) => option.value || option.label || ''}
+      items={options}
+      multiple={props.isMulti as IsMulti}
+      onOpenChange={(open) => !open && props.onClose?.()}
+      onValueChange={(value) => props.onChange?.(value as DesignerComboboxValue<Option, IsMulti>)}
+      value={props.value as never}
+    >
+      <div
         className={clsx(
-          'react-select-container',
+          styles.control,
           props.variant === 'danger' && styles.danger,
           props.capitalize && styles.capitalize,
           props.isSuffix && styles.isSuffix,
           props.className,
         )}
-        classNamePrefix="react-select"
-        unstyled
-        placeholder={null}
-        noOptionsMessage={() => t('components.noMatching')}
-        theme={customTheme}
-        styles={customStyles}
-        components={customComponents}
-        labelInMenu={props.labelInMenu}
-        maxMenuHeight={props.maxMenuHeight ?? 190}
-        formatOptionLabel={formatOptionLabel}
-        formatGroupLabel={formatGroupLabel}
-        onKeyDown={stopPropagation}
-        searching$={searching$}
-        onInputChange={(s: string) => searching$.set(!!s)}
-      />
-    </CssWrapper>
+      >
+        {props.isMulti && selectedCount > 0 && (
+          <span className={styles.multiValue}>{selectedLabel || t('components.numOptions', { count: selectedCount })}</span>
+        )}
+        <ComboboxInput
+          ref={ref}
+          className={styles.input}
+          disabled={props.disabled}
+          id={props.inputId}
+          onKeyDown={stopPropagation}
+          placeholder={props.placeholder ?? ''}
+        />
+        {props.isClearable && !props.disabled && (
+          <ComboboxClear
+            aria-label={t('components.clear')}
+            onMouseDown={(event) => event.preventDefault()}
+            render={<Button className={styles.clear} size="icon-xs" type="button" variant="ghost" />}
+          >
+            <i className="i-codicon:close" />
+          </ComboboxClear>
+        )}
+        <i className={styles.indicator + ' i-codicon:chevron-down'} />
+      </div>
+      <ComboboxContent
+        className={styles.menu}
+        container={popupContainer}
+        side={side}
+        sideOffset={0}
+        style={{ '--select-menu-height': `${props.maxMenuHeight ?? 190}px` } as React.CSSProperties}
+      >
+        <ComboboxEmpty className={styles.empty}>{t('components.noMatching')}</ComboboxEmpty>
+        <ComboboxList className={styles.list}>
+          {groups.map((group) => (
+            <ComboboxGroup key={group.key} items={group.options}>
+              {group.label && (
+                <ComboboxLabel className={styles.groupLabel}>
+                  {group.icon && <span className={styles.icon}>{renderIcon(group.icon)}</span>}
+                  <span className={styles.label}>{group.label}</span>
+                </ComboboxLabel>
+              )}
+              <ComboboxCollection>
+                {(option: Option) => (
+                  <ComboboxItem key={option.value || option.label} disabled={option.isDisabled} value={option}>
+                    <OptionLabel option={option} />
+                  </ComboboxItem>
+                )}
+              </ComboboxCollection>
+            </ComboboxGroup>
+          ))}
+        </ComboboxList>
+        {props.labelInMenu && (
+          <div className={styles.labelInMenu} title={props.labelInMenu}>
+            {props.labelInMenu}
+          </div>
+        )}
+      </ComboboxContent>
+    </Combobox>
   )
 })

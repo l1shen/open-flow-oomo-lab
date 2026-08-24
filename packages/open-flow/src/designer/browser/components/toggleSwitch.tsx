@@ -1,13 +1,15 @@
 import styles from './toggleSwitch.module.scss'
 import type { JSX } from 'react/jsx-runtime'
-import type { ILabelConfig } from './checkbox.tsx'
+import type { BooleanLabel } from './checkbox.tsx'
 
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
-import { useCallback, useState } from 'react'
-import { defaultTooltipProps } from './label.tsx'
+import { useCallback, useId, useState } from 'react'
+import { useTranslate } from 'val-i18n-react'
+import { Button } from '../../../ui/browser/button.tsx'
+import { Switch } from '../../../ui/browser/switch.tsx'
+import { DesignerTooltip } from './tooltip.tsx'
 
-export interface ToggleSwitchProps {
+export interface LabeledSwitchProps {
   className?: string
   style?: React.CSSProperties
 
@@ -18,53 +20,55 @@ export interface ToggleSwitchProps {
   onChange?: (checked: boolean) => void
 
   // Show at the left side of the row, the switcher is at the right side.
-  label?: React.ReactNode | ILabelConfig
+  label?: React.ReactNode | BooleanLabel
   title?: string
   isSuffix?: boolean
 }
 
-function isConfig(label: ToggleSwitchProps['label']): label is ILabelConfig {
+function isConfig(label: LabeledSwitchProps['label']): label is BooleanLabel {
   return Boolean(label && typeof label === 'object' && ('true' in label || 'false' in label))
 }
 
-function renderLabel(label: ToggleSwitchProps['label'], checked?: boolean) {
+function renderLabel(label: LabeledSwitchProps['label'], checked?: boolean) {
   if (isConfig(label)) {
     return checked ? label.true : label.false
   }
   return label
 }
 
-export function ToggleSwitch(props: ToggleSwitchProps): JSX.Element {
+export function LabeledSwitch(props: LabeledSwitchProps): JSX.Element {
+  const t = useTranslate()
   const isControlled = props.checked !== undefined
   const [internalChecked, setInternalChecked] = useState(props.defaultChecked ?? false)
+  const inputId = useId()
 
   const checked = isControlled ? props.checked : internalChecked
-  const onClick = useCallback(() => {
-    const nextChecked = !checked
-    if (!isControlled) setInternalChecked(nextChecked)
-    props.onChange?.(nextChecked)
-  }, [isControlled, checked, props.onChange])
+  const onCheckedChange = useCallback(
+    (nextChecked: boolean) => {
+      if (!isControlled) setInternalChecked(nextChecked)
+      props.onChange?.(nextChecked)
+    },
+    [isControlled, props.onChange],
+  )
 
   return (
-    <Tooltip {...defaultTooltipProps} placement="top" title={props.title}>
-      <div className={clsx(props.className, styles.wrapper, checked && styles.checked, props.isSuffix && styles.isSuffix)} style={props.style}>
-        <button className={styles.content} disabled={props.disabled} onClick={onClick}>
-          <label className={styles.label} title={props.title}>
+    <DesignerTooltip placement="top" title={props.title}>
+      <div className={clsx(props.className, styles.wrapper, props.isSuffix && styles.isSuffix)} style={props.style}>
+        <div className={styles.content}>
+          <label className={styles.label} htmlFor={inputId} title={props.title}>
             {renderLabel(props.label, checked)}
           </label>
-          <div className={styles.button}>
-            <div className={styles.fg}></div>
-          </div>
-        </button>
+          <Switch checked={checked} disabled={props.disabled} id={inputId} onCheckedChange={onCheckedChange} size="sm" />
+        </div>
         {props.onClear && (
           <div className={styles.clearWrapper}>
-            <button tabIndex={-1} className={styles.clear} onClick={props.onClear}>
+            <Button aria-label={t('components.clear')} className={styles.clear} onClick={props.onClear} size="icon-xs" variant="ghost">
               <i className="i-codicon:close" />
-            </button>
+            </Button>
             <div className={styles.clearIndicator} />
           </div>
         )}
       </div>
-    </Tooltip>
+    </DesignerTooltip>
   )
 }

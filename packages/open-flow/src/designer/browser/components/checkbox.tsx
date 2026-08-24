@@ -1,17 +1,18 @@
 import styles from './checkbox.module.scss'
-import type { TooltipPlacement } from 'antd/es/tooltip'
+import type { TooltipPlacement } from './tooltip.tsx'
 
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import React, { forwardRef, useCallback, useState } from 'react'
-import { defaultTooltipProps } from './label.tsx'
+import { Checkbox } from '../../../ui/browser/checkbox.tsx'
+import { DesignerTooltip } from './tooltip.tsx'
 
-export interface ILabelConfig {
+export interface BooleanLabel {
   readonly true?: React.ReactNode
   readonly false?: React.ReactNode
 }
 
-export interface CheckBoxProps {
+export interface DesignerCheckboxProps {
+  ariaLabel?: string
   className?: string
   style?: React.CSSProperties
   variant?: 'default' | 'compact'
@@ -21,59 +22,57 @@ export interface CheckBoxProps {
   checked?: boolean
   onChange?: (checked: boolean) => void
 
-  label?: React.ReactNode | ILabelConfig
+  label?: React.ReactNode | BooleanLabel
   title?: string
   titlePlacement?: TooltipPlacement
   isSuffix?: boolean
   onContextMenu?: React.MouseEventHandler
 }
 
-function isConfig(label: CheckBoxProps['label']): label is ILabelConfig {
+function isConfig(label: DesignerCheckboxProps['label']): label is BooleanLabel {
   return Boolean(label && typeof label === 'object' && ('true' in label || 'false' in label))
 }
 
-function renderLabel(label: CheckBoxProps['label'], checked?: boolean) {
+function renderLabel(label: DesignerCheckboxProps['label'], checked?: boolean) {
   if (isConfig(label)) {
     return checked ? label.true : label.false
   }
   return label
 }
 
-export const CheckBox: React.ForwardRefExoticComponent<CheckBoxProps & React.RefAttributes<HTMLInputElement>> = /*#__PURE__*/ forwardRef(function CheckBox(
-  props: CheckBoxProps,
-  ref?: React.Ref<HTMLInputElement>,
-) {
-  const isControlled = props.checked !== undefined
-  const [internalChecked, setInternalChecked] = useState(props.defaultChecked ?? false)
+export const DesignerCheckbox: React.ForwardRefExoticComponent<DesignerCheckboxProps & React.RefAttributes<HTMLInputElement>> = /*#__PURE__*/ forwardRef(
+  function DesignerCheckbox(props: DesignerCheckboxProps, ref?: React.Ref<HTMLInputElement>) {
+    const isControlled = props.checked !== undefined
+    const [internalChecked, setInternalChecked] = useState(props.defaultChecked ?? false)
 
-  const checked = isControlled ? props.checked : internalChecked
-  const onChange = useCallback(
-    (ev: React.ChangeEvent<HTMLInputElement>) => {
-      const nextChecked = ev.target.checked
-      if (!isControlled) setInternalChecked(nextChecked)
-      props.onChange?.(nextChecked)
-    },
-    [isControlled, props.onChange],
-  )
-
-  const checkbox = (
-    <label
-      className={clsx(styles.wrapper, props.variant === 'compact' && styles.compact, props.isSuffix && styles.isSuffix, props.className)}
-      style={props.style}
-      onContextMenu={props.onContextMenu}
-    >
-      <input ref={ref} type="checkbox" disabled={props.disabled} checked={checked} onChange={onChange} />
-      {props.label && <span className={styles.label}>{renderLabel(props.label, checked)}</span>}
-    </label>
-  )
-
-  if (props.title) {
-    return (
-      <Tooltip {...defaultTooltipProps} placement={props.titlePlacement || 'top'} title={props.title}>
-        {checkbox}
-      </Tooltip>
+    const checked = isControlled ? props.checked : internalChecked
+    const onChange = useCallback(
+      (nextChecked: boolean) => {
+        if (!isControlled) setInternalChecked(nextChecked)
+        props.onChange?.(nextChecked)
+      },
+      [isControlled, props.onChange],
     )
-  } else {
-    return checkbox
-  }
-})
+
+    const checkbox = (
+      <label
+        className={clsx(styles.wrapper, props.variant === 'compact' && styles.compact, props.isSuffix && styles.isSuffix, props.className)}
+        style={props.style}
+        onContextMenu={props.onContextMenu}
+      >
+        <Checkbox aria-label={props.ariaLabel} checked={checked} disabled={props.disabled} inputRef={ref} onCheckedChange={onChange} />
+        {props.label && <span className={styles.label}>{renderLabel(props.label, checked)}</span>}
+      </label>
+    )
+
+    if (props.title) {
+      return (
+        <DesignerTooltip placement={props.titlePlacement || 'top'} title={props.title}>
+          {checkbox}
+        </DesignerTooltip>
+      )
+    } else {
+      return checkbox
+    }
+  },
+)

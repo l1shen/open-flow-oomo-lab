@@ -80,6 +80,8 @@
     "source": "显示源文本"
   },
   "components": {
+    "clear": "清除",
+    "loading": "加载中",
     "noMatching": "无匹配项",
     "numOptions": "{{count}} 项"
   },

@@ -9,6 +9,7 @@ import type {
   FlowDesignerViewWebhook,
 } from '../../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import type { JsonValue } from '../api.ts'
+import type { WorkbenchTheme } from '../contract.ts'
 import type { DesignerEdge, DesignerGraph, DesignerViewport, Point } from '../workspace.ts'
 import type { AddNodeOption } from './addNodeOptions.ts'
 import type { DesignerTarget } from './projectChanges.ts'
@@ -16,8 +17,10 @@ import type { WebhookSettings } from './projectChanges.ts'
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLang, useTranslate } from 'val-i18n-react'
+import { CanvasControlGroup } from '../../../../designer/browser/components/canvasControlGroup.tsx'
 import { FlowDesignerView } from '../../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import { compareJSONSchema } from '../../../../manifest/common/schemaCompare.ts'
+import { Button } from '../../../../ui/browser/button.tsx'
 import { Icon } from '../icons.tsx'
 import { indexAddNodeOptions } from './addNodeOptions.ts'
 
@@ -25,6 +28,7 @@ interface Props {
   readonly addNodeOptions: readonly AddNodeOption[]
   readonly blocksOpen: boolean
   readonly disabled: boolean
+  readonly theme: WorkbenchTheme
   readonly focusNodeRequest?: { readonly nodeId: string; readonly requestId: number }
   readonly inspectorOpen: boolean
   readonly model: DesignerGraph
@@ -83,7 +87,7 @@ function addItems(options: readonly AddNodeOption[]): FlowDesignerViewAddItem[] 
 
 function focusPanel(event: PointerEvent<HTMLElement>): void {
   const element = event.target
-  if (element instanceof Element && element.closest('a, button, input, label, select, textarea, [contenteditable="true"], .react-select-container')) return
+  if (element instanceof Element && element.closest('a, button, input, label, select, textarea, [contenteditable="true"]')) return
   event.currentTarget.focus({ preventScroll: true })
 }
 
@@ -119,6 +123,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
     onToggleInspector,
     selectedNodeIds,
     target,
+    theme,
   }: Props,
   ref,
 ): ReactElement {
@@ -237,6 +242,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
         addNodeRequest={addNodeRequest}
         addItems={designerAddItems}
         className="workbench-designer-canvas"
+        dark={theme == 'dark'}
         editable={!disabled}
         focusNodeRequest={focusNodeRequest}
         identity={target == null ? 'empty' : `${target.kind}:${target.id}`}
@@ -290,41 +296,44 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
         <span className="status-dot neutral" />
         {t('designer.draftBadge', { kind: t(target?.kind == 'subflow' ? 'common.subflow' : 'common.flow') })}
       </div>
-      <div className="designer-actions designer-overlay top-right">
-        <button
-          aria-pressed={blocksOpen}
-          className={`button secondary small ${blocksOpen ? 'active' : ''}`}
+      <CanvasControlGroup className="designer-overlay top-right">
+        <Button
+          aria-expanded={blocksOpen}
           disabled={disabled || target == null}
           onClick={(event) => onOpenBlocks(event.currentTarget)}
+          size="sm"
           title={t('designer.openBlocks')}
           type="button"
+          variant="secondary"
         >
-          <Icon name="plus" size={14} /> {t('designer.addNode')}
-        </button>
+          <Icon data-icon="inline-start" name="plus" size={14} /> {t('designer.addNode')}
+        </Button>
         {(selectedNodeIds.length > 0 || selectedEdge != null) && (
-          <button
-            className="button secondary small danger"
+          <Button
             disabled={disabled}
             onClick={() => {
               if (selectedNodeIds.length > 0) onDeleteNodes()
               else if (selectedEdge != null) onDeleteEdge(selectedEdge)
             }}
+            size="sm"
             type="button"
+            variant="destructive"
           >
             {t('designer.delete')}
-          </button>
+          </Button>
         )}
-        <button
+        <Button
           aria-label={t('designer.toggleInspector')}
-          aria-pressed={inspectorOpen}
-          className={`icon-button bordered ${inspectorOpen ? 'active' : ''}`}
+          aria-expanded={inspectorOpen}
           onClick={(event) => onToggleInspector(event.currentTarget)}
+          size="icon-sm"
           title={t('designer.toggleInspector')}
           type="button"
+          variant="ghost"
         >
           <Icon name="panel" size={16} />
-        </button>
-      </div>
+        </Button>
+      </CanvasControlGroup>
       {target != null && model.nodes.length == 0 && (
         <div className="canvas-empty">
           <span className="empty-icon">
@@ -332,15 +341,15 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
           </span>
           <strong>{t('designer.emptyTitle', { kind: t(target.kind == 'flow' ? 'common.flow' : 'common.subflow') })}</strong>
           <span className="canvas-empty-description">{t('designer.emptyDescription')}</span>
-          <button className="button primary" disabled={disabled} onClick={(event) => onOpenBlocks(event.currentTarget)} type="button">
-            <Icon name="plus" size={15} /> {t('designer.addFirstNode')}
-          </button>
+          <Button disabled={disabled} onClick={(event) => onOpenBlocks(event.currentTarget)} type="button">
+            <Icon data-icon="inline-start" name="plus" size={15} /> {t('designer.addFirstNode')}
+          </Button>
           {recommendedOptions.length > 0 && (
             <div className="canvas-empty-recommendations">
               {recommendedOptions.map((option) => (
-                <button disabled={disabled} key={option.id} onClick={() => void addRecommended(option)} type="button">
+                <Button disabled={disabled} key={option.id} onClick={() => void addRecommended(option)} size="sm" type="button" variant="outline">
                   {option.label}
-                </button>
+                </Button>
               ))}
             </div>
           )}

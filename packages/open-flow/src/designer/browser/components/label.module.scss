@@ -54,16 +54,9 @@
   border: 1px solid var(--node-border-color);
   background: var(--node-background-color);
   pointer-events: none;
-
-  :global(.ant-tooltip-container) {
-    background: unset;
-    min-height: unset;
-    min-width: unset;
-    padding: 0;
-    color: var(--widget-font-color);
-    font-size: var(--base-font-size);
-    box-shadow: none;
-  }
+  color: var(--widget-font-color);
+  font-size: var(--base-font-size);
+  box-shadow: none;
 }
 
 .question {

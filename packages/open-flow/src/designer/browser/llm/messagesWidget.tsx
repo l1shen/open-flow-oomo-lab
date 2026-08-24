@@ -1,14 +1,14 @@
 import styles from './messagesWidget.module.scss'
 import type { TFunction } from 'val-i18n'
-import type { IBasicOption } from '../components/select.tsx'
+import type { DesignerOption as IBasicOption } from '../components/select.tsx'
 import type { ProductInputWidgetRendererProps } from './llmHandleEditor.tsx'
 
 import { useCallback } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { isUnknownRecord } from '../../../base/common/type.ts'
-import { Button } from '../components/button.tsx'
-import { Select } from '../components/select.tsx'
+import { Button } from '../../../ui/browser/button.tsx'
+import { DesignerCombobox as Select } from '../components/select.tsx'
 import { SimpleCodeEditor } from '../components/simpleCodeEditor.ts'
 import { highlightTemplateText } from './templateHighlight.ts'
 
@@ -47,10 +47,12 @@ export function MessagesWidget({ handleNames, store }: ProductInputWidgetRendere
               onChange={(option) => updateMessage(index, { ...message, role: messageRole(option?.value) })}
             />
             <Button
-              ariaLabel={t('llmEditor.deleteMessage')}
-              title={t('llmEditor.deleteMessage')}
+              aria-label={t('llmEditor.deleteMessage')}
               disabled={!editable || messages.length <= minimum}
               onClick={() => setMessages(messages.toSpliced(index, 1))}
+              size="icon-xs"
+              title={t('llmEditor.deleteMessage')}
+              variant="ghost"
             >
               <i className="i-codicon:trash" />
             </Button>
@@ -67,14 +69,8 @@ export function MessagesWidget({ handleNames, store }: ProductInputWidgetRendere
           />
         </div>
       ))}
-      <Button
-        htmlType="button"
-        className={styles.addMessage}
-        wrapperClassName={styles.addMessageWrapper}
-        disabled={!editable}
-        prefix={<i className="i-codicon:add" />}
-        onClick={() => setMessages([...messages, { role: addRole, content: '' }])}
-      >
+      <Button className={styles.addMessage} disabled={!editable} onClick={() => setMessages([...messages, { role: addRole, content: '' }])} type="button">
+        <i className="i-codicon:add" data-icon="inline-start" />
         {t('llmEditor.addMessage')}
       </Button>
     </div>

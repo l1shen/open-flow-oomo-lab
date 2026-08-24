@@ -6,9 +6,10 @@
 }
 
 .content {
+  display: flex;
+  height: 100%;
+  align-items: center;
   padding: 0 2px 0 4px;
-  text-align: left;
-  background-color: transparent;
   justify-content: space-between;
   gap: 0.25em;
   background-color: var(--widget-background);
@@ -27,7 +28,8 @@
   opacity: 0;
 
   .content:hover ~ &,
-  &:hover {
+  &:hover,
+  &:focus-within {
     opacity: 1;
   }
 
@@ -44,48 +46,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   pointer-events: none;
-}
-
-$switch-size: 12px;
-$radius: 8px;
-
-.button {
-  width: $switch-size * 2 + 2px;
-  height: $switch-size + 2px;
-  border-radius: $radius;
-  background-color: var(--widget-switch-background-color);
-  overflow: hidden;
-  position: relative;
-  transition: background-color var(--transition-time);
-  box-shadow:
-    0px 0.5px 1.5px 0px #0000001f inset,
-    0px 0px 1px 0px #00000005 inset;
-
-  .checked & {
-    background-color: var(--brand-highlight-color);
-  }
-}
-
-.fg {
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  width: $switch-size;
-  height: $switch-size;
-  border: 1px solid var(--widget-switch-border-color);
-  background-color: var(--widget-font-highlight-color);
-  border-radius: $radius;
-  transform: translateX(0);
-  transition: transform var(--transition-time);
-  box-shadow: 0px 0.25px 0.5px 0.1px #0000001f;
-
-  .checked & {
-    transform: translateX(100%);
-  }
-}
-
-.content:disabled {
-  background-color: var(--widget-background);
 }
 
 .isSuffix {

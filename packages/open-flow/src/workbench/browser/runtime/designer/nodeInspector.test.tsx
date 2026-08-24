@@ -62,6 +62,7 @@ function renderTrigger(trigger: TriggerNode, diagnostics: readonly Diagnostic[] 
         selection={revision.selection({ id: 'main', kind: 'flow' }, 'trigger')}
         store={{} as WorkspaceStore}
         target={{ id: 'main', kind: 'flow' }}
+        theme="light"
         triggerActiveConnections={[]}
         triggerAuthorizationPending={false}
         triggerConnectionLoading={false}

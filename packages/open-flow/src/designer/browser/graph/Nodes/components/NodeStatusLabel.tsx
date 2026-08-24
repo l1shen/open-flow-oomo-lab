@@ -4,13 +4,12 @@ import type { Viewport } from '../../../base/compare.ts'
 import type { FlowRunStatus } from '../../../stores/designer/typings.ts'
 import type { NodeStatus } from '../../../stores/node/constants.ts'
 
-import { CheckCircleOutlined, CloseCircleOutlined, HourglassOutlined, LoadingOutlined } from '@ant-design/icons'
-import { isDefined, returnsEmptyString } from '@wopjs/cast'
-import { Progress } from 'antd'
+import { isDefined } from '@wopjs/cast'
 import { clsx } from 'clsx'
 import { memo } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
+import { Progress } from '../../../../../ui/browser/progress.tsx'
 import { NODE_STATUS } from '../../../stores/node/constants.ts'
 import { NodeTopLeftLabel } from './NodeTopLeftLabel.tsx'
 import { useNodeStatus } from './useNodeStatus.ts'
@@ -91,28 +90,24 @@ export interface NodeStatusIconProps {
 export const NodeStatusIcon: React.FC<NodeStatusIconProps> = ({ status, progress, className, loaderSize = 14 }) => {
   switch (status) {
     case NODE_STATUS.Success: {
-      return <CheckCircleOutlined className={clsx(className, 'color-#52c41a')} />
+      return <i className={clsx(className, styles.success, 'i-codicon:check')} />
     }
     case NODE_STATUS.Error: {
-      return <CloseCircleOutlined className={clsx(className, 'color-#eb2f96')} />
+      return <i className={clsx(className, styles.error, 'i-codicon:error')} />
     }
     case NODE_STATUS.Running: {
       return progress == null ? (
-        <LoadingOutlined spin className={clsx(className, 'color-[--brand-highlight-color]')} />
+        <i className={clsx(className, styles.running, 'i-codicon:loading', 'oo-designer-spin')} />
       ) : (
         <Progress
-          type="circle"
-          percent={progress}
-          size={loaderSize}
-          strokeColor={'var(--brand-highlight-color)'}
-          strokeWidth={10}
-          format={returnsEmptyString}
-          className={clsx(className, 'pointer-events-none')}
+          className={clsx(className, styles.progress, 'pointer-events-none')}
+          style={{ '--node-status-progress': `${Math.min(100, Math.max(0, progress))}%`, '--node-status-size': `${loaderSize}px` } as React.CSSProperties}
+          value={progress}
         />
       )
     }
     case NODE_STATUS.Waiting: {
-      return <HourglassOutlined className={clsx(className, 'color-[--text-2]')} />
+      return <i className={clsx(className, styles.waiting, 'i-carbon:time')} />
     }
   }
   return null

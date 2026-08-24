@@ -80,6 +80,8 @@
     "source": "View source"
   },
   "components": {
+    "clear": "Clear",
+    "loading": "Loading",
     "noMatching": "No matching items",
     "numOptions": "{{count}} options"
   },

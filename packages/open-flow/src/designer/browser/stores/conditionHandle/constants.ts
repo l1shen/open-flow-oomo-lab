@@ -1,5 +1,5 @@
 import type { ConditionExpression, InputHandleDef } from '../../../../schema/index.ts'
-import type { IBasicOption } from '../../components/select.tsx'
+import type { DesignerOption } from '../../components/select.tsx'
 import type { PrimitiveType } from '../../jsonSchema/preset.ts'
 
 import { returnsTrue } from '@wopjs/cast'
@@ -15,7 +15,7 @@ export type Logical = 'AND' | 'OR'
 
 const defaultLogical: Logical = 'OR'
 
-export interface LogicalOption extends IBasicOption {
+export interface LogicalOption extends DesignerOption {
   label: string
   readonly value: Logical
 }
@@ -35,7 +35,7 @@ export function optionOfLogical(t: (key: string) => string, logical: Logical | u
 
 export type ConditionOperator = ConditionExpression['operator']
 
-export interface ConditionOperatorOption extends IBasicOption {
+export interface ConditionOperatorOption extends DesignerOption {
   label: string
   readonly value: ConditionOperator
 }
@@ -189,7 +189,7 @@ export function predicateValueType(def: InputHandleDef | undefined, operator: Co
   return undefined
 }
 
-export interface ConditionValueTypeOption extends IBasicOption {
+export interface ConditionValueTypeOption extends DesignerOption {
   label: string
   readonly value: 'string' | 'number' | 'boolean'
 }

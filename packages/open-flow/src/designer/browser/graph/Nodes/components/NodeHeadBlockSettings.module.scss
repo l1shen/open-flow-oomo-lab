@@ -49,7 +49,7 @@
   background-color: var(--widget-label-background);
 }
 
-.labelTooltip.labelTooltip :global(.ant-tooltip-container) {
+.labelTooltip.labelTooltip {
   color: var(--edge-string);
   font-family: var(--font-monospace);
 }

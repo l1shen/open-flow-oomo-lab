@@ -2,6 +2,8 @@ import styles from './range.module.scss'
 
 import { clsx } from 'clsx'
 import { forwardRef, useCallback, useRef, useState } from 'react'
+import { Button } from '../../../ui/browser/button.tsx'
+import { Input } from '../../../ui/browser/input.tsx'
 import { useIsMounted } from '../base/react.ts'
 import { clamp } from '../base/trivial.ts'
 
@@ -173,9 +175,9 @@ export const Range: React.FC<RangeProps> = /*#__PURE__*/ forwardRef(function Ran
     >
       <div className={styles.progress} />
       <div className={styles.display} title={props.title || props.label}>
-        <button onClick={onArrowClick} data-amount={-1} disabled={props.disabled}>
+        <Button data-amount={-1} disabled={props.disabled} onClick={onArrowClick} size="icon-xs" variant="ghost">
           <i className="i-codicon:chevron-left" />
-        </button>
+        </Button>
         <div
           className={styles.slider}
           tabIndex={props.disabled ? void 0 : 0}
@@ -189,12 +191,12 @@ export const Range: React.FC<RangeProps> = /*#__PURE__*/ forwardRef(function Ran
           <span className={styles.label}>{props.label}</span>
           <span className={styles.value}>{format(value, props.step)}</span>
         </div>
-        <button onClick={onArrowClick} data-amount={+1} disabled={props.disabled}>
+        <Button data-amount={+1} disabled={props.disabled} onClick={onArrowClick} size="icon-xs" variant="ghost">
           <i className="i-codicon:chevron-right" />
-        </button>
+        </Button>
       </div>
       {showInput && (
-        <input
+        <Input
           type="number"
           ref={ref}
           className={props.className}

@@ -273,4 +273,18 @@ describe('FlowDesignerView model synchronization', () => {
     expect(onAddNode).toHaveBeenCalledWith('connector:github:create-issue', { x: 120, y: 80 })
     view.props.flowDesignerStore.dispose()
   })
+
+  it('forwards the resolved theme to the Designer root', () => {
+    const view = FlowDesignerView(props(model([]), { dark: true })) as React.ReactElement<FlowDesignerProps>
+
+    expect(view.props.dark).toBe(true)
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('starts each independent Flow view in overview mode', () => {
+    const view = FlowDesignerView(props(model([]))) as React.ReactElement<FlowDesignerProps>
+
+    expect(view.props.flowDesignerStore.$.displayMode.value).toBe('overview')
+    view.props.flowDesignerStore.dispose()
+  })
 })

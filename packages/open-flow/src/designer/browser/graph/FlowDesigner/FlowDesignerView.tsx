@@ -1,5 +1,6 @@
 import 'virtual:uno.css'
 import '../../styles/root.scss'
+import '../../../../ui/browser/styles.css'
 import type { IsValidConnection, OnMoveEnd, OnNodeDrag, OnSelectionChangeFunc, Edge as RFEdge, Node as RFNode } from '@xyflow/react'
 import type { ReactElement, ReactNode } from 'react'
 import type { Val } from 'value-enhancer'
@@ -14,6 +15,7 @@ import type {
   OutputHandleDef,
   ValueHandleDef,
 } from '../../../../schema/index.ts'
+import type { FlowDisplayMode } from '../../../common/flowDisplay.ts'
 import type { RFHandleName, RFNodeId } from '../../base/rfHelpers.ts'
 import type { IAddNodeMenuItem, IFromSource } from '../../stores/designer/designer.store.ts'
 import type { InteractiveMode } from '../../stores/designer/designer.store.ts'
@@ -279,6 +281,7 @@ export interface FlowDesignerViewProps {
   readonly addNodeRequest?: { readonly position: FlowDesignerViewPosition }
   readonly addItems: readonly FlowDesignerViewAddItem[]
   readonly className?: string
+  readonly dark?: boolean
   readonly editable: boolean
   readonly focusNodeRequest?: { readonly nodeId: string; readonly requestId: number }
   readonly identity: string
@@ -397,6 +400,7 @@ class FlowDesignerViewAdapter {
     const designerUIStore = new DesignerUIStoreImpl({ commentNodeStores: commentNodes, viewport, nodeStores: nodes })
     this.store = new FlowDesignerStore({
       readonly: !editable,
+      displayMode: val<FlowDisplayMode>('overview'),
       lang$: this.#language,
       rfCommand: createRFCommand(nodes),
       designerUIStore,
@@ -1188,7 +1192,7 @@ export function FlowDesignerView(props: FlowDesignerViewProps): ReactElement {
     <FlowDesigner
       addNodeRequest={props.addNodeRequest}
       className={props.className}
-      dark={false}
+      dark={props.dark ?? false}
       fitView={false}
       flowDesignerStore={adapter.store}
       isValidConnection={isValidConnection}

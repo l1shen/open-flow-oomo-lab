@@ -4,6 +4,9 @@ import type { DiagnosticItem, DiagnosticScope } from '../designer/diagnostics.ts
 
 import { useEffect, useRef } from 'react'
 import { useTranslate } from 'val-i18n-react'
+import { Button } from '../../../../ui/browser/button.tsx'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../../../../ui/browser/empty.tsx'
+import { Skeleton } from '../../../../ui/browser/skeleton.tsx'
 import { Icon } from '../icons.tsx'
 
 interface Props {
@@ -39,29 +42,31 @@ export function DiagnosticsPanel({ checked, checking, items, onClose, onRefresh,
           <span>{checking ? t('diagnostics.checking') : checked ? t('diagnostics.summary', { count: items.length }) : t('diagnostics.notChecked')}</span>
         </div>
         <div className="diagnostics-panel-actions">
-          <button className="button secondary small" disabled={checking} onClick={onRefresh} type="button">
+          <Button disabled={checking} onClick={onRefresh} size="sm" variant="outline">
             {t('diagnostics.refresh')}
-          </button>
-          <button aria-label={t('diagnostics.close')} className="icon-button" onClick={onClose} type="button">
+          </Button>
+          <Button aria-label={t('diagnostics.close')} onClick={onClose} size="icon-sm" variant="ghost">
             <Icon name="close" size={16} />
-          </button>
+          </Button>
         </div>
       </header>
       {items.length == 0 ? (
         checking ? (
-          <div aria-label={t('diagnostics.checking')} className="diagnostics-loading">
-            <span />
-            <span />
-            <span />
+          <div aria-label={t('diagnostics.checking')} className="diagnostics-loading" role="status">
+            <Skeleton />
+            <Skeleton />
+            <Skeleton />
           </div>
         ) : (
-          <div className="diagnostics-empty">
-            <span className="empty-icon">
-              <Icon name="check" size={20} />
-            </span>
-            <strong>{t(checked ? 'diagnostics.emptyTitle' : 'diagnostics.notCheckedTitle')}</strong>
-            <span>{t(checked ? 'diagnostics.emptyDescription' : 'diagnostics.notCheckedDescription')}</span>
-          </div>
+          <Empty className="diagnostics-empty border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Icon name="check" />
+              </EmptyMedia>
+              <EmptyTitle>{t(checked ? 'diagnostics.emptyTitle' : 'diagnostics.notCheckedTitle')}</EmptyTitle>
+              <EmptyDescription>{t(checked ? 'diagnostics.emptyDescription' : 'diagnostics.notCheckedDescription')}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         )
       ) : (
         <ol className="diagnostics-list">
@@ -83,14 +88,15 @@ export function DiagnosticsPanel({ checked, checking, items, onClose, onRefresh,
                 {item.location == null ? (
                   <div className="diagnostic-row unavailable">{content}</div>
                 ) : (
-                  <button
+                  <Button
                     aria-label={t('diagnostics.locateIssue', { message: item.diagnostic.message })}
-                    className="diagnostic-row"
+                    className="diagnostic-row whitespace-normal"
                     onClick={() => onSelect(item)}
                     type="button"
+                    variant="ghost"
                   >
                     {content}
-                  </button>
+                  </Button>
                 )}
               </li>
             )

@@ -1,5 +1,4 @@
 import styles from './NodeHead.module.scss'
-import type { ItemType, MenuItemType } from 'antd/es/menu/interface'
 import type { JSX } from 'react/jsx-runtime'
 import type { TFunction } from 'val-i18n'
 import type { ReadonlyVal } from 'value-enhancer'
@@ -8,13 +7,14 @@ import type { FlowRunStatus } from '../../../stores/designer/typings.ts'
 import type { NodeStore, NodeStoreDisplay$ } from '../../../stores/node/node.store.ts'
 
 import { useStoreApi } from '@xyflow/react'
-import { Dropdown, Tooltip } from 'antd'
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { useDerived, useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
+import { Button } from '../../../../../ui/browser/button.tsx'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../../../../ui/browser/dropdown-menu.tsx'
 import { coalesce, identity, lerp, toggle, toTrue } from '../../../base/trivial.ts'
-import { Button } from '../../../components/button.tsx'
-import { defaultTooltipProps } from '../../../components/label.tsx'
+import { defaultTooltipClassName } from '../../../components/label.tsx'
+import { DesignerTooltip } from '../../../components/tooltip.tsx'
 import { iconOf } from '../../../jsonSchema/preset.ts'
 import { getNextLang } from '../../../stores/designer/l10n.ts'
 import { SUBFLOW_VIEW_MODE } from '../../../stores/designer/subflowDesigner.store.ts'
@@ -77,31 +77,27 @@ function InFlowDesigner({ designerStore }: SharedProps) {
   const onToggleSettings = toggle(nodeStore.$$.showSettings)
 
   const onDelete = toTrue(editable) && (() => designerStore.deleteNodes([nodeStore]))
+  const items = getContextMenuItems({
+    t,
+    nodeStore,
+    runStatus,
+    onToggleSettings,
+    onDelete,
+    onOpenSharedTaskSource,
+    onOpenBlockDesigner,
+  })
 
   return (
-    <Dropdown
-      trigger={['click']}
-      classNames={{ root: styles.menu }}
-      placement="bottomLeft"
-      arrow={false}
-      getPopupContainer={getPopupContainer}
-      menu={{
-        getPopupContainer,
-        items: getContextMenuItems({
-          t,
-          nodeStore,
-          runStatus,
-          onToggleSettings,
-          onDelete,
-          onOpenSharedTaskSource,
-          onOpenBlockDesigner,
-        }),
-      }}
-    >
-      <Button>
-        <i className="i-codicon:ellipsis" />
-      </Button>
-    </Dropdown>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button aria-label={t('more')} size="icon-xs" title={t('more')} variant="ghost">
+            <i className="i-codicon:ellipsis" />
+          </Button>
+        }
+      />
+      <NodeHeadMenuContent getPopupContainer={getPopupContainer} items={items} />
+    </DropdownMenu>
   )
 }
 
@@ -128,13 +124,21 @@ export function NodeSettingsPanelHost({ designerStore, nodeStore }: NodeFloatBar
 }
 
 function InBlockDesigner({ designerStore }: SharedProps) {
+  const t = useTranslate()
   const nodeStore = useNodeStore()
   const showSettings = useVal(nodeStore.$$.showSettings)
   const reactFlowStore = useStoreApi()
 
   return (
     <>
-      <Button active={showSettings} onClick={toggle(nodeStore.$$.showSettings)}>
+      <Button
+        aria-label={t('nodeActions.nodeSetting')}
+        aria-pressed={showSettings}
+        onClick={toggle(nodeStore.$$.showSettings)}
+        size="icon-xs"
+        title={t('nodeActions.nodeSetting')}
+        variant={showSettings ? 'default' : 'ghost'}
+      >
         <i className={iconOf('settings')} />
       </Button>
       {showSettings && (
@@ -174,31 +178,35 @@ export function NodeHeadContextMenu({ designerStore, children }: NodeHeadContext
   const onToggleSettings = toggle(nodeStore.$$.showSettings)
 
   const onDelete = toTrue(editable && designerStore.canDeleteNodes && !isInBlock) && (() => designerStore.deleteNodes([nodeStore]))
+  const [open, setOpen] = useState(false)
+  const items = getContextMenuItems({
+    t,
+    nodeStore,
+    runStatus,
+    onToggleSettings,
+    onDelete,
+    onOpenBlockDesigner,
+    onOpenSharedTaskSource,
+  })
 
   return (
-    <>
-      <Dropdown
-        trigger={['contextMenu']}
-        classNames={{ root: styles.menu }}
-        placement="bottomLeft"
-        arrow={false}
-        getPopupContainer={getPopupContainer}
-        menu={{
-          getPopupContainer,
-          items: getContextMenuItems({
-            t,
-            nodeStore,
-            runStatus,
-            onToggleSettings,
-            onDelete,
-            onOpenBlockDesigner,
-            onOpenSharedTaskSource,
-          }),
-        }}
-      >
-        <div className="flex-1">{children}</div>
-      </Dropdown>
-    </>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        render={
+          <div
+            className="flex-1"
+            onClick={(event) => event.preventDefault()}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              setOpen(true)
+            }}
+          >
+            {children}
+          </div>
+        }
+      />
+      <NodeHeadMenuContent getPopupContainer={getPopupContainer} items={items} />
+    </DropdownMenu>
   )
 }
 
@@ -213,11 +221,34 @@ interface Params {
   readonly onOpenBlockDesigner?: () => void
 }
 
-type ContextMenuActionItem = MenuItemType & {
+interface ContextMenuActionItem {
+  readonly danger?: boolean
+  readonly disabled?: boolean
+  readonly icon?: React.ReactNode
+  readonly key: string
   readonly label: string
+  readonly onClick?: () => void
 }
 
-type ContextMenuItem = ItemType<ContextMenuActionItem>
+type ContextMenuItem = ContextMenuActionItem | false | undefined
+
+function NodeHeadMenuContent({ getPopupContainer, items }: { readonly getPopupContainer: () => HTMLElement; readonly items: ContextMenuItem[] }) {
+  return (
+    <DropdownMenuContent align="start" className={styles.menu} container={getPopupContainer()} side="bottom" sideOffset={0}>
+      <DropdownMenuGroup>
+        {items.map(
+          (item) =>
+            item && (
+              <DropdownMenuItem key={item.key} disabled={item.disabled} onClick={item.onClick} variant={item.danger ? 'destructive' : 'default'}>
+                {item.icon}
+                {item.label}
+              </DropdownMenuItem>
+            ),
+        )}
+      </DropdownMenuGroup>
+    </DropdownMenuContent>
+  )
+}
 
 function getContextMenuItems({
   t,
@@ -350,25 +381,29 @@ export const NodeFloatBar: React.FC<NodeFloatBarProps> = /* @__PURE__ */ memo(fu
     onToggleSettings,
     onOpenSharedTaskSource,
   })
-  const floatBarItems = items.filter((item): item is ContextMenuActionItem => !!item && !('children' in item))
+  const floatBarItems = items.filter((item): item is ContextMenuActionItem => !!item)
 
   return (
     <div className={styles.floatBar} style={style}>
       {nodeStore.display$ && <NodeStatus flowStatus$={designerStore.$.runStatus} display$={nodeStore.display$} />}
-      {floatBarItems.map((item) => (
-        <Button
-          key={item.key}
-          title={item.label}
-          titlePlacement="top"
-          className={styles.floatBarButton}
-          onClick={(domEvent) => item.onClick?.({ domEvent } as unknown as Parameters<NonNullable<MenuItemType['onClick']>>[0])}
-          disabled={item.disabled}
-          active={item.key === '$nodeSetting' && showSettings}
-          getPopupContainer={getPopupContainer}
-        >
-          {item.icon}
-        </Button>
-      ))}
+      {floatBarItems.map((item) => {
+        const active = item.key === '$nodeSetting' && showSettings
+        return (
+          <DesignerTooltip getPopupContainer={getPopupContainer} key={item.key} placement="top" title={item.label}>
+            <Button
+              aria-label={item.label}
+              aria-pressed={active}
+              className={styles.floatBarButton}
+              disabled={item.disabled}
+              onClick={item.onClick}
+              size="icon"
+              variant={active ? 'default' : 'ghost'}
+            >
+              {item.icon}
+            </Button>
+          </DesignerTooltip>
+        )
+      })}
     </div>
   )
 })
@@ -392,8 +427,8 @@ function NodeStatus({ flowStatus$, display$ }: NodeStatusProps): React.ReactNode
     case NODE_STATUS.Running:
     case NODE_STATUS.Waiting:
       return (
-        <Tooltip
-          {...defaultTooltipProps}
+        <DesignerTooltip
+          className={defaultTooltipClassName}
           placement="top"
           getPopupContainer={getPopupContainer}
           title={<NodeStatusContent status={status} progress={progress} combo={count} />}
@@ -401,7 +436,7 @@ function NodeStatus({ flowStatus$, display$ }: NodeStatusProps): React.ReactNode
           <span className={styles.floatBarStatus}>
             <NodeStatusIcon status={status} progress={progress} loaderSize={18} />
           </span>
-        </Tooltip>
+        </DesignerTooltip>
       )
   }
 }

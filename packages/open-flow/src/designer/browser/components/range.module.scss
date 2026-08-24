@@ -32,7 +32,7 @@
   align-items: center;
   height: var(--widget-height);
 
-  button {
+  [data-slot='button'] {
     flex: none;
     width: 1em;
     height: 100%;
@@ -104,7 +104,7 @@
     background-color: var(--widget-background-highlight-color);
   }
 
-  button {
+  [data-slot='button'] {
     background-color: transparent;
   }
 

@@ -25,9 +25,10 @@ interface WorkbenchProps {
   readonly navigation: NavigationStore
   readonly onLanguageChange?: ((language: WorkbenchLanguage) => void) | undefined
   readonly store: WorkbenchStore
+  readonly theme: WorkbenchTheme
 }
 
-function Workbench({ language, navigation, onLanguageChange, store }: WorkbenchProps): ReactElement {
+function Workbench({ language, navigation, onLanguageChange, store, theme }: WorkbenchProps): ReactElement {
   const projectId = useVal(store.workspace.$.projectId)
   const target = useVal(store.workspace.$.target)
   return (
@@ -51,7 +52,7 @@ function Workbench({ language, navigation, onLanguageChange, store }: WorkbenchP
         />
       ) : (
         <Suspense fallback={<main aria-busy="true" className="workspace" />}>
-          <FlowWorkspace language={language} navigation={navigation} onLanguageChange={onLanguageChange} store={store} />
+          <FlowWorkspace language={language} navigation={navigation} onLanguageChange={onLanguageChange} store={store} theme={theme} />
         </Suspense>
       )}
     </div>
@@ -126,7 +127,7 @@ function Session({ host, language, location, onLanguageChange, onNavigate, prefe
     <I18nProvider i18n={i18n}>
       <div className="open-flow-workbench" data-theme={theme}>
         <NotificationBridge host={host} store={store} />
-        <Workbench language={language} navigation={navigation} onLanguageChange={onLanguageChange} store={store} />
+        <Workbench language={language} navigation={navigation} onLanguageChange={onLanguageChange} store={store} theme={theme} />
       </div>
     </I18nProvider>
   )

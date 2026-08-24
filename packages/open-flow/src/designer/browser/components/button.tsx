@@ -1,11 +1,11 @@
 import styles from './button.module.scss'
-import type { TooltipPlacement } from 'antd/es/tooltip'
+import type { TooltipPlacement } from './tooltip.tsx'
 
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { forwardRef } from 'react'
+import { Button as ShadcnButton } from '../../../ui/browser/button.tsx'
 import { isPositiveNumber } from '../base/trivial.ts'
-import { defaultTooltipProps } from './label.tsx'
+import { DesignerTooltip } from './tooltip.tsx'
 
 export interface ButtonProps {
   id?: string
@@ -45,23 +45,16 @@ export const Button: React.ForwardRefExoticComponent<ButtonProps & React.RefAttr
   ref?: React.Ref<HTMLButtonElement>,
 ) {
   return (
-    <Tooltip
-      {...defaultTooltipProps}
-      placement={props.titlePlacement ?? defaultTooltipProps.placement}
-      title={props.autoHeight ? void 0 : props.title}
-      getPopupContainer={props.getPopupContainer}
-    >
+    <DesignerTooltip getPopupContainer={props.getPopupContainer} placement={props.titlePlacement ?? 'left'} title={props.autoHeight ? undefined : props.title}>
       <div className={clsx(styles.wrapper, props.isSuffix && styles.isSuffix, props.wrapperClassName)}>
-        <button
+        <ShadcnButton
           id={props.id}
           ref={ref}
           aria-label={props.ariaLabel}
-          aria-pressed={props.ariaPressed}
+          aria-pressed={props.ariaPressed ?? props.active}
           className={clsx(
             'nodrag',
-            styles.button,
             props.variant === 'danger' && styles.danger,
-            props.variant === 'outline' && styles.outline,
             props.dropDown && styles.dropDown,
             props.count && styles.count,
             props.autoHeight && styles.autoHeight,
@@ -73,20 +66,21 @@ export const Button: React.ForwardRefExoticComponent<ButtonProps & React.RefAttr
           style={props.style}
           disabled={props.disabled}
           onClick={props.onClick}
+          variant={props.variant == 'danger' ? 'destructive' : props.variant}
         >
           {props.prefix && <span className={styles.prefix}>{props.prefix}</span>}
           {props.children}
           {props.suffix && <span className={styles.suffix}>{props.suffix}</span>}
           {props.dropDown && <i className="i-codicon:chevron-down" />}
           {isPositiveNumber(props.count) && <span className={styles.badge}>{renderCount(props.count)}</span>}
-        </button>
+        </ShadcnButton>
         {props.onClear && (
-          <button tabIndex={-1} className={styles.clear} onClick={props.onClear}>
+          <ShadcnButton className={styles.clear} onClick={props.onClear} size="icon-xs" tabIndex={-1} variant="ghost">
             <i className={props.clearIcon ?? 'i-codicon:close'} />
-          </button>
+          </ShadcnButton>
         )}
       </div>
-    </Tooltip>
+    </DesignerTooltip>
   )
 })
 

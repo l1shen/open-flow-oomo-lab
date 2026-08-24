@@ -63,7 +63,7 @@ export const ImageGalleryPreview = ({ images, lite = false }: ImageGalleryPrevie
       {loading && <div className="viewer-loading" />}
       <div ref={imagesRef} className="absolute invisible">
         {mediaUrls.map((mediaUrl, i) => (
-          <img key={i} src={mediaUrl} />
+          <img alt="" key={i} src={mediaUrl} />
         ))}
       </div>
     </div>

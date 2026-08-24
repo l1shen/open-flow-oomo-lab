@@ -6,7 +6,6 @@ import type { SubflowInputSectionStore } from '../../stores/node/nodeSection/sub
 import type { SubflowOutputSectionStore } from '../../stores/node/nodeSection/subflowOutputSection.store.ts'
 import type { useDragAndDrop } from './dragNDrop.ts'
 
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { useCallback, useMemo } from 'react'
 import { useVal } from 'use-value-enhancer'
@@ -16,7 +15,8 @@ import { NODE_HANDLE_CLASSNAME } from '../../base/designer.ts'
 import { isBannedName, toTrue } from '../../base/trivial.ts'
 import { HandleRow } from '../../components/handleRow.tsx'
 import { Input } from '../../components/input.tsx'
-import { defaultTooltipProps } from '../../components/label.tsx'
+import { defaultTooltipClassName } from '../../components/label.tsx'
+import { DesignerTooltip } from '../../components/tooltip.tsx'
 import { DESIGNER_TYPE } from '../../stores/designer/typings.ts'
 import { OUTPUT_SECTION_TYPE, SUBFLOW_INPUT_SECTION_TYPE, SUBFLOW_OUTPUT_SECTION_TYPE } from '../../stores/node/nodeSection/constants.ts'
 import { HandleRowStore } from '../../stores/nodeHandle/handleRow.store.ts'
@@ -148,7 +148,7 @@ function HandleGroup(props: HandleGroupProps) {
           )
         }
         value={
-          <Tooltip {...defaultTooltipProps} placement="left" autoAdjustOverflow={false} title={renameError} open={!!renameError}>
+          <DesignerTooltip className={defaultTooltipClassName} placement="left" title={renameError} open={!!renameError}>
             <div className={styles.handleNameWrapper}>
               <Input
                 returnToCommit
@@ -166,7 +166,7 @@ function HandleGroup(props: HandleGroupProps) {
                 }}
               />
             </div>
-          </Tooltip>
+          </DesignerTooltip>
         }
         actions={
           toTrue(props.editable && !props.additional) && [

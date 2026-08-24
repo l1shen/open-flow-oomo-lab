@@ -1,9 +1,11 @@
 import type { FormEvent, ReactElement } from 'react'
 
-import { Dialog } from '@base-ui/react/dialog'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslate } from 'val-i18n-react'
 import { resourceNameIssue, resourceNameMaxLength } from '../../../../project/common/change.ts'
+import { Button } from '../../../../ui/browser/button.tsx'
+import { Dialog, DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogTitle } from '../../../../ui/browser/dialog.tsx'
+import { Input } from '../../../../ui/browser/input.tsx'
 import { Icon } from '../icons.tsx'
 
 export default function CreateResourceDialog({
@@ -38,30 +40,32 @@ export default function CreateResourceDialog({
   return (
     <>
       <div className="resource-dialog-portal" ref={portal} />
-      <Dialog.Root
+      <Dialog
         onOpenChange={setOpen}
         onOpenChangeComplete={(nextOpen) => {
           if (!nextOpen) onOpenChange(false)
         }}
         open={open}
       >
-        <Dialog.Portal container={portal}>
-          <Dialog.Backdrop className="resource-dialog-backdrop" />
-          <Dialog.Popup className="resource-dialog-popup" initialFocus={() => input.current}>
+        <DialogPortal container={portal}>
+          <DialogOverlay className="resource-dialog-backdrop" />
+          <DialogContent className="resource-dialog-popup" initialFocus={() => input.current}>
             <form className="resource-dialog-form" onSubmit={onSubmit}>
               <header className="resource-dialog-header">
-                <Dialog.Title>{title}</Dialog.Title>
-                <Dialog.Close aria-label={t('common.cancel')} className="icon-button" type="button">
+                <DialogTitle>{title}</DialogTitle>
+                <DialogClose aria-label={t('common.cancel')} render={<Button size="icon-sm" variant="ghost" />} type="button">
                   <Icon name="close" size={16} />
-                </Dialog.Close>
+                </DialogClose>
               </header>
               <div className="resource-dialog-body">
                 <label className="resource-dialog-field">
                   <span>{label}</span>
-                  <input
+                  <Input
+                    autoComplete="off"
                     aria-describedby={messageId}
                     aria-invalid={showIssue}
                     id={id}
+                    name="resource-name"
                     onChange={(event) => onNameChange(event.target.value)}
                     ref={input}
                     required
@@ -73,17 +77,17 @@ export default function CreateResourceDialog({
                 </label>
               </div>
               <footer className="resource-dialog-footer">
-                <Dialog.Close className="button secondary" type="button">
+                <DialogClose render={<Button variant="outline" />} type="button">
                   {t('common.cancel')}
-                </Dialog.Close>
-                <button className="button primary" disabled={pending || issue != null} type="submit">
+                </DialogClose>
+                <Button disabled={pending || issue != null} type="submit">
                   {t(pending ? 'common.creating' : 'common.create')}
-                </button>
+                </Button>
               </footer>
             </form>
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
+          </DialogContent>
+        </DialogPortal>
+      </Dialog>
     </>
   )
 }

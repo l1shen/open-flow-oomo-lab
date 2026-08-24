@@ -5,20 +5,20 @@ import type { NodeId } from '../../../../schema/index.ts'
 import type { IHandleAction } from '../../components/handleRow.tsx'
 import type { DesignerType } from '../../stores/designer/typings.ts'
 
-import { Tooltip } from 'antd'
 import { useCallback, useRef, useState } from 'react'
 import { useDerived, useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { setValue } from 'value-enhancer'
+import { Button } from '../../../../ui/browser/button.tsx'
 import { asTrue, toTrue } from '../../base/trivial.ts'
-import { Button } from '../../components/button.tsx'
 import { CssWrapper } from '../../components/cssWrapper.tsx'
 import { HandleNoActions, HandleWithActions } from '../../components/handleNoActions.tsx'
 import { HandleRow } from '../../components/handleRow.tsx'
-import { Input2 } from '../../components/input2.tsx'
-import { defaultTooltipProps, Label } from '../../components/label.tsx'
-import { Select } from '../../components/select.tsx'
-import { ToggleSwitch } from '../../components/toggleSwitch.tsx'
+import { TranslationInput } from '../../components/input2.tsx'
+import { Label } from '../../components/label.tsx'
+import { DesignerCombobox as Select } from '../../components/select.tsx'
+import { LabeledSwitch } from '../../components/toggleSwitch.tsx'
+import { DesignerTooltip } from '../../components/tooltip.tsx'
 import { DesignerIcon } from '../../icons/DesignerIcon.tsx'
 import { iconOf } from '../../jsonSchema/preset.ts'
 import { FlowDesignerStore } from '../../stores/designer/flowDesigner.store.ts'
@@ -49,7 +49,7 @@ export function FlowSettings(props: FlowSettingsProps): JSX.Element {
         <h3 className={styles.title}>{props.designerType === DESIGNER_TYPE.Subflow ? t('subflowSettings.title') : t('flowSettings.title')}</h3>
         <aside>
           {props.showSettings$ && (
-            <Button ariaLabel={t('close')} title={t('close')} onClick={() => setValue(props.showSettings$!, false)}>
+            <Button aria-label={t('close')} onClick={() => setValue(props.showSettings$!, false)} size="icon-xs" title={t('close')} variant="ghost">
               <i className="i-codicon:close" />
             </Button>
           )}
@@ -164,7 +164,8 @@ function ForwardPreviewConfigs({ store }: { readonly store: SubflowDesignerStore
       maxMenuHeight={Math.max(0, below) * 27 + 55}
     />
   ) : (
-    <Button onClick={() => setMenuOpen(true)} disabled={!editable || !canAddNode} prefix={<i className={iconOf('objectAdd')} />}>
+    <Button disabled={!editable || !canAddNode} onClick={() => setMenuOpen(true)}>
+      <i className={iconOf('objectAdd')} data-icon="inline-start" />
       {t('handleEditor.addItem')}
     </Button>
   )
@@ -283,7 +284,7 @@ function MetadataConfigs({ store }: { readonly store: FlowDesignerStore | Subflo
         }
         value={
           store.manifest$ && editable ? (
-            <Button className={styles.iconButton} onClick={() => openIconPicker(store.manifest$!.icon!.set, 'top')}>
+            <Button className={styles.iconButton} onClick={() => openIconPicker(store.manifest$!.icon!.set, 'top')} size="icon-xs" variant="ghost">
               <DesignerIcon src={displayIcon} fallback={fallbackIcon} />
             </Button>
           ) : (
@@ -298,15 +299,15 @@ function MetadataConfigs({ store }: { readonly store: FlowDesignerStore | Subflo
           name={
             <Label className={styles.label} tooltipClassName={styles.labelTooltip} title="private">
               {t('blockEditor.privateField')}{' '}
-              <Tooltip {...defaultTooltipProps} title={t('blockEditor.privateHelp')} placement="top">
+              <DesignerTooltip placement="top" title={t('blockEditor.privateHelp')}>
                 <span className="cursor-help mr-1 text-[1.2em]">
                   <i className="i-codicon:question" />
                 </span>
-              </Tooltip>
+              </DesignerTooltip>
             </Label>
           }
           value={
-            <ToggleSwitch
+            <LabeledSwitch
               label={{ true: t('blockEditor.private'), false: t('blockEditor.public') }}
               checked={asTrue(privateValue)}
               onChange={store.manifest$.private.set}
@@ -323,7 +324,7 @@ function MetadataConfigs({ store }: { readonly store: FlowDesignerStore | Subflo
           </Label>
         }
         value={
-          <Input2
+          <TranslationInput
             className={styles.input}
             displayValue$={store.display$.title}
             rawValue$={toTrue(editable) && store.manifest$?.title}
@@ -342,7 +343,7 @@ function MetadataConfigs({ store }: { readonly store: FlowDesignerStore | Subflo
           </Label>
         }
         value={
-          <Button className={styles.expandButton} title={displayDescription} onClick={toggleDescription}>
+          <Button className={styles.expandButton} onClick={toggleDescription} title={displayDescription} variant="ghost">
             <span>{displayDescription}</span>
           </Button>
         }
@@ -353,7 +354,7 @@ function MetadataConfigs({ store }: { readonly store: FlowDesignerStore | Subflo
           level="  "
           variant="value-only"
           value={
-            <Input2
+            <TranslationInput
               multiline
               className={styles.input}
               displayValue$={store.display$.description}

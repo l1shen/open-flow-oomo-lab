@@ -3,27 +3,19 @@
 }
 
 .translateMenu {
-  :global(.ant-dropdown-menu-item) {
-    font-size: var(--base-font-size) !important;
-    border-radius: var(--widget-radius) !important;
-  }
-
-  :global(.ant-dropdown-menu-title-content) {
-    white-space: nowrap;
-  }
+  font-size: var(--base-font-size);
+  white-space: nowrap;
 }
 
 .translatePanel {
+  width: auto;
   min-width: 150px;
+  padding: 8px 8px 8px 11px;
+  border-radius: var(--widget-radius);
+  border: 1px solid var(--node-border-color);
+  background-color: var(--block-editor-item-background-color);
   line-height: 1;
   font-size: var(--base-font-size);
-
-  :global(.ant-popover-container) {
-    padding: 8px 8px 8px 11px;
-    border-radius: var(--widget-radius);
-    border: 1px solid var(--node-border-color);
-    background-color: var(--block-editor-item-background-color);
-  }
 }
 
 .translations {

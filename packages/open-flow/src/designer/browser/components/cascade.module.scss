@@ -1,165 +1,36 @@
 .wrapper {
-  overflow: hidden;
+  position: relative;
+  min-width: 0;
 }
 
-.cascade {
-  width: 100%;
-  height: var(--widget-height) !important;
-  font-size: var(--base-font-size) !important;
-  border-radius: var(--widget-radius);
+.loading {
+  position: absolute;
+  top: 50%;
+  left: 5px;
+  z-index: 1;
+  margin-top: -0.5em;
+  color: var(--brand-highlight-color);
+  pointer-events: none;
 
-  :global(.ant-select-suffix),
-  :global(.ant-select-clear) {
-    width: 15px;
-    height: 15px;
-    font-size: 1.25em;
-    color: var(--widget-font-color);
-    display: grid;
-    place-content: center;
-
-    &:hover {
-      color: var(--widget-font-color) !important;
-    }
-  }
-
-  :global(.ant-select-clear) {
-    margin-top: -7.5px;
-    inset-inline-end: 7px !important;
-  }
-
-  &:global(.ant-select) {
-    background: var(--widget-background);
-    border: none;
-    --ant-control-outline-width: 0px;
-
-    &:hover {
-      background-color: var(--widget-background-highlight-color);
-    }
-  }
-
-  &:global(.ant-select-focused) {
-    border-color: var(--brand-highlight-color);
-
-    :global(.ant-select-suffix),
-    :global(.ant-select-clear) {
-      color: var(--widget-font-disable-color);
-    }
-  }
-
-  :global(.ant-select-content) {
-    inset-inline-start: 0 !important;
-    font-size: 0;
-
-    input {
-      padding: 0;
-      height: 100%;
-      font-size: var(--base-font-size);
-      background-color: transparent;
-
-      &:focus-visible {
-        border-color: transparent;
-      }
-    }
-  }
-
-  :global(.ant-select-content) {
-    align-items: center;
-    box-shadow: none !important;
-    font-size: var(--base-font-size) !important;
-    border-radius: var(--widget-radius) !important;
-    background: transparent !important;
-
-    :global(.ant-select-selection-item) {
-      color: var(--widget-font-color);
-      line-height: 1;
-    }
-  }
-
-  &:global(.ant-select-outlined) :global(.ant-select-content) {
-    border-width: 0;
-  }
-
-  &:global(.ant-select-focused.ant-select-focused) {
-    background-color: var(--widget-input-background);
-  }
-
-  &:global(.ant-select-open) :global(.ant-select-selection-item) {
-    color: var(--widget-font-placeholder-color);
-  }
-
-  &:global(.ant-select:hover:has(.ant-select-clear) .ant-select-suffix) {
-    opacity: 0;
-  }
-
-  &:global(.ant-select:hover .ant-select-clear) {
-    background-color: transparent;
-  }
-
-  &:global(.ant-select-disabled) {
-    color: var(--widget-font-disable-color) !important;
-    background-color: var(--widget-background) !important;
-    cursor: default !important;
-
-    :global(.ant-select-suffix),
-    :global(.ant-select-clear) {
-      color: var(--widget-font-disable-color);
-    }
-  }
-}
-
-.popup {
-  border-radius: var(--widget-radius);
-  border: 1px solid var(--border-1);
-  background: var(--widget-input-background);
-  font-size: var(--base-font-size);
-
-  :global(.ant-cascader-menu) {
-    height: auto !important;
-    max-height: 190px !important;
-  }
-
-  :global(.ant-cascader-menu-item) {
-    border-radius: var(--widget-radius) !important;
-    height: 25px !important;
-    background: var(--widget-input-background) !important;
-
-    &:hover {
-      background: var(--widget-background-mask-highlight-color) !important;
-    }
-
-    &:global([data-path-key='__EMPTY__']) {
-      padding: 0;
-    }
-  }
-
-  :global(.ant-cascader-menu-item-active:not(.ant-cascader-menu-item-disabled)) {
-    font-weight: unset !important;
-    color: var(--white);
-    background-color: var(--brand-highlight-color) !important;
-
-    &:hover {
-      color: var(--white);
-      background-color: var(--brand-highlight-color) !important;
-    }
-
-    :global(.ant-cascader-menu-item-expand-icon) {
-      color: var(--white) !important;
-    }
+  + :global([data-slot='combobox-root']) :global([data-slot='combobox-input']) {
+    padding-left: 1.5em;
   }
 }
 
 .title {
-  padding: 0 0.5em;
-}
-
-.placeholder {
-  text-align: center;
-  color: var(--widget-font-color);
+  position: absolute;
+  right: 24px;
+  top: 50%;
+  max-width: calc(100% - 30px);
+  transform: translateY(-50%);
+  color: var(--widget-font-disable-color);
+  overflow: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .warning {
-  position: relative;
-
   &::after {
     content: '';
     position: absolute;
@@ -171,7 +42,7 @@
 }
 
 .isSuffix {
-  padding-left: 4px;
+  margin-left: 4px;
 
   &.warning::after {
     left: 4px;

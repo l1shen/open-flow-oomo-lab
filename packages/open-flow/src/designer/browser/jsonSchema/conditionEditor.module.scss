@@ -111,7 +111,7 @@
   flex: 1;
 }
 
-.fieldTooltip :global(.ant-tooltip-container) {
+.fieldTooltip {
   color: var(--edge-string);
   font-family: var(--font-monospace);
 }

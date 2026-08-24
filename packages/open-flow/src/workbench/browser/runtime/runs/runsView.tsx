@@ -3,11 +3,15 @@ import type { TFunction } from 'val-i18n'
 import type { Run, TriggerRun } from '../api.ts'
 import type { WorkbenchStore } from '../stores/workbenchStore.ts'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useLang, useTranslate } from 'val-i18n-react'
+import { Button } from '../../../../ui/browser/button.tsx'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../../../../ui/browser/empty.tsx'
+import { Tabs, TabsList, TabsTrigger } from '../../../../ui/browser/tabs.tsx'
+import { cn } from '../../../../ui/browser/utils.ts'
 import { Icon } from '../icons.tsx'
-import { duration, navigateRunTabs, RunDetails, RunEventFilters, RunLogButton, runLabel, statusClass } from './runDrawer.tsx'
+import { duration, RunDetails, RunEventFilters, RunLogButton, runLabel, statusClass } from './runDrawer.tsx'
 import { canCancelRun } from './runStore.ts'
 
 function sourceLabel(run: Run, t: TFunction): string {
@@ -44,6 +48,10 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
   const runs = useVal(store.runs.$.runs)
   const observationFailed = useVal(store.runs.$.observationFailed)
   const revision = useVal(store.workspace.$.revision)
+  const root = useRef<HTMLElement>(null)
+  const selectedRun = useRef<HTMLButtonElement | null>(null)
+  const [narrow, setNarrow] = useState(false)
+  const [narrowDetailOpen, setNarrowDetailOpen] = useState(false)
   const [tab, setTab] = useState<'output' | 'timeline'>('timeline')
   const triggerRun = run?.source == 'trigger' && 'triggerNodeId' in run ? (run as TriggerRun) : undefined
   const triggerName =
@@ -51,8 +59,32 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
       ? revision.trigger(triggerRun.flowId, triggerRun.triggerNodeId)?.name
       : undefined
 
+  useEffect(() => {
+    const element = root.current
+    if (element == null || typeof ResizeObserver == 'undefined') return
+    const observer = new ResizeObserver(([entry]) => setNarrow(entry != null && entry.contentRect.width <= 720))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (run == null) setNarrowDetailOpen(false)
+  }, [run])
+
+  const closeNarrowDetail = (): void => {
+    setNarrowDetailOpen(false)
+    requestAnimationFrame(() => selectedRun.current?.focus({ preventScroll: true }))
+  }
+
   return (
-    <section aria-labelledby="workspace-tab-runs" className="runs-view" id="workspace-panel-runs" role="tabpanel" tabIndex={0}>
+    <section
+      aria-labelledby="workspace-tab-runs"
+      className={`runs-view${narrow ? ' narrow' : ''}${narrowDetailOpen ? ' narrow-detail-open' : ''}`}
+      id="workspace-panel-runs"
+      ref={root}
+      role="tabpanel"
+      tabIndex={0}
+    >
       <aside className="run-list-panel">
         <header className="run-list-header">
           <strong>{t('run.history')}</strong>
@@ -63,26 +95,33 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
           ) : loadFailed ? (
             <div className="run-list-empty" role="alert">
               <strong>{t('run.historyLoadFailed')}</strong>
-              <button className="button secondary small" onClick={() => void store.runs.retryLoad()} type="button">
+              <Button onClick={() => void store.runs.retryLoad()} size="sm" variant="outline">
                 {t('empty.retry')}
-              </button>
+              </Button>
             </div>
           ) : runs.length == 0 ? (
-            <div className="run-list-empty">
-              <span className="empty-icon">
-                <Icon name="play" size={20} />
-              </span>
-              <strong>{t('run.historyEmpty')}</strong>
-              <span>{t('run.historyEmptyDescription')}</span>
-            </div>
+            <Empty className="run-list-empty border-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Icon name="play" />
+                </EmptyMedia>
+                <EmptyTitle>{t('run.historyEmpty')}</EmptyTitle>
+                <EmptyDescription>{t('run.historyEmptyDescription')}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             runs.map((candidate) => (
-              <button
+              <Button
                 aria-current={candidate.runId == run?.runId ? 'true' : undefined}
-                className={`run-list-item ${candidate.runId == run?.runId ? 'active' : ''}`}
+                className={cn('run-list-item', candidate.runId == run?.runId && 'active')}
                 key={candidate.runId}
-                onClick={() => store.runs.select(candidate.runId)}
+                onClick={(event) => {
+                  selectedRun.current = event.currentTarget
+                  store.runs.select(candidate.runId)
+                  if (narrow) setNarrowDetailOpen(true)
+                }}
                 type="button"
+                variant="ghost"
               >
                 <span className={`status-dot ${statusClass(candidate)}`} />
                 <span className="run-list-copy">
@@ -98,14 +137,14 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
                   <time>{new Date(candidate.createdAt).toLocaleString(language)}</time>
                   <span>{duration(candidate)}</span>
                 </span>
-              </button>
+              </Button>
             ))
           )}
         </div>
         {nextCursor != null && (
-          <button className="run-load-more" disabled={loadingMore} onClick={() => void store.runs.loadMore()} type="button">
+          <Button className="run-load-more" disabled={loadingMore} onClick={() => void store.runs.loadMore()} variant="outline">
             {t(loadingMore ? 'run.loadingMore' : loadMoreFailed ? 'run.retryLoadMore' : 'run.loadMore')}
-          </button>
+          </Button>
         )}
       </aside>
       <section className="run-detail-panel">
@@ -114,6 +153,11 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
         ) : (
           <>
             <header className="run-detail-header">
+              {narrow && (
+                <Button className="run-history-back" onClick={closeNarrowDetail} size="sm" variant="ghost">
+                  <Icon name="chevron-left" size={16} /> {t('run.history')}
+                </Button>
+              )}
               <div>
                 <span className={`status-dot ${statusClass(run)}`} />
                 <strong>{runLabel(run, t)}</strong>
@@ -142,40 +186,24 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
                 </div>
                 <RunLogButton events={events} eventsExpiresAt={eventsExpiresAt} historyComplete={historyComplete} run={run} />
                 {canCancelRun(run) && (
-                  <button className="button secondary small danger" disabled={cancelingRunId != null} onClick={() => void store.runs.cancel()} type="button">
+                  <Button disabled={cancelingRunId != null} onClick={() => void store.runs.cancel()} size="sm" variant="destructive">
                     {t(cancelingRunId == run.runId ? 'run.canceling' : 'run.cancel')}
-                  </button>
+                  </Button>
                 )}
               </div>
             </header>
             <div className="run-history-content">
               <div className="run-toolbar">
-                <div aria-label={t('run.detailViews')} className="run-tabs" onKeyDown={navigateRunTabs} role="tablist">
-                  <button
-                    aria-controls="run-history-timeline-panel"
-                    aria-selected={tab == 'timeline'}
-                    className={`run-tab ${tab == 'timeline' ? 'active' : ''}`}
-                    id="run-history-timeline-tab"
-                    onClick={() => setTab('timeline')}
-                    role="tab"
-                    tabIndex={tab == 'timeline' ? 0 : -1}
-                    type="button"
-                  >
-                    {t('run.timeline')}
-                  </button>
-                  <button
-                    aria-controls="run-history-output-panel"
-                    aria-selected={tab == 'output'}
-                    className={`run-tab ${tab == 'output' ? 'active' : ''}`}
-                    id="run-history-output-tab"
-                    onClick={() => setTab('output')}
-                    role="tab"
-                    tabIndex={tab == 'output' ? 0 : -1}
-                    type="button"
-                  >
-                    {t('run.output')}
-                  </button>
-                </div>
+                <Tabs className="run-tabs-root" onValueChange={(value) => value != null && setTab(value as 'output' | 'timeline')} value={tab}>
+                  <TabsList aria-label={t('run.detailViews')} className="run-tabs" variant="line">
+                    <TabsTrigger aria-controls="run-history-timeline-panel" id="run-history-timeline-tab" value="timeline">
+                      {t('run.timeline')}
+                    </TabsTrigger>
+                    <TabsTrigger aria-controls="run-history-output-panel" id="run-history-output-tab" value="output">
+                      {t('run.output')}
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
                 {tab == 'timeline' && <RunEventFilters events={events} filter={eventFilter} onChange={(filter) => store.runs.setEventFilter(filter)} />}
               </div>
               <RunDetails

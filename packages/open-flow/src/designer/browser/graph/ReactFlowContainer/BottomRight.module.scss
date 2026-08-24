@@ -3,44 +3,15 @@
   z-index: 100;
   right: 15px;
   bottom: 15px;
-  min-width: 20px;
-  height: var(--canvas-control-container-size);
-  display: flex;
-  align-items: center;
-  gap: 0;
-  border: 1px solid var(--rf-controls-border);
-  border-radius: var(--canvas-control-radius);
-  padding: 0;
-  background-color: var(--rf-button-bg);
-  box-shadow: var(--floating-control-shadow);
-  overflow: hidden;
 
   & > :global(.react-flow__panel) {
     position: static;
   }
-
-  &:has(.expanded) {
-    padding: 0;
-  }
 }
 
-.btn {
-  width: var(--canvas-control-size);
-  height: var(--canvas-control-size);
-  padding: var(--canvas-control-padding);
-  color: var(--rf-button-fg);
-  border-radius: 0;
-  font-size: var(--canvas-control-icon-size);
-}
-
-.btnSelected {
-  color: var(--text-strong);
-  background-color: var(--fill-4);
-
-  &:hover,
-  &:active {
-    background-color: var(--fill-5);
-  }
+.miniMapOpen[data-slot='canvas-control-group'] {
+  height: auto;
+  padding: 0;
 }
 
 .expanded {
@@ -58,15 +29,15 @@
 }
 
 .interactionIcon {
-  font-size: 16px;
+  font-size: var(--canvas-control-icon-size);
 }
 
 .miniMapIcon {
-  font-size: 15px;
+  font-size: calc(var(--canvas-control-icon-size) - 1px);
 }
 
 .settingsIcon {
-  font-size: 14px;
+  font-size: calc(var(--canvas-control-icon-size) - 2px);
 }
 
 .miniMap {

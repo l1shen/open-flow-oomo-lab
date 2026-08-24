@@ -2,7 +2,7 @@ import styles from './TriggerNodeContent.module.scss'
 import type { ReactElement } from 'react'
 import type { TFunction } from 'val-i18n'
 import type { HandleName } from '../../../../../schema/index.ts'
-import type { IBasicOption } from '../../../components/select.tsx'
+import type { DesignerOption as IBasicOption } from '../../../components/select.tsx'
 import type { WidgetType } from '../../../jsonSchema/preset.ts'
 import type {
   TriggerNodeField,
@@ -19,10 +19,10 @@ import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { toRFHandleName } from '../../../base/rfHelpers.ts'
 import { Button } from '../../../components/button.tsx'
-import { CheckBox } from '../../../components/checkbox.tsx'
+import { DesignerCheckbox } from '../../../components/checkbox.tsx'
 import { Handle } from '../../../components/handle.tsx'
 import { Input } from '../../../components/input.tsx'
-import { Select } from '../../../components/select.tsx'
+import { DesignerCombobox as Select } from '../../../components/select.tsx'
 import { getBaseSchema, optionOf, typeOfSchema } from '../../../jsonSchema/preset.ts'
 import { isHandleDef } from '../../../stores/node/constants.ts'
 import { getHandleKind } from '../../../stores/nodeHandle/handleKind.ts'
@@ -406,7 +406,13 @@ function WebhookInputRow({
         options={typeOptions}
         value={typeOptions.find((option) => option.value == (selectedType ?? 'custom'))}
       />
-      <CheckBox checked={input.nullable} disabled={!editable} onChange={(nullable) => onChange({ ...input, nullable })} title={t('trigger.webhookNullable')} />
+      <DesignerCheckbox
+        ariaLabel={t('trigger.webhookNullable')}
+        checked={input.nullable}
+        disabled={!editable}
+        onChange={(nullable) => onChange({ ...input, nullable })}
+        title={t('trigger.webhookNullable')}
+      />
     </div>
   )
 }
@@ -565,7 +571,7 @@ function WebhookEditor({
           />
         </div>
         <div className={styles.webhookNoBody}>
-          <CheckBox
+          <DesignerCheckbox
             checked={webhook.options.noResponseBody ?? false}
             disabled={!editable}
             label={t('trigger.webhookNoResponseBody')}

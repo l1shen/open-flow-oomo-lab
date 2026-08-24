@@ -1,9 +1,8 @@
 import styles from './label.module.scss'
-import type { TooltipProps } from 'antd'
 
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { forwardRef } from 'react'
+import { DesignerTooltip } from './tooltip.tsx'
 
 export interface LabelProps {
   htmlFor?: string
@@ -24,30 +23,21 @@ export interface LabelProps {
 }
 
 /**
- * Ant Design Tooltip attaches mouseenter and mouseleave handlers to its direct child.
+ * Tooltips attach mouseenter and mouseleave handlers to their direct child.
  * Fragment or nested component children can prevent Tooltip from finding the DOM element.
  * Callers should therefore provide a plain HTML element as the direct child.
  * ```jsx
- * import { defaultTooltipProps } from './label.tsx'
- * return <Tooltip {...defaultTooltipProps} title="content"><Icon /></Tooltip>
+ * return <DesignerTooltip title="content"><Icon /></DesignerTooltip>
  * ```
  */
-export const defaultTooltipProps: TooltipProps = {
-  arrow: false,
-  mouseEnterDelay: 0.3,
-  classNames: { root: styles.tooltip },
-  placement: 'left',
-  destroyOnHidden: true,
-}
-
-export const defaultTooltipRootClassName: string = styles.tooltip
+export const defaultTooltipClassName: string = styles.tooltip
 
 export const Label: React.ForwardRefExoticComponent<LabelProps & React.RefAttributes<HTMLLabelElement>> = /*#__PURE__*/ forwardRef(function Label(
   props: LabelProps,
   ref?: React.Ref<HTMLLabelElement>,
 ) {
   return (
-    <Tooltip {...defaultTooltipProps} classNames={{ root: clsx(styles.tooltip, props.tooltipClassName) }} title={props.title}>
+    <DesignerTooltip className={clsx(styles.tooltip, props.tooltipClassName)} placement="left" title={props.title}>
       <div
         className={clsx(styles.wrapper, props.wrapperClassName, props.disabled && styles.disabled, props.isSuffix && styles.isSuffix)}
         title={props.htmlTitle}
@@ -59,14 +49,14 @@ export const Label: React.ForwardRefExoticComponent<LabelProps & React.RefAttrib
           </label>
           {props.suffix && <div className={styles.suffix}>{props.suffix}</div>}
           {props.help && (
-            <Tooltip {...defaultTooltipProps} title={props.help} placement="top">
+            <DesignerTooltip placement="top" title={props.help}>
               <div className={styles.question}>
                 <i className="i-codicon:question" />
               </div>
-            </Tooltip>
+            </DesignerTooltip>
           )}
         </div>
       </div>
-    </Tooltip>
+    </DesignerTooltip>
   )
 })

@@ -3,7 +3,7 @@ import type { ReadonlyVal, Val } from 'value-enhancer'
 import type { ReactiveMap, ReadonlyReactiveMap } from 'value-enhancer/collections'
 import type { NodeId } from '../../../../schema/index.ts'
 import type { RFNode } from '../../base/rfHelpers.ts'
-import type { IBasicOption } from '../../components/select.tsx'
+import type { DesignerOption as IBasicOption } from '../../components/select.tsx'
 import type { NodeStore } from '../node/node.store.ts'
 import type { DesignerStore$, DesignerStore$$, DesignerStoreProps } from './designer.store.ts'
 

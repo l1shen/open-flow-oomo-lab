@@ -1,12 +1,11 @@
 import styles from './handleEditor.module.scss'
 import type { useStoreApi } from '@xyflow/react'
-import type { TooltipProps } from 'antd'
 import type { JSX } from 'react/jsx-runtime'
 import type { Val } from 'value-enhancer'
 import type { BaseCascadeOption } from '../components/cascade.tsx'
 import type { ColorType } from '../components/constants.ts'
 import type { IHandleAction } from '../components/handleRow.tsx'
-import type { IBasicOption } from '../components/select.tsx'
+import type { DesignerOption as IBasicOption } from '../components/select.tsx'
 import type { HandleIndex } from '../stores/node/constants.ts'
 import type { AnyOfWidgetStore } from '../stores/nodeHandle/anyOfWidget.store.ts'
 import type { ArrayItemStore, ArrayWidgetStore } from '../stores/nodeHandle/arrayWidget.store.ts'
@@ -18,7 +17,6 @@ import type { WidgetSelectOption, WidgetType } from './preset.ts'
 import type { JsonSchema } from './types.ts'
 
 import { isDefined, isString } from '@wopjs/cast'
-import { Tooltip } from 'antd'
 import { clsx } from 'clsx'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { useDerived, useVal, useValues } from 'use-value-enhancer'
@@ -47,17 +45,18 @@ import {
 } from '../base/trivial.ts'
 import { Button } from '../components/button.tsx'
 import { Cascade } from '../components/cascade.tsx'
-import { CheckBox } from '../components/checkbox.tsx'
+import { DesignerCheckbox } from '../components/checkbox.tsx'
 import { ColorPicker } from '../components/colorPicker.tsx'
 import { asColorType, asDate, asDateTimeFormat, formatDate } from '../components/constants.ts'
 import { DateTimePicker } from '../components/dateTimePicker.tsx'
 import { Handle } from '../components/handle.tsx'
 import { HandleRow } from '../components/handleRow.tsx'
 import { Input } from '../components/input.tsx'
-import { defaultTooltipProps, defaultTooltipRootClassName, Label } from '../components/label.tsx'
+import { Label } from '../components/label.tsx'
 import { Null } from '../components/null.tsx'
-import { Select } from '../components/select.tsx'
-import { ToggleSwitch } from '../components/toggleSwitch.tsx'
+import { DesignerCombobox as Select } from '../components/select.tsx'
+import { LabeledSwitch } from '../components/toggleSwitch.tsx'
+import { DesignerTooltip } from '../components/tooltip.tsx'
 import { useDesignerType } from '../graph/DesignerStoreContext.tsx'
 import { useNodeType } from '../graph/Nodes/NodeStoreContext.tsx'
 import { useSubflowViewMode } from '../graph/SubflowDesigner/SubflowViewModeContext.ts'
@@ -201,7 +200,7 @@ export function HandleEditor({
         expanded={reference ? null : hasSubpanel ? !collapsed : null}
         onExpandedChange={(e) => setValue(widget.collapsed$, !e)}
         name={
-          <Tooltip {...defaultTooltipProps} placement="left" autoAdjustOverflow={false} title={renameError} open={!!renameError}>
+          <DesignerTooltip open={!!renameError} placement="left" title={renameError}>
             <div className={styles.handleNameWrapper}>
               <Input
                 selectOnFocus
@@ -217,11 +216,12 @@ export function HandleEditor({
                 }}
               />
             </div>
-          </Tooltip>
+          </DesignerTooltip>
         }
         value={<RootField reference={reference} nullable={nullable} type={schemaType} store={widget} descCollapsed={descCollapsed} error$={store.error$} />}
         actions={[
-          <CheckBox
+          <DesignerCheckbox
+            ariaLabel={t('inputHandleEditor.nullable')}
             checked={nullable}
             disabled={restricted || !context.canEditSchema}
             onChange={(checked) => {
@@ -301,13 +301,6 @@ function RootField(props: RootFieldProps) {
       props.store.context.canEditValue,
   )
 
-  const tooltipProps: TooltipProps = {
-    ...defaultTooltipProps,
-    placement: 'top',
-    classNames: { root: clsx(defaultTooltipRootClassName, styles.errorOverlay) },
-    autoAdjustOverflow: false,
-  }
-
   const localize = (message?: string): string | undefined => {
     if (!message) return message
     if (message[0] === '$') return t(`inputHandleEditor.${message.slice(1)}`)
@@ -348,7 +341,7 @@ function RootField(props: RootFieldProps) {
         body
       )}
       {hasValue && (
-        <Tooltip {...tooltipProps} title={showError && localize(error?.message)}>
+        <DesignerTooltip className={styles.errorOverlay} placement="top" title={showError && localize(error?.message)}>
           <div className={clsx(styles.inlineValue, showError && error && styles.error)}>
             {props.reference ? (
               <ValueReference isSuffix type="binary" store={props.store} />
@@ -356,7 +349,7 @@ function RootField(props: RootFieldProps) {
               <ValueReconciler isSuffix type={props.type} nullable={props.nullable} store={props.store} showError={showError} />
             )}
           </div>
-        </Tooltip>
+        </DesignerTooltip>
       )}
     </div>
   )
@@ -690,12 +683,8 @@ function ValueSecret(props: ValueProps) {
   const options = useMemo<BaseCascadeOption[]>(
     () =>
       descriptors.map((secret) => ({
-        label: (
-          <span className={styles.secretOption}>
-            <i className="i-carbon:api-key" />
-            {secret.name}
-          </span>
-        ),
+        icon: 'i-carbon:api-key',
+        label: secret.name,
         value: secret.secretId,
         children: secret.fields.map((field) => ({ label: field.key, value: field.key })),
       })),
@@ -738,7 +727,7 @@ function ValueBoolean(props: ValueProps) {
   const value = useDerived(props.store.value$, asTrue)
 
   // return (
-  //   <CheckBox
+  //   <DesignerCheckbox
   //     isSuffix={props.isSuffix}
   //     checked={value}
   //     onChange={props.store.value$?.set}
@@ -748,7 +737,7 @@ function ValueBoolean(props: ValueProps) {
   // );
 
   return (
-    <ToggleSwitch
+    <LabeledSwitch
       isSuffix={props.isSuffix}
       checked={value}
       onChange={props.store.value$?.set}
@@ -1132,7 +1121,7 @@ function SubpanelObjectField(props: SubpanelObjectFieldProps) {
         expanded={hasSubpanel ? !collapsed : null}
         onExpandedChange={(e) => setValue(widget.collapsed$, !e)}
         name={
-          <Tooltip {...defaultTooltipProps} placement="left" autoAdjustOverflow={false} title={renameError} open={!!renameError}>
+          <DesignerTooltip open={!!renameError} placement="left" title={renameError}>
             <div className={styles.objectFieldNameWrapper}>
               <Input
                 className={clsx(renameError && styles.renameError)}
@@ -1146,7 +1135,7 @@ function SubpanelObjectField(props: SubpanelObjectFieldProps) {
                 }}
               />
             </div>
-          </Tooltip>
+          </DesignerTooltip>
         }
         value={
           props.presentation === 'form' ? (
@@ -1669,9 +1658,6 @@ function shouldFocus(element: HTMLElement): boolean {
     return true
   }
   if (element.tagName === 'BUTTON' && element.className.includes('colorPicker_swatch_')) {
-    return true
-  }
-  if (element.tagName === 'DIV' && element.className.includes('react-select__input-container')) {
     return true
   }
   return false

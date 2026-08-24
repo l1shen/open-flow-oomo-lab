@@ -1,13 +1,22 @@
 import styles from './BlockQuickPickPanel.module.scss'
-import type { ItemType } from 'antd/es/menu/interface'
 import type { DragEventHandler, MouseEventHandler, ReactNode } from 'react'
 import type { HandleName } from '../../../schema/index.ts'
 import type { IAddNodeMenuItem } from '../stores/designer/designer.store.ts'
 
-import { Dropdown } from 'antd'
 import { clsx } from 'clsx'
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslate } from 'val-i18n-react'
+import { Button } from '../../../ui/browser/button.tsx'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '../../../ui/browser/dropdown-menu.tsx'
 import { setTriggerType } from '../base/dragNDrop.ts'
 import { toTrue } from '../base/trivial.ts'
 import { Input } from '../components/input.tsx'
@@ -109,9 +118,9 @@ export const BlockQuickPickPanel: React.FC<BlockQuickPickPanelProps> = (props) =
         {!loading && asyncError && (
           <div className={styles.feedback} role="alert">
             <span>{t('contextMenu.loadFailed')}</span>
-            <button onClick={retry} type="button">
+            <Button onClick={retry} size="sm" variant="outline">
               {t('contextMenu.retry')}
-            </button>
+            </Button>
           </div>
         )}
         {!loading && !asyncError && filteredItems.length == 0 && <div className={styles.feedback}>{t('contextMenu.empty')}</div>}
@@ -178,6 +187,7 @@ interface BlockQuickPickPanelItemProps {
 function BlockQuickPickPanelItem(props: BlockQuickPickPanelItemProps) {
   const getContextMenuContainer = useGetStaticPopupContainer()
   const ref = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
   const hasMenu = props.item.type !== 'divider' && (!!props.item.choices?.length || (props.item.handles?.length ?? 0) > 1)
   const data = props.item.type === 'divider' ? undefined : props.item.data
   const handle = props.item.type === 'divider' || props.item.choices?.length || props.item.handles?.length != 1 ? undefined : props.item.handles[0]!.name
@@ -188,41 +198,48 @@ function BlockQuickPickPanelItem(props: BlockQuickPickPanelItemProps) {
     }
   }, [props.selected])
 
-  useEffect(() => {
-    if (props.menuOpen && ref.current) {
-      ref.current.click()
-    }
-  }, [props.menuOpen])
+  useEffect(() => setOpen(!!props.menuOpen), [props.menuOpen])
 
-  return props.item.type === 'divider' ? (
-    <BlockPickerRow item={props.item} />
-  ) : (
-    <Dropdown
-      autoFocus
+  if (props.item.type === 'divider') return <BlockPickerRow item={props.item} />
+
+  const row = (
+    <BlockPickerRow
       disabled={props.item.disabled}
-      trigger={['hover', 'click']}
-      classNames={{ root: clsx(styles.menu, props.hideDescription && !props.item.choices?.length && styles.hideDescription) }}
-      align={{ points: ['tl', 'tr'], offset: [0, -5] }}
-      arrow={false}
-      styles={{ root: { minWidth: 'unset' } }}
-      menu={{ items: getItemMenuItems(props.item, props.onClick) }}
-      getPopupContainer={getContextMenuContainer}
-      onOpenChange={(open) => !open && props.onMenuClose?.()}
+      draggable={props.item.type === 'trigger' && props.item.data != null && !props.item.disabled}
+      hideDescription={props.hideDescription}
+      item={props.item}
+      onClick={toTrue(!hasMenu && !props.item.disabled) && (() => props.onClick?.(data, handle))}
+      onDragStart={(event) => {
+        if (props.item.type === 'trigger' && props.item.data) setTriggerType(event.dataTransfer, props.item.data)
+      }}
+      ref={ref}
+      selected={props.selected}
+      trailing={hasMenu && <i className="i-codicon:chevron-right" />}
+    />
+  )
+
+  if (!hasMenu || props.item.disabled) return row
+
+  const container = getContextMenuContainer()
+  return (
+    <DropdownMenu
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (!nextOpen) props.onMenuClose?.()
+      }}
     >
-      <BlockPickerRow
-        disabled={props.item.disabled}
-        draggable={props.item.type === 'trigger' && props.item.data != null && !props.item.disabled}
-        hideDescription={props.hideDescription}
-        item={props.item}
-        onClick={toTrue(!hasMenu && !props.item.disabled) && (() => props.onClick?.(data, handle))}
-        onDragStart={(event) => {
-          if (props.item.type === 'trigger' && props.item.data) setTriggerType(event.dataTransfer, props.item.data)
-        }}
-        ref={ref}
-        selected={props.selected}
-        trailing={hasMenu && <i className="i-codicon:chevron-right" />}
-      />
-    </Dropdown>
+      <DropdownMenuTrigger render={row} />
+      <DropdownMenuContent
+        align="start"
+        className={clsx(styles.menu, props.hideDescription && !props.item.choices?.length && styles.hideDescription)}
+        container={container}
+        side="right"
+        sideOffset={0}
+      >
+        <BlockPickerMenu container={container} item={props.item} onClick={props.onClick} />
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -234,46 +251,69 @@ function getItemTitle(item: IAddNodeMenuItem) {
   return title
 }
 
-function getItemMenuItems(item: Exclude<IAddNodeMenuItem, { type: 'divider' }>, onClick?: (data?: string, handle?: HandleName) => void): ItemType[] {
+function BlockPickerMenu({
+  container,
+  item,
+  onClick,
+}: {
+  readonly container: HTMLElement
+  readonly item: Exclude<IAddNodeMenuItem, { type: 'divider' }>
+  readonly onClick?: (data?: string, handle?: HandleName) => void
+}) {
   if (item.choices?.length) {
-    return item.choices.map((choice, index) => {
-      const key = `choice:${index}`
-      const children = getHandleMenuItems(choice.handles ?? item.handles, `${key}:handle`, (handle) => onClick?.(choice.data, handle))
-      return {
-        key,
-        label: (
-          <div className={styles.handle} title={choice.description == null ? choice.label : `${choice.label}\n${choice.description}`}>
-            <span className={styles.handleName}>{choice.label}</span>
-            {choice.description && <span className={styles.handleDescription}>{choice.description}</span>}
-          </div>
-        ),
-        ...(children.length == 0 ? { onClick: () => onClick?.(choice.data) } : { children }),
-      }
-    })
+    return (
+      <DropdownMenuGroup>
+        {item.choices.map((choice, index) => {
+          const handles = choice.handles ?? item.handles
+          const label = (
+            <div className={styles.handle} title={choice.description == null ? choice.label : `${choice.label}\n${choice.description}`}>
+              <span className={styles.handleName}>{choice.label}</span>
+              {choice.description && <span className={styles.handleDescription}>{choice.description}</span>}
+            </div>
+          )
+
+          return handles?.length ? (
+            <DropdownMenuSub key={`choice:${index}`}>
+              <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent container={container}>
+                <DropdownMenuGroup>
+                  <HandleMenuItems handles={handles} onClick={(handle) => onClick?.(choice.data, handle)} />
+                </DropdownMenuGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          ) : (
+            <DropdownMenuItem key={`choice:${index}`} onClick={() => onClick?.(choice.data)}>
+              {label}
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuGroup>
+    )
   }
-  return getHandleMenuItems(item.handles, 'handle', (handle) => onClick?.(item.data, handle))
+
+  return (
+    <DropdownMenuGroup>
+      <HandleMenuItems handles={item.handles} onClick={(handle) => onClick?.(item.data, handle)} />
+    </DropdownMenuGroup>
+  )
 }
 
-function getHandleMenuItems(
-  handles: { name: HandleName; json_schema?: unknown; description?: string }[] | undefined,
-  keyPrefix: string,
-  onClick?: (handle: HandleName) => void,
-): ItemType[] {
-  if (handles?.length) {
-    return handles.map((h, i) => ({
-      key: `${keyPrefix}:${i}`,
-      icon: <i className={iconOfSchema(h.json_schema)} />,
-      label: (
-        <div className={styles.handle} title={getHandleTitle(h)}>
-          <span className={styles.handleName}>{h.name}</span>
-          <span className={styles.handleDescription}>{h.description}</span>
-        </div>
-      ),
-      onClick: () => onClick?.(h.name),
-    }))
-  } else {
-    return []
-  }
+function HandleMenuItems({
+  handles,
+  onClick,
+}: {
+  readonly handles: { name: HandleName; json_schema?: unknown; description?: string }[] | undefined
+  readonly onClick?: (handle: HandleName) => void
+}) {
+  return handles?.map((handle, index) => (
+    <DropdownMenuItem key={`handle:${index}`} onClick={() => onClick?.(handle.name)}>
+      <i className={iconOfSchema(handle.json_schema)} />
+      <div className={styles.handle} title={getHandleTitle(handle)}>
+        <span className={styles.handleName}>{handle.name}</span>
+        <span className={styles.handleDescription}>{handle.description}</span>
+      </div>
+    </DropdownMenuItem>
+  ))
 }
 
 function getHandleTitle(handle: { name: HandleName; description?: string }) {

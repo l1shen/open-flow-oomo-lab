@@ -1,5 +1,5 @@
 // Move to this file to avoid breaking React Fast Refresh.
-import type { IBasicOption } from './select.tsx'
+import type { DesignerOption as IBasicOption } from './select.tsx'
 
 import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat.js'
