@@ -95,6 +95,7 @@ assert.deepEqual(Object.keys(packedManifest).toSorted(), [
   'name',
   'peerDependencies',
   'publishConfig',
+  'repository',
   'sideEffects',
   'types',
   'version',
@@ -102,6 +103,11 @@ assert.deepEqual(Object.keys(packedManifest).toSorted(), [
 assert.deepEqual(packedManifest.peerDependencies, {
   'react': '^18.3.1 || ^19.0.0',
   'react-dom': '^18.3.1 || ^19.0.0',
+})
+assert.deepEqual(packedManifest.repository, {
+  directory: 'packages/open-flow',
+  type: 'git',
+  url: 'git+https://github.com/oomol-lab/open-flow.git',
 })
 assert.deepEqual(packedManifest.exports, {
   '.': { types: './dist/index.d.ts' },

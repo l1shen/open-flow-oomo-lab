@@ -24,6 +24,11 @@ function createManifest(version: string): object {
     version,
     description: 'TypeScript contracts and Browser runtime for Open Flow.',
     license: 'Apache-2.0',
+    repository: {
+      type: 'git',
+      url: 'git+https://github.com/oomol-lab/open-flow.git',
+      directory: 'packages/open-flow',
+    },
     types: './dist/index.d.ts',
     exports: {
       '.': {
