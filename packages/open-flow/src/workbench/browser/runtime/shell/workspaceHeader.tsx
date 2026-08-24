@@ -3,6 +3,7 @@ import type { TFunction } from 'val-i18n'
 import type { Flow } from '../api.ts'
 import type { WorkbenchLanguage } from '../contract.ts'
 import type { WorkbenchStore } from '../stores/workbenchStore.ts'
+import type { WorkspaceStatus } from '../stores/workspaceModel.ts'
 
 import { useEffect, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
@@ -10,6 +11,9 @@ import { useTranslate } from 'val-i18n-react'
 import { Icon } from '../icons.tsx'
 import { DiagnosticsPanel } from './diagnosticsPanel.tsx'
 import { LanguageSelect } from './resourceBrowser.tsx'
+
+const savingStatusDelayMs = 400
+const minimumSavingStatusMs = 400
 
 interface Props {
   readonly activeView: 'design' | 'publications' | 'runs'
@@ -47,6 +51,40 @@ function navigateTabs(event: KeyboardEvent<HTMLDivElement>): void {
   tabs[index]?.click()
 }
 
+function useDisplayedStatus(status: WorkspaceStatus): WorkspaceStatus {
+  const [displayed, setDisplayed] = useState(status)
+  const savingStarted = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    if (status == 'saving') {
+      if (displayed == 'saving') return
+      const timer = setTimeout(() => {
+        savingStarted.current = Date.now()
+        setDisplayed('saving')
+      }, savingStatusDelayMs)
+      return () => clearTimeout(timer)
+    }
+    if (displayed != 'saving' || status != 'saved' || savingStarted.current == null) {
+      savingStarted.current = undefined
+      setDisplayed(status)
+      return
+    }
+    const remaining = minimumSavingStatusMs - (Date.now() - savingStarted.current)
+    if (remaining <= 0) {
+      savingStarted.current = undefined
+      setDisplayed('saved')
+      return
+    }
+    const timer = setTimeout(() => {
+      savingStarted.current = undefined
+      setDisplayed('saved')
+    }, remaining)
+    return () => clearTimeout(timer)
+  }, [displayed, status])
+
+  return displayed
+}
+
 export function WorkspaceHeader({
   activeView,
   language,
@@ -68,6 +106,7 @@ export function WorkspaceHeader({
   const draft = useVal(store.workspace.$.draft)
   const project = useVal(store.workspace.$.project)
   const status = useVal(store.workspace.$.status)
+  const displayedStatus = useDisplayedStatus(status)
   const runInputRequest = useVal(store.runRequests.$.inputRequest)
   const target = useVal(store.workspace.$.target)
   const targetFlow = useVal(store.workspace.$.targetFlow)
@@ -162,9 +201,9 @@ export function WorkspaceHeader({
           <Icon name={diagnostics?.valid == false ? 'alert' : 'check'} size={15} />
           {validationLabel(diagnostics?.valid, diagnostics?.diagnostics.length ?? 0, checkLoading, t)}
         </button>
-        <span className="saved-state">
+        <span aria-atomic="true" aria-live="polite" className="saved-state">
           {workspaceLoading || draft == null ? null : <Icon name="check" size={16} />}
-          {t(`workspace.status.${status}`)}
+          {t(`workspace.status.${displayedStatus}`)}
         </span>
         {targetFlow?.draft != null && (
           <span className="action-help" title={draftRunUnavailable}>

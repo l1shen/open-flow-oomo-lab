@@ -146,31 +146,13 @@ input:focus-visible {
   font-size: 12px;
 }
 
-.host-notification {
-  position: fixed;
-  z-index: 1000;
-  top: 50px;
-  right: 12px;
-  max-width: 420px;
-  padding: 10px 12px;
-  border: 1px solid #d4d4d8;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
-}
-
-.host-notification[data-kind='error'] {
-  border-color: #fca5a5;
-}
-
 .server-host[data-theme='dark'] .operator-bar {
   border-color: #27272a;
   background: #18181b;
 }
 
 .server-host[data-theme='dark'] .operator-bar button,
-.server-host[data-theme='dark'] .session-form input,
-.server-host[data-theme='dark'] .host-notification {
+.server-host[data-theme='dark'] .session-form input {
   border-color: #52525b;
   background: #18181b;
   color: #f4f4f5;

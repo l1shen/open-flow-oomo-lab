@@ -3,18 +3,22 @@ import type { FormEvent, ReactElement } from 'react'
 
 import { OpenFlowWorkbench } from '@oomol-lab/open-flow/workbench'
 import { useEffect, useMemo, useState } from 'react'
+import { Toaster, toast } from 'sonner'
 import { createBrowserHost } from './host.ts'
 import { parseRoute, routePath } from './route.ts'
 
 const languagePreference = 'open-flow.workbench.language'
+const notificationId = 'open-flow-workbench'
 const preferencePrefix = 'open-flow.workbench.server.'
 
 const copy = {
   'en': {
     checking: 'Checking operator session…',
+    closeNotification: 'Close notification',
     configured: 'Sign in with the operator token configured for this deployment.',
     invalid: 'The operator token is invalid.',
     notConfigured: 'Set OPEN_FLOW_OPERATOR_TOKEN on the server before signing in.',
+    notifications: 'Notifications',
     retry: 'Retry',
     signIn: 'Sign in',
     signOut: 'Sign out',
@@ -23,9 +27,11 @@ const copy = {
   },
   'zh-CN': {
     checking: '正在检查 operator session…',
+    closeNotification: '关闭通知',
     configured: '使用当前 deployment 配置的 operator token 登录。',
     invalid: 'Operator token 不正确。',
     notConfigured: '请先在服务端配置 OPEN_FLOW_OPERATOR_TOKEN。',
+    notifications: '通知',
     retry: '重试',
     signIn: '登录',
     signOut: '退出',
@@ -62,6 +68,16 @@ function sessionStatus(value: unknown): SessionStatus | undefined {
   return { authenticated: status.authenticated, configured: status.configured, version: 1 }
 }
 
+function notify(notification: WorkbenchNotification | undefined): void {
+  if (notification == null) {
+    toast.dismiss(notificationId)
+    return
+  }
+  const options = { duration: notification.kind == 'error' ? 8000 : 4000, id: notificationId }
+  if (notification.kind == 'error') toast.error(notification.message, options)
+  else toast.success(notification.message, options)
+}
+
 export function App(): ReactElement {
   const [language, setLanguage] = useState(initialLanguage)
   const [theme, setTheme] = useState(initialTheme)
@@ -69,9 +85,8 @@ export function App(): ReactElement {
   const [session, setSession] = useState<Session>({ kind: 'checking' })
   const [token, setToken] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [notification, setNotification] = useState<WorkbenchNotification>()
   const t = copy[language]
-  const host = useMemo(() => createBrowserHost(setNotification, () => setSession({ configured: true, kind: 'signed-out' })), [])
+  const host = useMemo(() => createBrowserHost(notify, () => setSession({ configured: true, kind: 'signed-out' })), [])
   const preferences = useMemo(
     () => ({
       getItem: (key: string): string | null => localStorage.getItem(`${preferencePrefix}${key}`),
@@ -148,10 +163,10 @@ export function App(): ReactElement {
     try {
       const response = await fetch('/auth/session', { credentials: 'same-origin', method: 'DELETE' })
       if (!response.ok) throw new Error('Session logout failed.')
-      setNotification(undefined)
+      notify(undefined)
       setSession({ configured: true, kind: 'signed-out' })
     } catch {
-      setNotification({ kind: 'error', message: t.unavailable })
+      notify({ kind: 'error', message: t.unavailable })
     }
   }
 
@@ -211,11 +226,15 @@ export function App(): ReactElement {
           )}
         </main>
       )}
-      {notification == null ? null : (
-        <div className="host-notification" data-kind={notification.kind} role="status">
-          {notification.message}
-        </div>
-      )}
+      <Toaster
+        closeButton
+        containerAriaLabel={t.notifications}
+        offset={{ right: 12, top: 50 }}
+        position="top-right"
+        richColors
+        theme={theme}
+        toastOptions={{ closeButtonAriaLabel: t.closeNotification }}
+      />
     </div>
   )
 }

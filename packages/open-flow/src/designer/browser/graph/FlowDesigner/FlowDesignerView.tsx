@@ -1066,12 +1066,14 @@ function updateNodeEntry(
   entry.values.concurrency.set(node.concurrency)
   entry.values.executorName.set(node.kind == 'task' ? node.executorName : undefined)
   entry.values.icon.set(node.icon)
+  const nextInputDefs = inputDefs(node)
+  const nextOutputDefs = outputDefs(node)
   entry.values.syncingPorts = true
-  entry.values.inputDefs.set(inputDefs(node))
+  if (JSON.stringify(entry.values.inputDefs.value) != JSON.stringify(nextInputDefs)) entry.values.inputDefs.set(nextInputDefs)
   entry.values.syncingInput = true
   entry.values.inputsFrom.set(inputsFrom(node))
   entry.values.syncingInput = false
-  entry.values.outputDefs.set(outputDefs(node))
+  if (JSON.stringify(entry.values.outputDefs.value) != JSON.stringify(nextOutputDefs)) entry.values.outputDefs.set(nextOutputDefs)
   entry.values.syncingPorts = false
   entry.values.outputsTo.set([...connected])
   entry.values.progress.set(node.run?.progress)

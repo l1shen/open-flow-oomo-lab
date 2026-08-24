@@ -1219,6 +1219,8 @@
   }
 
   .saved-state {
+    width: 112px;
+    flex: 0 0 112px;
     gap: 5px;
     margin-right: 4px;
     color: var(--text-tertiary);

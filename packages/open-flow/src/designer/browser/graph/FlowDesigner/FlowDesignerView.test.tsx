@@ -141,6 +141,23 @@ describe('FlowDesignerView model synchronization', () => {
     store.dispose()
   })
 
+  it('keeps handle definition values stable when only an input value changes', () => {
+    const initial = task([{ handle: 'value', jsonSchema: {} }])
+    const changed = task([{ handle: 'value', jsonSchema: {}, value: 'message' }])
+    const view = FlowDesignerView(props(model([initial]))) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    const inputSection = node.findSection<InputSectionStore>(InputSectionStore.TYPE)!
+    const outputSection = node.findSection<OutputSectionStore>(OutputSectionStore.TYPE)!
+    const inputDefs = inputSection.$.inputHandleDefs.value
+    const outputDefs = outputSection.$.outputHandleDefs.value
+
+    FlowDesignerView(props(model([changed])))
+
+    expect(inputSection.$.inputHandleDefs.value).toBe(inputDefs)
+    expect(outputSection.$.outputHandleDefs.value).toBe(outputDefs)
+    view.props.flowDesignerStore.dispose()
+  })
+
   it('restores editable handle controls for inline code Tasks only', async () => {
     const onChangeTaskPorts = vi.fn()
     const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }

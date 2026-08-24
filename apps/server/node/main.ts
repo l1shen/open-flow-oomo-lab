@@ -75,11 +75,11 @@ async function main(): Promise<void> {
     logger,
   )
   service.start()
-  const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public')
+  const workbenchHost = process.argv.includes('--api-only') ? {} : { publicDirectory: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public') }
   let closing = false
   const server = serve(
     {
-      fetch: createServerApp(service, { logger, operator, publicDirectory }).fetch,
+      fetch: createServerApp(service, { logger, operator, ...workbenchHost }).fetch,
       hostname: host,
       overrideGlobalObjects: false,
       port,

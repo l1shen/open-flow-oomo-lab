@@ -46,7 +46,8 @@ bun run build
 bun run test:package
 ```
 
-`bun run dev` starts the Server API and Workbench development composition. Run
+`bun run dev` starts both development processes. Open the Workbench at `http://127.0.0.1:5173`; Vite proxies its API requests to the
+Server API at `http://127.0.0.1:3000`. Run
 `bun run test:docker` when Docker is available to exercise the release image, Isolated VM,
 Workbench, graceful shutdown, and SQLite volume recovery.
 
