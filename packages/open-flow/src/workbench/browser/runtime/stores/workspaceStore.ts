@@ -131,6 +131,7 @@ export class WorkspaceStore {
   }
   #draftRevealGeneration = 0
   #draftRevealInvalidation = false
+  #draftUpdateNotice = false
   #disposed = false
   #draftSyncQueued = false
   #nodeFocusId = 0
@@ -212,6 +213,7 @@ export class WorkspaceStore {
     this.#presentationChanges.reset()
     this.#draftInvalidation = 0
     this.#draftRevealInvalidation = false
+    this.#draftUpdateNotice = false
     this.#draftSyncQueued = false
     this.#stopProjectWatch?.()
     this.#stopProjectWatch = undefined
@@ -795,7 +797,10 @@ export class WorkspaceStore {
     const projectId = this.#model.value.projectId
     if (projectId == null) return
     this.#draftInvalidation += 1
-    if (revisionId != null && !this.#draftChanges.changing) this.#draftRevealInvalidation = true
+    if (revisionId != null) {
+      this.#draftUpdateNotice = true
+      if (!this.#draftChanges.changing) this.#draftRevealInvalidation = true
+    }
     if (this.#draftSyncQueued) return
     this.#draftSyncQueued = true
     const context = { current: this.#draftSession.capture(), projectId }
@@ -805,8 +810,10 @@ export class WorkspaceStore {
         generation = this.#draftInvalidation
         const reveal = this.#draftRevealInvalidation
         const revealGeneration = this.#draftRevealGeneration
+        const notifyUpdate = this.#draftUpdateNotice
         this.#draftRevealInvalidation = false
-        await this.#syncDraftHead(context, false, true, reveal, revealGeneration)
+        this.#draftUpdateNotice = false
+        await this.#syncDraftHead(context, false, notifyUpdate, reveal, revealGeneration)
       } while (this.#isDraftChangeCurrent(context) && generation != this.#draftInvalidation)
     })
     if (this.#isDraftChangeCurrent(context)) this.#draftSyncQueued = false
@@ -835,6 +842,7 @@ export class WorkspaceStore {
         if (!this.#isDraftChangeCurrent(context)) return false
         committed = this.#materializeDraftSync(base, synced)
       }
+      if (committed.revisionId == base.revisionId) return true
 
       const revealTargets =
         synced.kind == 'changes' && revealTarget != null

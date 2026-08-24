@@ -1865,6 +1865,37 @@ describe('WorkbenchStore', () => {
     expect(store.workspace.$.draft.value?.content.document.subflows.shared?.name).toBe('Shared')
   })
 
+  it('rolls back a semantic change after repeated CAS conflicts and keeps the queue usable', async () => {
+    const latest = draftWithNode('revision-2', 4)
+    const saved = draftWithNode('revision-3', 3)
+    const changeDraft = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError(412, 'project.revision-conflict', 'Revision conflict.'))
+      .mockRejectedValueOnce(new ApiError(412, 'project.revision-conflict', 'Revision conflict.'))
+      .mockResolvedValueOnce(draftChange(saved))
+    const syncDraft = vi.fn(async () => ({
+      draft: latest,
+      draftFlows: draftChange(latest).draftFlows,
+      kind: 'snapshot' as const,
+      version: 1 as const,
+    }))
+    const store = new WorkbenchStore(client({ changeDraft, getDraft: vi.fn(async () => draftWithNode()), syncDraft }), preferences())
+    await start(store)
+
+    await expect(store.workspace.saveNodeSettings('first', { concurrency: 2 })).resolves.toBe(false)
+
+    expect(store.workspace.$.draft.value?.revisionId).toBe(latest.revisionId)
+    expect(store.workspace.$.draft.value?.content.document.flows.main?.graph.nodes.first).toMatchObject({ concurrency: 4 })
+    expect(store.$.notice.value?.message).toContain('edit was not applied')
+
+    await expect(store.workspace.saveNodeSettings('first', { concurrency: 3 })).resolves.toBe(true)
+
+    expect(changeDraft.mock.calls.map((call) => call[1])).toEqual(['revision-1', 'revision-2', 'revision-2'])
+    expect(syncDraft).toHaveBeenCalledTimes(2)
+    expect(store.workspace.$.draft.value?.revisionId).toBe(saved.revisionId)
+    store.dispose()
+  })
+
   it('loads a Draft committed by another client after a realtime notification', async () => {
     const latest = draft('revision-2')
     let notify: ((revisionId?: string) => void) | undefined
@@ -1891,6 +1922,38 @@ describe('WorkbenchStore', () => {
 
     expect(store.$.notice.value?.message).toContain('another client')
     expect(getProject).not.toHaveBeenCalled()
+    store.dispose()
+  })
+
+  it('ignores its own realtime Draft notification when synchronization returns the committed snapshot', async () => {
+    const changed = draftWithNode('revision-2', 2)
+    let notify: ((revisionId?: string) => void) | undefined
+    const syncDraft = vi.fn(async () => ({
+      draft: changed,
+      draftFlows: draftChange(changed).draftFlows,
+      kind: 'snapshot' as const,
+      version: 1 as const,
+    }))
+    const control = client({
+      changeDraft: vi.fn(async () => {
+        notify?.(changed.revisionId)
+        return draftChange(changed)
+      }),
+      getDraft: vi.fn(async () => draftWithNode()),
+      syncDraft,
+      watchProject: vi.fn((_projectId, onChanged) => {
+        notify = onChanged
+        return () => {}
+      }),
+    })
+    const store = new WorkbenchStore(control, preferences())
+    await start(store)
+
+    await expect(store.workspace.saveNodeSettings('first', { concurrency: 2 })).resolves.toBe(true)
+    await vi.waitFor(() => expect(syncDraft).toHaveBeenCalledWith(project.projectId, changed.revisionId))
+
+    expect(store.workspace.$.draft.value?.revisionId).toBe(changed.revisionId)
+    expect(store.$.notice.value).toBeUndefined()
     store.dispose()
   })
 
@@ -2088,6 +2151,90 @@ describe('WorkbenchStore', () => {
     store.dispose()
   })
 
+  it('preserves an explicit Draft notification received during a silent connection sync', async () => {
+    const latest = draftWithNode('revision-2')
+    const firstSync = Promise.withResolvers<DraftSync>()
+    let notify: ((revisionId?: string) => void) | undefined
+    const syncDraft = vi
+      .fn()
+      .mockImplementationOnce(async () => await firstSync.promise)
+      .mockResolvedValueOnce({
+        draft: latest,
+        draftFlows: draftChange(latest).draftFlows,
+        kind: 'snapshot' as const,
+        version: 1 as const,
+      })
+    const store = new WorkbenchStore(
+      client({
+        getDraft: vi.fn(async () => draft()),
+        syncDraft,
+        watchProject: vi.fn((_projectId, changed) => {
+          notify = changed
+          return () => {}
+        }),
+      }),
+      preferences(),
+    )
+    await start(store)
+
+    notify?.()
+    await vi.waitFor(() => expect(syncDraft).toHaveBeenCalledOnce())
+    notify?.(latest.revisionId)
+    firstSync.resolve({
+      draft: draft(),
+      draftFlows: draftChange(draft()).draftFlows,
+      kind: 'snapshot',
+      version: 1,
+    })
+
+    await vi.waitFor(() => expect(store.workspace.$.draft.value?.revisionId).toBe(latest.revisionId))
+    expect(syncDraft.mock.calls).toEqual([
+      [project.projectId, 'revision-1'],
+      [project.projectId, 'revision-1'],
+    ])
+    expect(store.$.notice.value?.message).toContain('another client')
+    store.dispose()
+  })
+
+  it('retries Draft synchronization after a transient failure and a later invalidation', async () => {
+    const latest = draftWithNode('revision-2')
+    let notify: ((revisionId?: string) => void) | undefined
+    const syncDraft = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Temporary synchronization failure.'))
+      .mockResolvedValueOnce({
+        draft: latest,
+        draftFlows: draftChange(latest).draftFlows,
+        kind: 'snapshot' as const,
+        version: 1 as const,
+      })
+    const store = new WorkbenchStore(
+      client({
+        getDraft: vi.fn(async () => draft()),
+        syncDraft,
+        watchProject: vi.fn((_projectId, changed) => {
+          notify = changed
+          return () => {}
+        }),
+      }),
+      preferences(),
+    )
+    await start(store)
+
+    notify?.(latest.revisionId)
+    await vi.waitFor(() => expect(syncDraft).toHaveBeenCalledOnce())
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0))
+    expect(store.workspace.$.draft.value?.revisionId).toBe('revision-1')
+    expect(store.$.notice.value).toBeUndefined()
+
+    notify?.(latest.revisionId)
+    await vi.waitFor(() => expect(store.workspace.$.draft.value?.revisionId).toBe(latest.revisionId))
+
+    expect(syncDraft).toHaveBeenCalledTimes(2)
+    expect(store.$.notice.value?.message).toContain('another client')
+    store.dispose()
+  })
+
   it('reveals one node once after adjacent realtime changes become quiet', async () => {
     vi.useFakeTimers()
     const initial = draft()
@@ -2263,7 +2410,7 @@ describe('WorkbenchStore', () => {
     }
   })
 
-  it('syncs changes found after a WebSocket reconnect without a realtime revision', async () => {
+  it('silently syncs changes found after an SSE reconnect without a realtime revision', async () => {
     vi.useFakeTimers()
     const latest = draftWithNode('revision-2')
     const created = latest.content.document.flows.main!.graph.nodes.first!
@@ -2300,6 +2447,7 @@ describe('WorkbenchStore', () => {
       expect(store.workspace.$.draft.value?.content.document.flows.main?.graph.nodes.first).toEqual(created)
       await vi.advanceTimersByTimeAsync(250)
       expect(store.workspace.$.nodeFocus.value).toBeUndefined()
+      expect(store.$.notice.value).toBeUndefined()
       expect(getProject).not.toHaveBeenCalled()
     } finally {
       store.dispose()
@@ -2346,6 +2494,93 @@ describe('WorkbenchStore', () => {
     expect(getDraft).toHaveBeenCalledOnce()
     expect(listFlows).toHaveBeenCalledOnce()
     store.dispose()
+  })
+
+  it('bases a local change on an external Draft synchronization already in flight', async () => {
+    const external = draftWithNode('revision-2', 2)
+    const saved = draftWithNode('revision-3', 3)
+    const pendingSync = Promise.withResolvers<DraftSync>()
+    let notify: ((revisionId?: string) => void) | undefined
+    const changeDraft = vi.fn(async () => draftChange(saved))
+    const syncDraft = vi.fn(async () => await pendingSync.promise)
+    const store = new WorkbenchStore(
+      client({
+        changeDraft,
+        getDraft: vi.fn(async () => draftWithNode()),
+        syncDraft,
+        watchProject: vi.fn((_projectId, changed) => {
+          notify = changed
+          return () => {}
+        }),
+      }),
+      preferences(),
+    )
+    await start(store)
+
+    notify?.(external.revisionId)
+    await vi.waitFor(() => expect(syncDraft).toHaveBeenCalledOnce())
+    const save = store.workspace.saveNodeSettings('first', { concurrency: 3 })
+
+    expect(store.workspace.$.draft.value?.content.document.flows.main?.graph.nodes.first).toMatchObject({ concurrency: 3 })
+    expect(changeDraft).not.toHaveBeenCalled()
+
+    pendingSync.resolve({
+      draft: external,
+      draftFlows: draftChange(external).draftFlows,
+      kind: 'snapshot',
+      version: 1,
+    })
+    await expect(save).resolves.toBe(true)
+
+    expect(changeDraft).toHaveBeenCalledWith(project.projectId, external.revisionId, expect.any(Array))
+    expect(store.workspace.$.draft.value?.revisionId).toBe(saved.revisionId)
+    expect(store.workspace.$.draft.value?.content.document.flows.main?.graph.nodes.first).toMatchObject({ concurrency: 3 })
+    store.dispose()
+  })
+
+  it.each(['switch', 'dispose'] as const)('drops a Draft synchronization response after a workspace %s', async (action) => {
+    const latest = draftWithNode('revision-2')
+    const otherProject = { ...project, draftRevisionId: 'revision-other', name: 'Other', projectId: 'project-2' }
+    const otherDraft = { ...draft(), digest: 'digest-other', projectId: otherProject.projectId, revisionId: otherProject.draftRevisionId }
+    const pendingSync = Promise.withResolvers<DraftSync>()
+    const stop = vi.fn()
+    const syncDraft = vi.fn(async () => await pendingSync.promise)
+    let notify: ((revisionId?: string) => void) | undefined
+    const store = new WorkbenchStore(
+      client({
+        getDraft: vi.fn(async (projectId) => (projectId == otherProject.projectId ? otherDraft : draft())),
+        getProject: vi.fn(async (projectId) => (projectId == otherProject.projectId ? otherProject : project)),
+        listFlows: vi.fn(async (projectId) => [flow(projectId == otherProject.projectId ? otherDraft.revisionId : 'revision-1')]),
+        syncDraft,
+        watchProject: vi.fn((_projectId, changed) => {
+          notify = changed
+          return stop
+        }),
+      }),
+      preferences(),
+    )
+    await start(store)
+
+    notify?.(latest.revisionId)
+    await vi.waitFor(() => expect(syncDraft).toHaveBeenCalledOnce())
+    if (action == 'switch') await store.selectProject(otherProject.projectId, 'main')
+    else store.dispose()
+
+    expect(stop).toHaveBeenCalledOnce()
+    pendingSync.resolve({
+      draft: latest,
+      draftFlows: draftChange(latest).draftFlows,
+      kind: 'snapshot',
+      version: 1,
+    })
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0))
+
+    if (action == 'switch') {
+      expect(store.workspace.$.projectId.value).toBe(otherProject.projectId)
+      expect(store.workspace.$.draft.value).toEqual(otherDraft)
+      expect(store.$.notice.value).toBeUndefined()
+      store.dispose()
+    }
   })
 
   it('serializes Presentation writes so each move uses the saved revision', async () => {
