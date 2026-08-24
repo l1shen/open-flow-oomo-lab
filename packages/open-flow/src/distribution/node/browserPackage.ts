@@ -69,6 +69,10 @@ async function buildRuntime(
   outputName: string,
   emptyOutDir: boolean,
 ): Promise<void> {
+  const sharedTriggerPaths = new Map([
+    [path.join(options.sourceRoot, integrationTriggerEntryPath), './integration-trigger.js'],
+    [path.join(options.sourceRoot, pollTriggerEntryPath), './poll-trigger.js'],
+  ])
   await build({
     build: {
       emptyOutDir,
@@ -81,9 +85,11 @@ async function buildRuntime(
       license: { fileName: 'licenses.md' },
       outDir: outputPath,
       rolldownOptions: {
+        external: entryPath == providerTriggersEntryPath ? [...sharedTriggerPaths.keys()] : undefined,
         output: {
           assetFileNames: '[name][extname]',
           entryFileNames: `${outputName}.js`,
+          paths: entryPath == providerTriggersEntryPath ? Object.fromEntries(sharedTriggerPaths) : undefined,
         },
       },
     },
