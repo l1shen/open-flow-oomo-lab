@@ -1107,6 +1107,29 @@
 
   .designer-overlay.top-right {
     right: 16px;
+    gap: 0;
+  }
+
+  .designer-overlay.top-right > [data-slot='button'] {
+    border-radius: 0;
+    background-clip: border-box;
+  }
+
+  .designer-overlay.top-right > [data-slot='button']:first-child {
+    border-radius: var(--ui-radius) 0 0 var(--ui-radius);
+  }
+
+  .designer-overlay.top-right > [data-slot='button']:last-child {
+    border-radius: 0 var(--ui-radius) var(--ui-radius) 0;
+  }
+
+  .designer-delete-action {
+    color: var(--danger);
+  }
+
+  .designer-delete-action:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    color: var(--danger);
   }
 
   .designer-badge {

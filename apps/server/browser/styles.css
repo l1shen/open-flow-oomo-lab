@@ -28,18 +28,21 @@ body {
   font-size: 14px;
 }
 
-button,
-input {
+.operator-bar button,
+.session-form button,
+.session-form input {
   color: inherit;
   font: inherit;
 }
 
-button:not(:disabled) {
+.operator-bar button:not(:disabled),
+.session-form button:not(:disabled) {
   cursor: pointer;
 }
 
-button:focus-visible,
-input:focus-visible {
+.operator-bar button:focus-visible,
+.session-form button:focus-visible,
+.session-form input:focus-visible {
   outline: 2px solid #a1a1aa;
   outline-offset: 2px;
 }

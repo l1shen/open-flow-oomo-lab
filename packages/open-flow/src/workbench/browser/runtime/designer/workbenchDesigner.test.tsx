@@ -45,7 +45,21 @@ describe('WorkbenchDesigner', () => {
           blocksOpen={false}
           disabled={false}
           inspectorOpen={false}
-          model={{ edges: [], nodes: [], viewport: { x: 0, y: 0, zoom: 1 } }}
+          model={{
+            edges: [],
+            nodes: [
+              {
+                id: 'selected',
+                inputs: [],
+                kind: 'task',
+                outputs: [],
+                position: { x: 0, y: 0 },
+                reference: 'javascript',
+                title: 'JavaScript',
+              },
+            ],
+            viewport: { x: 0, y: 0, zoom: 1 },
+          }}
           onAddNode={onAddNode}
           onChangeComment={() => undefined}
           onChangeInput={() => undefined}
@@ -68,7 +82,7 @@ describe('WorkbenchDesigner', () => {
           onSelectNodes={() => undefined}
           onToggleInspector={() => undefined}
           provideAddNodeOptions={async () => undefined}
-          selectedNodeIds={[]}
+          selectedNodeIds={['selected']}
           target={{ id: 'main', kind: 'flow' }}
           theme="dark"
         />
@@ -78,6 +92,8 @@ describe('WorkbenchDesigner', () => {
     expect(markup).toContain('aria-expanded="false"')
     expect(markup).not.toContain('aria-pressed=')
     expect(markup).toContain('data-slot="canvas-control-group"')
+    expect(markup).toContain('designer-delete-action')
+    expect(markup).not.toContain('bg-secondary')
     expect(captured.props?.addItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ icon: ':carbon:code:', id: 'javascript', type: 'block' }),

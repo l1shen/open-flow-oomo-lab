@@ -304,12 +304,13 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
           size="sm"
           title={t('designer.openBlocks')}
           type="button"
-          variant="secondary"
+          variant="ghost"
         >
           <Icon data-icon="inline-start" name="plus" size={14} /> {t('designer.addNode')}
         </Button>
         {(selectedNodeIds.length > 0 || selectedEdge != null) && (
           <Button
+            className="designer-delete-action"
             disabled={disabled}
             onClick={() => {
               if (selectedNodeIds.length > 0) onDeleteNodes()
@@ -317,7 +318,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
             }}
             size="sm"
             type="button"
-            variant="destructive"
+            variant="ghost"
           >
             {t('designer.delete')}
           </Button>
