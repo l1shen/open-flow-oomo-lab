@@ -1,0 +1,408 @@
+import type { ConnectorProxy, ConnectorProxyRequest, ConnectorProxyResult } from '../src/connector/common/proxy.ts'
+import type { JsonValue } from '../src/project/common/change.ts'
+import type {
+  IntegrationDefinition,
+  IntegrationReceiveContext,
+  IntegrationReconcileContext,
+  IntegrationStateContext,
+} from '../src/trigger/common/integration.ts'
+import type { PollContext, PollDefinition } from '../src/trigger/common/poll.ts'
+
+import { describe, expect, it } from 'vitest'
+import { PermanentPollError } from '../src/trigger/common/poll.ts'
+import { triggerDefinitions } from '../src/trigger/providers/definitions.ts'
+
+const byKey = new Map(triggerDefinitions.map((definition) => [definition.snapshot.key, definition]))
+
+function getDefinition(key: string) {
+  const value = byKey.get(key)
+  if (value == null) throw new Error(`Unknown Trigger definition ${key}.`)
+  return value
+}
+
+function poll(key: string): PollDefinition {
+  const value = getDefinition(key)
+  if (!('poll' in value)) throw new Error(`${key} must be Poll.`)
+  return value
+}
+
+function integration(key: string): IntegrationDefinition {
+  const value = getDefinition(key)
+  if (!('receive' in value)) throw new Error(`${key} must be Integration.`)
+  return value
+}
+
+function connector(execute: (request: ConnectorProxyRequest, index: number) => ConnectorProxyResult | Promise<ConnectorProxyResult>): {
+  readonly calls: ConnectorProxyRequest[]
+  readonly value: ConnectorProxy
+} {
+  const calls: ConnectorProxyRequest[] = []
+  return {
+    calls,
+    value: {
+      async execute(request) {
+        calls.push(request)
+        return await execute(request, calls.length - 1)
+      },
+    },
+  }
+}
+
+function pollContext(target: ConnectorProxy, config: Readonly<Record<string, JsonValue>>, checkpoint: JsonValue = null): PollContext {
+  return { checkpoint, config, connector: target, now: new Date('2026-08-20T12:34:20.000Z') }
+}
+
+function state(): {
+  readonly subscription: () => Readonly<Record<string, JsonValue>>
+  readonly value: IntegrationStateContext
+} {
+  let checkpoint: JsonValue = null
+  let subscription: Readonly<Record<string, JsonValue>> = {}
+  return {
+    subscription: () => subscription,
+    value: {
+      get checkpoint() {
+        return checkpoint
+      },
+      get subscription() {
+        return subscription
+      },
+      async saveCheckpoint(value) {
+        checkpoint = value
+      },
+      async saveSubscription(value) {
+        subscription = value
+      },
+    },
+  }
+}
+
+function reconcileContext(target: ConnectorProxy, runtime: IntegrationStateContext, config: Readonly<Record<string, JsonValue>>): IntegrationReconcileContext {
+  return {
+    active: true,
+    callbackSecret: 'secret',
+    config,
+    connector: target,
+    endpointUrl: 'https://flow.example/v1/integrations/endpoint_11111111111111111111111111111111',
+    now: new Date('2026-08-20T12:34:20.000Z'),
+    state: runtime,
+  }
+}
+
+function receiveContext(config: Readonly<Record<string, JsonValue>>, headers: Readonly<Record<string, string>>, payload: JsonValue): IntegrationReceiveContext {
+  return {
+    admit: true,
+    bindingId: `sha256:${'1'.repeat(64)}`,
+    callbackSecret: 'secret',
+    config,
+    connector: connector(() => ({ data: {}, status: 200 })).value,
+    current: true,
+    header: (name) => headers[name],
+    method: 'POST',
+    now: new Date('2026-08-20T12:34:20.000Z'),
+    payload,
+    query: () => undefined,
+  }
+}
+
+describe('provider Poll Trigger definitions', () => {
+  it('exposes the complete built-in Provider catalog', () => {
+    expect(triggerDefinitions.map(({ snapshot }) => `${snapshot.type}:${snapshot.key}`)).toEqual([
+      'poll:airtable.on_record_changed',
+      'poll:gmail.on_message_received',
+      'integration:github.on_repo_event',
+      'integration:gitlab.on_project_event',
+      'poll:googlecalendar.on_event_changed',
+      'integration:googledrive.changes_detected',
+      'poll:googledrive.on_file_change',
+      'poll:googlesheets.on_row_added',
+      'poll:notion.on_database_page_event',
+      'poll:one_drive.on_item_changed',
+      'poll:outlook.on_message_received',
+      'integration:shopify.on_shop_event',
+      'poll:slack.on_message_posted',
+      'integration:stripe.on_event',
+      'integration:telegram.on_update',
+      'integration:woocommerce.on_store_event',
+      'integration:zendesk.on_event',
+    ])
+    for (const key of [
+      'github.on_repo_event',
+      'gitlab.on_project_event',
+      'shopify.on_shop_event',
+      'stripe.on_event',
+      'woocommerce.on_store_event',
+      'zendesk.on_event',
+    ]) {
+      expect(integration(key).snapshot.endpoint).toMatchObject({ methods: ['POST'], successStatus: 202 })
+    }
+  })
+
+  it('establishes Airtable and Gmail provider-owned baselines', async () => {
+    const airtable = connector(() => ({ data: { records: [{ fields: { Changed: '2026-08-20T12:30:00Z' }, id: 'rec1' }] }, status: 200 }))
+    await expect(
+      poll('airtable.on_record_changed').poll(pollContext(airtable.value, { baseId: 'app12345678901234', tableIdOrName: 'Tasks', triggerField: 'Changed' })),
+    ).resolves.toEqual({ checkpoint: { boundaryIds: ['rec1'], cursor: '2026-08-20T12:30:00.000Z' }, events: [] })
+    expect(airtable.calls[0]).toMatchObject({ endpoint: '/app12345678901234/Tasks/listRecords', method: 'POST' })
+
+    const gmail = connector(() => ({ data: { historyId: '900' }, status: 200 }))
+    await expect(poll('gmail.on_message_received').poll(pollContext(gmail.value, {}))).resolves.toEqual({ checkpoint: { historyId: '900' }, events: [] })
+  })
+
+  it('classifies and emits Gmail and Google Calendar changes', async () => {
+    const gmail = connector((request) => {
+      if (request.endpoint == '/users/me/history') {
+        return { data: { history: [{ messagesAdded: [{ message: { id: 'm1' } }] }], historyId: '11' }, status: 200 }
+      }
+      if (request.endpoint == '/users/me/messages/m1') {
+        return {
+          data: {
+            id: 'm1',
+            internalDate: '1787229260000',
+            labelIds: ['INBOX', 'UNREAD'],
+            payload: { headers: [{ name: 'Subject', value: 'Hello' }] },
+            threadId: 't1',
+          },
+          status: 200,
+        }
+      }
+      throw new Error(`Unexpected Gmail request ${request.endpoint}.`)
+    })
+    await expect(poll('gmail.on_message_received').poll(pollContext(gmail.value, {}, { historyId: '10' }))).resolves.toMatchObject({
+      checkpoint: { historyId: '11' },
+      events: [{ dedupeKey: 'm1', payload: { messageId: 'm1', subject: 'Hello', threadId: 't1' } }],
+    })
+
+    const calendar = connector(() => ({
+      data: {
+        items: [
+          { created: '2026-08-20T12:35:00.000Z', id: 'e1', status: 'confirmed', updated: '2026-08-20T12:35:00.400Z' },
+          { created: '2026-08-19T12:00:00Z', id: 'e2', status: 'cancelled', updated: '2026-08-20T12:36:00Z' },
+        ],
+        nextSyncToken: 'sync-2',
+      },
+      status: 200,
+    }))
+    await expect(
+      poll('googlecalendar.on_event_changed').poll(pollContext(calendar.value, { calendarId: 'primary' }, { calendarId: 'primary', syncToken: 'sync-1' })),
+    ).resolves.toMatchObject({
+      checkpoint: { calendarId: 'primary', syncToken: 'sync-2' },
+      events: [{ payload: { changeType: 'created', eventId: 'e1' } }, { payload: { changeType: 'cancelled', eventId: 'e2' } }],
+    })
+  })
+
+  it('deduplicates Airtable timestamp boundaries and rejects a stuck Outlook boundary', async () => {
+    const airtable = connector(() => ({
+      data: {
+        records: [
+          { fields: { Changed: '2026-08-20T12:30:00Z' }, id: 'rec1' },
+          { fields: { Changed: '2026-08-20T12:30:00Z' }, id: 'rec2' },
+        ],
+      },
+      status: 200,
+    }))
+    await expect(
+      poll('airtable.on_record_changed').poll(
+        pollContext(
+          airtable.value,
+          { baseId: 'app12345678901234', tableIdOrName: 'Tasks', triggerField: 'Changed' },
+          { boundaryIds: ['rec1'], cursor: '2026-08-20T12:30:00.000Z' },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      checkpoint: { boundaryIds: ['rec1', 'rec2'], cursor: '2026-08-20T12:30:00.000Z' },
+      events: [{ dedupeKey: 'rec2:2026-08-20T12:30:00.000Z' }],
+    })
+
+    const outlook = connector(() => ({ data: { value: [{ id: 'm1', receivedDateTime: '2026-08-20T12:30:00Z' }] }, status: 200 }))
+    await expect(
+      poll('outlook.on_message_received').poll(
+        pollContext(outlook.value, { maxMessagesPerPoll: 1 }, { boundaryMessageIds: ['m1'], lastReceivedDateTime: '2026-08-20T12:30:00Z' }),
+      ),
+    ).rejects.toBeInstanceOf(PermanentPollError)
+  })
+
+  it('validates Drive folders and anchors Google Sheets without replaying rows', async () => {
+    const drive = connector(() => ({ data: { driveId: 'drive-1', mimeType: 'application/vnd.google-apps.folder' }, status: 200 }))
+    await expect(
+      poll('googledrive.on_file_change').poll(pollContext(drive.value, { changeType: 'updated', driveId: 'drive-1', folderId: 'folder_1' })),
+    ).resolves.toEqual({
+      checkpoint: { changeType: 'updated', floor: '2026-08-20T12:34:20.000Z', since: '2026-08-20T12:34:20.000Z' },
+      events: [],
+    })
+
+    const sheets = connector((request) =>
+      request.endpoint.includes('/values/')
+        ? { data: { values: [['old']] }, status: 200 }
+        : {
+            data: { sheets: [{ properties: { gridProperties: { rowCount: 100 }, sheetId: 7, sheetType: 'GRID', title: 'Orders' } }] },
+            status: 200,
+          },
+    )
+    await expect(poll('googlesheets.on_row_added').poll(pollContext(sheets.value, { sheet: 'Orders', spreadsheetId: 'sheet-1' }))).resolves.toEqual({
+      checkpoint: { lastRowNumber: 2, sheetId: 7, spreadsheetId: 'sheet-1' },
+      events: [],
+    })
+  })
+
+  it('resolves Notion data sources and seeds OneDrive and Outlook cursors', async () => {
+    const notion = connector((request) =>
+      request.method == 'GET'
+        ? { data: { data_sources: [{ id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }] }, status: 200 }
+        : { data: { results: [] }, status: 200 },
+    )
+    await expect(
+      poll('notion.on_database_page_event').poll(pollContext(notion.value, { databaseId: '11111111222233334444555555555555' })),
+    ).resolves.toMatchObject({
+      checkpoint: { cursorField: 'created_time', dataSourceId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', since: '2026-08-20T12:35:00.000Z' },
+      events: [],
+    })
+
+    const oneDrive = connector(() => ({ data: { '@odata.deltaLink': "https://graph.example/delta(token='latest-token')", 'value': [] }, status: 200 }))
+    await expect(poll('one_drive.on_item_changed').poll(pollContext(oneDrive.value, {}))).resolves.toEqual({
+      checkpoint: { deltaToken: 'latest-token', lastPolledAt: '2026-08-20T12:34:20.000Z' },
+      events: [],
+    })
+
+    const outlook = connector((_request, index) =>
+      index == 0 ? { data: { value: [{ id: 'm1', receivedDateTime: '2026-08-20T12:30:00Z' }] }, status: 200 } : { data: { value: [] }, status: 200 },
+    )
+    await expect(poll('outlook.on_message_received').poll(pollContext(outlook.value, {}))).resolves.toEqual({
+      checkpoint: { boundaryMessageIds: ['m1'], lastReceivedDateTime: '2026-08-20T12:30:00Z' },
+      events: [],
+    })
+    expect(outlook.calls).toHaveLength(2)
+  })
+})
+
+describe('provider Integration Trigger definitions', () => {
+  it('normalizes provider deliveries and rejects unsubscribed events', async () => {
+    expect(
+      await integration('github.on_repo_event').receive(
+        receiveContext({ events: ['push'], owner: 'oomol', repo: 'flow' }, { 'x-github-delivery': 'd1', 'x-github-event': 'push' }, { ref: 'main' }),
+      ),
+    ).toMatchObject({ dedupeKey: 'd1', outcome: 'event', payload: { event: 'push' } })
+    expect(
+      await integration('gitlab.on_project_event').receive(
+        receiveContext({ events: ['pipeline'], project: 'oomol/flow' }, { 'idempotency-key': 'd2', 'x-gitlab-event': 'Pipeline Hook' }, {}),
+      ),
+    ).toMatchObject({ dedupeKey: 'd2', outcome: 'event', payload: { event: 'pipeline' } })
+    expect(
+      await integration('shopify.on_shop_event').receive(
+        receiveContext({ topics: ['orders/create'] }, { 'x-shopify-topic': 'orders/create', 'x-shopify-webhook-id': 'd3' }, { id: 1 }),
+      ),
+    ).toMatchObject({ dedupeKey: 'd3', outcome: 'event', payload: { topic: 'orders/create' } })
+    expect(
+      await integration('stripe.on_event').receive(receiveContext({ events: ['invoice.paid'] }, {}, { id: 'evt_1', livemode: true, type: 'invoice.paid' })),
+    ).toMatchObject({ dedupeKey: 'evt_1', outcome: 'event', payload: { event: 'invoice.paid', livemode: true } })
+    expect(
+      await integration('woocommerce.on_store_event').receive(
+        receiveContext({ events: ['order.created'] }, { 'x-wc-webhook-delivery-id': 'd5', 'x-wc-webhook-topic': 'order.created' }, { id: 1 }),
+      ),
+    ).toMatchObject({ dedupeKey: 'd5', outcome: 'event', payload: { topic: 'order.created' } })
+    expect(
+      await integration('zendesk.on_event').receive(
+        receiveContext({ events: ['zen:event-type:ticket.created'] }, {}, { id: 'd6', type: 'zen:event-type:ticket.created' }),
+      ),
+    ).toMatchObject({ dedupeKey: 'd6', outcome: 'event', payload: { event: 'zen:event-type:ticket.created' } })
+  })
+
+  it('creates and persists one remote subscription for each provider', async () => {
+    const cases: readonly {
+      readonly config: Readonly<Record<string, JsonValue>>
+      readonly key: string
+      readonly responses: readonly ConnectorProxyResult[]
+      readonly subscription: Readonly<Record<string, JsonValue>>
+    }[] = [
+      {
+        config: { events: ['push'], owner: 'oomol', repo: 'flow' },
+        key: 'github.on_repo_event',
+        responses: [
+          { data: { id: 1 }, status: 201 },
+          { data: { id: 1 }, status: 200 },
+        ],
+        subscription: { hookId: '1' },
+      },
+      {
+        config: { events: ['push'], project: 'oomol/flow' },
+        key: 'gitlab.on_project_event',
+        responses: [
+          { data: [], status: 200 },
+          { data: { id: 2 }, status: 201 },
+        ],
+        subscription: { hookId: '2' },
+      },
+      {
+        config: { topics: ['orders/create'] },
+        key: 'shopify.on_shop_event',
+        responses: [
+          { data: { webhooks: [] }, status: 200 },
+          { data: { webhook: { id: '3' } }, status: 201 },
+        ],
+        subscription: { webhookIds: ['3'] },
+      },
+      {
+        config: { events: ['invoice.paid'] },
+        key: 'stripe.on_event',
+        responses: [
+          { data: { data: [], has_more: false }, status: 200 },
+          { data: { id: 'we_4' }, status: 200 },
+          { data: { id: 'we_4' }, status: 200 },
+        ],
+        subscription: { endpointId: 'we_4' },
+      },
+      {
+        config: { events: ['order.created'] },
+        key: 'woocommerce.on_store_event',
+        responses: [
+          { data: [], status: 200 },
+          { data: { id: 5 }, status: 201 },
+        ],
+        subscription: { webhookIds: ['5'] },
+      },
+      {
+        config: { events: ['zen:event-type:ticket.created'] },
+        key: 'zendesk.on_event',
+        responses: [
+          { data: { meta: { has_more: false }, webhooks: [] }, status: 200 },
+          { data: { webhook: { id: 'wh_6' } }, status: 201 },
+        ],
+        subscription: { webhookId: 'wh_6' },
+      },
+    ]
+
+    for (const test of cases) {
+      const runtime = state()
+      const target = connector((_request, index) => test.responses[index]!)
+      await expect(integration(test.key).reconcile(reconcileContext(target.value, runtime.value, test.config))).resolves.toEqual({ outcome: 'ready' })
+      expect(runtime.subscription(), test.key).toEqual(test.subscription)
+      expect(target.calls.length, test.key).toBe(test.responses.length)
+    }
+  })
+
+  it('removes Shopify subscriptions created before a later topic fails', async () => {
+    const runtime = state()
+    const target = connector((_request, index) => {
+      const responses: readonly ConnectorProxyResult[] = [
+        { data: { webhooks: [] }, status: 200 },
+        { data: { webhook: { id: 'created-1' } }, status: 201 },
+        { data: {}, status: 422 },
+        { data: { webhooks: [] }, status: 200 },
+        { data: {}, status: 200 },
+      ]
+      return responses[index]!
+    })
+
+    await expect(
+      integration('shopify.on_shop_event').reconcile(reconcileContext(target.value, runtime.value, { topics: ['orders/create', 'orders/delete'] })),
+    ).rejects.toThrow('Shopify subscription create rejected the subscription.')
+    expect(target.calls.map(({ endpoint, method }) => `${method} ${endpoint}`)).toEqual([
+      'GET /webhooks.json',
+      'POST /webhooks.json',
+      'POST /webhooks.json',
+      'GET /webhooks.json',
+      'DELETE /webhooks/created-1.json',
+    ])
+    expect(runtime.subscription()).toEqual({})
+  })
+})

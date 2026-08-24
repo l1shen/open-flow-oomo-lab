@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ConnectorClient } from './connector.ts'
 import { createServerApp } from './http.ts'
 import { createLogger } from './logger.ts'
 import { OperatorSession } from './operator.ts'
@@ -28,13 +29,51 @@ async function main(): Promise<void> {
     throw new Error('OPEN_FLOW_RUN_EVENT_RETENTION_DAYS must be a positive safe integer number of days.')
   }
 
+  const connectorOrigin = process.env.OPEN_FLOW_CONNECTOR_ORIGIN
+  const connectorToken = process.env.OPEN_FLOW_CONNECTOR_TOKEN
+  const connectorConsoleOrigin = process.env.OPEN_FLOW_CONNECTOR_CONSOLE_ORIGIN
+  if ((connectorOrigin == null) != (connectorToken == null)) {
+    throw new Error('OPEN_FLOW_CONNECTOR_ORIGIN and OPEN_FLOW_CONNECTOR_TOKEN must be configured together.')
+  }
+  const connector = connectorOrigin == null || connectorToken == null ? undefined : new ConnectorClient(connectorOrigin, connectorToken, 30_000, logger)
+
+  const integrationPublicOrigin = process.env.OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN
+  const integrationCallbackKey = process.env.OPEN_FLOW_INTEGRATION_CALLBACK_KEY
+  if ((integrationPublicOrigin == null) != (integrationCallbackKey == null)) {
+    throw new Error('OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN and OPEN_FLOW_INTEGRATION_CALLBACK_KEY must be configured together.')
+  }
+  let integration: { readonly callbackKey: string; readonly publicOrigin: string } | undefined
+  if (integrationPublicOrigin != null && integrationCallbackKey != null) {
+    const publicOrigin = new URL(integrationPublicOrigin)
+    if (
+      (publicOrigin.protocol != 'http:' && publicOrigin.protocol != 'https:') ||
+      publicOrigin.username != '' ||
+      publicOrigin.password != '' ||
+      publicOrigin.pathname != '/' ||
+      publicOrigin.search != '' ||
+      publicOrigin.hash != ''
+    ) {
+      throw new Error('OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN must be an HTTP origin without credentials, a path, query, or fragment.')
+    }
+    if (Buffer.byteLength(integrationCallbackKey) < 32) {
+      throw new Error('OPEN_FLOW_INTEGRATION_CALLBACK_KEY must contain at least 32 UTF-8 bytes.')
+    }
+    integration = { callbackKey: integrationCallbackKey, publicOrigin: publicOrigin.origin }
+  }
   const operatorToken = process.env.OPEN_FLOW_OPERATOR_TOKEN
   const secureCookie = process.env.OPEN_FLOW_SESSION_COOKIE_SECURE
   if (secureCookie != null && secureCookie != 'true' && secureCookie != 'false') {
     throw new Error('OPEN_FLOW_SESSION_COOKIE_SECURE must be true or false.')
   }
   const operator = operatorToken == null ? undefined : new OperatorSession(operatorToken, secureCookie == 'true')
-  const service = ServerService.open(path.join(dataDirectory, 'open-flow.sqlite'), undefined, Date.now, { runEventRetentionMs }, undefined, logger)
+  const service = ServerService.open(
+    path.join(dataDirectory, 'open-flow.sqlite'),
+    connector,
+    Date.now,
+    { ...(integration == null ? {} : { integration }), runEventRetentionMs },
+    connectorConsoleOrigin,
+    logger,
+  )
   service.start()
   const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public')
   let closing = false

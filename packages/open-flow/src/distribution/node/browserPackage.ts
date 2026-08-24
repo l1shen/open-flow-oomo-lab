@@ -12,6 +12,7 @@ import { twemojiCollectionPlugin } from '../../build/node/twemojiCollection.ts'
 
 const execFileAsync = promisify(execFile)
 const packageRequire = createRequire(import.meta.url)
+const connectorActionEntryPath = 'src/connector/common/actionSchema.ts'
 const connectorProxyEntryPath = 'src/connector/common/proxy.ts'
 const controlApiEntryPath = 'src/control/common/api.ts'
 const controlApiConformanceEntryPath = 'src/control/common/conformance.ts'
@@ -20,6 +21,7 @@ const projectNotificationsEntryPath = 'src/control/common/projectNotifications.t
 const cronTriggerEntryPath = 'src/trigger/common/cron.ts'
 const integrationTriggerEntryPath = 'src/trigger/common/integration.ts'
 const pollTriggerEntryPath = 'src/trigger/common/poll.ts'
+const providerTriggersEntryPath = 'src/trigger/providers/definitions.ts'
 const projectChangeEntryPath = 'src/project/common/change.ts'
 const projectEncodingEntryPath = 'src/project/common/encoding.ts'
 const projectSemanticsEntryPath = 'src/project/common/semantics.ts'
@@ -40,6 +42,7 @@ export async function buildBrowserPackage(options: BuildBrowserPackageOptions): 
   const browserOutputPath = path.join(options.packageRoot, 'dist/browser')
   const commonOutputPath = path.join(options.packageRoot, 'dist/common')
   await buildRuntime(options, commonOutputPath, connectorProxyEntryPath, 'connector-proxy', true)
+  await buildRuntime(options, commonOutputPath, connectorActionEntryPath, 'connector-action', false)
   await buildRuntime(options, commonOutputPath, controlApiEntryPath, 'control-api', false)
   await buildRuntime(options, commonOutputPath, controlApiConformanceEntryPath, 'control-api-conformance', false)
   await buildRuntime(options, commonOutputPath, runLifecycleEntryPath, 'run-lifecycle', false)
@@ -51,6 +54,7 @@ export async function buildBrowserPackage(options: BuildBrowserPackageOptions): 
   await buildRuntime(options, commonOutputPath, cronTriggerEntryPath, 'cron-trigger', false)
   await buildRuntime(options, commonOutputPath, integrationTriggerEntryPath, 'integration-trigger', false)
   await buildRuntime(options, commonOutputPath, pollTriggerEntryPath, 'poll-trigger', false)
+  await buildRuntime(options, commonOutputPath, providerTriggersEntryPath, 'provider-triggers', false)
   await buildRuntime(options, commonOutputPath, webhookTriggerEntryPath, 'webhook-trigger', false)
   await buildRuntime(options, browserOutputPath, projectChangeEntryPath, 'project-change', true)
   await buildRuntime(options, browserOutputPath, workbenchEntryPath, 'workbench', false)
@@ -144,6 +148,7 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
         '--types',
         'node,vite/client',
         path.join(options.sourceRoot, 'src/browser-assets.d.ts'),
+        path.join(options.sourceRoot, connectorActionEntryPath),
         path.join(options.sourceRoot, connectorProxyEntryPath),
         path.join(options.sourceRoot, controlApiEntryPath),
         path.join(options.sourceRoot, controlApiConformanceEntryPath),
@@ -158,6 +163,7 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
         path.join(options.sourceRoot, cronTriggerEntryPath),
         path.join(options.sourceRoot, integrationTriggerEntryPath),
         path.join(options.sourceRoot, pollTriggerEntryPath),
+        path.join(options.sourceRoot, providerTriggersEntryPath),
         path.join(options.sourceRoot, webhookTriggerEntryPath),
         path.join(options.sourceRoot, projectChangeEntryPath),
         path.join(options.sourceRoot, workbenchEntryPath),
@@ -173,6 +179,7 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
     )
     const projectNotificationsDeclaration = await readFile(path.join(declarationRoot, 'control/common/projectNotifications.d.ts'), 'utf8')
     const projectChangeDeclaration = await readFile(path.join(declarationRoot, 'project/common/change.d.ts'), 'utf8')
+    const connectorActionDeclaration = await readFile(path.join(declarationRoot, 'connector/common/actionSchema.d.ts'), 'utf8')
     const connectorProxyDeclaration = await readFile(path.join(declarationRoot, 'connector/common/proxy.d.ts'), 'utf8')
     const controlApiDeclaration = (await readFile(path.join(declarationRoot, 'control/common/api.d.ts'), 'utf8'))
       .replaceAll("'../../execution/common/runLifecycle.ts'", "'./run-lifecycle.js'")
@@ -204,6 +211,9 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
     const pollTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/poll.d.ts'), 'utf8'))
       .replaceAll("'../../connector/common/proxy.ts'", "'./connector-proxy.js'")
       .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+    const providerTriggersDeclaration = (await readFile(path.join(declarationRoot, 'trigger/providers/definitions.d.ts'), 'utf8'))
+      .replaceAll("'../common/integration.ts'", "'./integration-trigger.js'")
+      .replaceAll("'../common/poll.ts'", "'./poll-trigger.js'")
     const webhookTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/webhook.d.ts'), 'utf8')).replaceAll(
       "'../../project/common/change.ts'",
       "'../browser/project-change.js'",
@@ -224,6 +234,7 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
       writeFile(path.join(commonOutputPath, 'engine-contract.d.ts'), engineContractDeclaration),
       writeFile(path.join(commonOutputPath, 'runtime-contract.d.ts'), runtimeContractDeclaration),
       writeFile(path.join(commonOutputPath, 'scheduler.d.ts'), schedulerDeclaration),
+      writeFile(path.join(commonOutputPath, 'connector-action.d.ts'), connectorActionDeclaration),
       writeFile(path.join(commonOutputPath, 'connector-proxy.d.ts'), connectorProxyDeclaration),
       writeFile(path.join(commonOutputPath, 'control-api.d.ts'), controlApiDeclaration),
       writeFile(path.join(commonOutputPath, 'control-api-errors.d.ts'), controlApiErrorsDeclaration),
@@ -232,6 +243,7 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
       writeFile(path.join(commonOutputPath, 'cron-trigger.d.ts'), cronTriggerDeclaration),
       writeFile(path.join(commonOutputPath, 'integration-trigger.d.ts'), integrationTriggerDeclaration),
       writeFile(path.join(commonOutputPath, 'poll-trigger.d.ts'), pollTriggerDeclaration),
+      writeFile(path.join(commonOutputPath, 'provider-triggers.d.ts'), providerTriggersDeclaration),
       writeFile(path.join(commonOutputPath, 'webhook-trigger.d.ts'), webhookTriggerDeclaration),
     ])
   } finally {

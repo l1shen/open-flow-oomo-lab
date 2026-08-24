@@ -29,6 +29,10 @@ function createManifest(version: string): object {
       '.': {
         types: './dist/index.d.ts',
       },
+      './connector-action': {
+        types: './dist/common/connector-action.d.ts',
+        import: './dist/common/connector-action.js',
+      },
       './connector-proxy': {
         types: './dist/common/connector-proxy.d.ts',
         import: './dist/common/connector-proxy.js',
@@ -52,6 +56,10 @@ function createManifest(version: string): object {
       './poll-trigger': {
         types: './dist/common/poll-trigger.d.ts',
         import: './dist/common/poll-trigger.js',
+      },
+      './provider-triggers': {
+        types: './dist/common/provider-triggers.d.ts',
+        import: './dist/common/provider-triggers.js',
       },
       './project-change': {
         types: './dist/browser/project-change.d.ts',

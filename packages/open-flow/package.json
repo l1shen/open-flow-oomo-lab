@@ -20,6 +20,7 @@
   "type": "module",
   "private": true,
   "exports": {
+    "./connector-action": "./src/connector/common/actionSchema.ts",
     "./connector-proxy": "./src/connector/common/proxy.ts",
     "./control-api": "./src/control/common/api.ts",
     "./control-api-conformance": "./src/control/common/conformance.ts",
@@ -28,6 +29,7 @@
     "./designer-vite-config": "./src/build/node/designerUnoConfig.ts",
     "./integration-trigger": "./src/trigger/common/integration.ts",
     "./poll-trigger": "./src/trigger/common/poll.ts",
+    "./provider-triggers": "./src/trigger/providers/definitions.ts",
     "./project-change": "./src/project/common/change.ts",
     "./project-encoding": "./src/project/common/encoding.ts",
     "./project-semantics": "./src/project/common/semantics.ts",

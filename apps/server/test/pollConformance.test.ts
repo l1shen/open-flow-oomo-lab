@@ -104,7 +104,7 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
   }
   const connector = createConnectorHost()
   let now = Date.parse(fixture.publishedAt)
-  let service = ServerService.open(file, connector, () => now, { polls: [definition] })
+  let service = ServerService.open(file, connector, () => now, {}, undefined, undefined, [definition])
   let config = fixture.config
   let connectionId = fixture.connectionId
   let active = true
@@ -146,7 +146,7 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
     },
     async restart() {
       await service.close()
-      service = ServerService.open(file, connector, () => now, { polls: [definition] })
+      service = ServerService.open(file, connector, () => now, {}, undefined, undefined, [definition])
     },
     async retire(at) {
       now = Date.parse(at)

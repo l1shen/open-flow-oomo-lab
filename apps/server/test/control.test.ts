@@ -1,4 +1,5 @@
 import { ControlClient } from '@oomol-lab/open-flow/control-api'
+import { triggerDefinitions } from '@oomol-lab/open-flow/provider-triggers'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -21,6 +22,19 @@ function webhookFlow(name: string) {
     name,
   }
 }
+
+it('loads the public Provider Trigger registry without deployment registration', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-control-triggers-'))
+  const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
+  try {
+    expect(service.control.listTriggerDefinitions()).toEqual(
+      triggerDefinitions.map((definition) => definition.snapshot).toSorted((left, right) => left.key.localeCompare(right.key)),
+    )
+  } finally {
+    await service.close()
+    await rm(directory, { force: true, recursive: true })
+  }
+})
 
 it('fails closed when the Control API has no operator resolver', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-control-auth-'))

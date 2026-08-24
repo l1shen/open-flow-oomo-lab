@@ -33,6 +33,8 @@ for (const expected of [
   'package/dist/browser/workbench.css.d.ts',
   'package/dist/browser/workbench.d.ts',
   'package/dist/browser/workbench.js',
+  'package/dist/common/connector-action.d.ts',
+  'package/dist/common/connector-action.js',
   'package/dist/common/connector-proxy.d.ts',
   'package/dist/common/connector-proxy.js',
   'package/dist/common/control-api.d.ts',
@@ -46,6 +48,8 @@ for (const expected of [
   'package/dist/common/integration-trigger.js',
   'package/dist/common/poll-trigger.d.ts',
   'package/dist/common/poll-trigger.js',
+  'package/dist/common/provider-triggers.d.ts',
+  'package/dist/common/provider-triggers.js',
   'package/dist/common/run-lifecycle.d.ts',
   'package/dist/common/run-lifecycle.js',
   'package/dist/common/run-events.d.ts',
@@ -101,6 +105,10 @@ assert.deepEqual(packedManifest.peerDependencies, {
 })
 assert.deepEqual(packedManifest.exports, {
   '.': { types: './dist/index.d.ts' },
+  './connector-action': {
+    import: './dist/common/connector-action.js',
+    types: './dist/common/connector-action.d.ts',
+  },
   './connector-proxy': {
     import: './dist/common/connector-proxy.js',
     types: './dist/common/connector-proxy.d.ts',
@@ -124,6 +132,10 @@ assert.deepEqual(packedManifest.exports, {
   './poll-trigger': {
     import: './dist/common/poll-trigger.js',
     types: './dist/common/poll-trigger.d.ts',
+  },
+  './provider-triggers': {
+    import: './dist/common/provider-triggers.js',
+    types: './dist/common/provider-triggers.d.ts',
   },
   './project-change': {
     import: './dist/browser/project-change.js',
@@ -253,11 +265,13 @@ async function verifyConsumer(versions: { readonly react: string; readonly react
       consumerPath,
       [
         "import type { ConnectorAction, ControlErrorCode } from '@oomol-lab/open-flow/control-api'",
+        "import { connectorActionPorts } from '@oomol-lab/open-flow/connector-action'",
         "import type { ConnectorProxy } from '@oomol-lab/open-flow/connector-proxy'",
         "import { connectorControlApiConformanceCases, controlApiConformanceCases, publicationControlApiConformanceCases, triggerControlApiConformanceCases } from '@oomol-lab/open-flow/control-api-conformance'",
         "import { validateTriggerSchedule } from '@oomol-lab/open-flow/cron-trigger'",
         "import { integrationConformanceCases } from '@oomol-lab/open-flow/integration-trigger'",
         "import { maximumPollEventsPerPage } from '@oomol-lab/open-flow/poll-trigger'",
+        "import { triggerDefinitions } from '@oomol-lab/open-flow/provider-triggers'",
         "import type { Task } from '@oomol-lab/open-flow'",
         "import { encodeRevision } from '@oomol-lab/open-flow/project-encoding'",
         "import { prepareFlow } from '@oomol-lab/open-flow/project-semantics'",
@@ -286,6 +300,7 @@ async function verifyConsumer(versions: { readonly react: string; readonly react
         'const task: Task<{ value: string }, { value: string }> = async (inputs) => inputs',
         'void connector',
         'void connectorAction',
+        'void connectorActionPorts',
         'void controlError',
         'void connectorControlApiConformanceCases',
         'void controlApiConformanceCases',
@@ -294,6 +309,7 @@ async function verifyConsumer(versions: { readonly react: string; readonly react
         'void integrationConformanceCases',
         'void validateTriggerSchedule',
         'void maximumPollEventsPerPage',
+        'void triggerDefinitions',
         'void encodeRevision',
         'void prepareFlow',
         'void transition',
@@ -331,7 +347,15 @@ async function verifyConsumer(versions: { readonly react: string; readonly react
       process.execPath,
       [
         '-e',
-        "const api = await import('@oomol-lab/open-flow/control-api'); if (typeof api.ControlClient !== 'function') throw new Error('Missing Control API client.'); if (api.controlErrorMetadata[api.controlErrorCode.runNotFound].status !== 404) throw new Error('Missing Control API errors.'); const proxy = await import('@oomol-lab/open-flow/connector-proxy'); if (Object.keys(proxy).length !== 0) throw new Error('Connector Proxy should be type-only.'); const control = await import('@oomol-lab/open-flow/control-api-conformance'); if (control.controlApiConformanceCases.length !== 5 || control.publicationControlApiConformanceCases.length !== 3 || control.triggerControlApiConformanceCases.length !== 2 || control.connectorControlApiConformanceCases.length !== 2) throw new Error('Missing Control API conformance.'); const cron = await import('@oomol-lab/open-flow/cron-trigger'); if (typeof cron.nextTriggerScheduledAt !== 'function') throw new Error('Missing Cron Trigger contract.'); const integration = await import('@oomol-lab/open-flow/integration-trigger'); if (integration.integrationConformanceCases.length === 0) throw new Error('Missing Integration Trigger contract.'); const poll = await import('@oomol-lab/open-flow/poll-trigger'); if (poll.maximumPollEventsPerPage !== 100) throw new Error('Missing Poll Trigger contract.'); const lifecycle = await import('@oomol-lab/open-flow/run-lifecycle'); if (lifecycle.transitionRun('queued', { kind: 'claim' }).kind !== 'ready') throw new Error('Missing Run lifecycle runtime.'); const events = await import('@oomol-lab/open-flow/run-events'); if (typeof events.createEventProjector !== 'function') throw new Error('Missing Run event projection.'); const runtime = await import('@oomol-lab/open-flow/runtime-contract'); if (runtime.runtimeConformanceCases.length === 0) throw new Error('Missing Runtime contract.'); const scheduler = await import('@oomol-lab/open-flow/scheduler'); if (typeof scheduler.runFlow !== 'function') throw new Error('Missing Scheduler runtime.'); const webhook = await import('@oomol-lab/open-flow/webhook-trigger'); if (webhook.maximumWebhookBodyBytes !== 65536) throw new Error('Missing Webhook Trigger contract.'); const encoding = await import('@oomol-lab/open-flow/project-encoding'); if (typeof encoding.encodeRevision !== 'function') throw new Error('Missing Project encoding runtime.'); const semantics = await import('@oomol-lab/open-flow/project-semantics'); if (typeof semantics.prepareFlow !== 'function') throw new Error('Missing Project semantics runtime.'); const workbench = await import('@oomol-lab/open-flow/workbench'); if (typeof workbench.OpenFlowWorkbench !== 'function') throw new Error('Missing Workbench runtime.'); await import.meta.resolve('@oomol-lab/open-flow/workbench.css')",
+        "const action = await import('@oomol-lab/open-flow/connector-action'); if (typeof action.connectorActionPorts !== 'function') throw new Error('Missing Connector Action contract.')",
+      ],
+      { cwd: directory },
+    )
+    await execFileAsync(
+      process.execPath,
+      [
+        '-e',
+        "const api = await import('@oomol-lab/open-flow/control-api'); if (typeof api.ControlClient !== 'function') throw new Error('Missing Control API client.'); if (api.controlErrorMetadata[api.controlErrorCode.runNotFound].status !== 404) throw new Error('Missing Control API errors.'); const proxy = await import('@oomol-lab/open-flow/connector-proxy'); if (Object.keys(proxy).length !== 0) throw new Error('Connector Proxy should be type-only.'); const control = await import('@oomol-lab/open-flow/control-api-conformance'); if (control.controlApiConformanceCases.length !== 5 || control.publicationControlApiConformanceCases.length !== 3 || control.triggerControlApiConformanceCases.length !== 2 || control.connectorControlApiConformanceCases.length !== 2) throw new Error('Missing Control API conformance.'); const cron = await import('@oomol-lab/open-flow/cron-trigger'); if (typeof cron.nextTriggerScheduledAt !== 'function') throw new Error('Missing Cron Trigger contract.'); const integration = await import('@oomol-lab/open-flow/integration-trigger'); if (integration.integrationConformanceCases.length === 0) throw new Error('Missing Integration Trigger contract.'); const poll = await import('@oomol-lab/open-flow/poll-trigger'); if (poll.maximumPollEventsPerPage !== 100) throw new Error('Missing Poll Trigger contract.'); const providers = await import('@oomol-lab/open-flow/provider-triggers'); if (providers.triggerDefinitions.length !== 17) throw new Error('Missing Provider Trigger definitions.'); const lifecycle = await import('@oomol-lab/open-flow/run-lifecycle'); if (lifecycle.transitionRun('queued', { kind: 'claim' }).kind !== 'ready') throw new Error('Missing Run lifecycle runtime.'); const events = await import('@oomol-lab/open-flow/run-events'); if (typeof events.createEventProjector !== 'function') throw new Error('Missing Run event projection.'); const runtime = await import('@oomol-lab/open-flow/runtime-contract'); if (runtime.runtimeConformanceCases.length === 0) throw new Error('Missing Runtime contract.'); const scheduler = await import('@oomol-lab/open-flow/scheduler'); if (typeof scheduler.runFlow !== 'function') throw new Error('Missing Scheduler runtime.'); const webhook = await import('@oomol-lab/open-flow/webhook-trigger'); if (webhook.maximumWebhookBodyBytes !== 65536) throw new Error('Missing Webhook Trigger contract.'); const encoding = await import('@oomol-lab/open-flow/project-encoding'); if (typeof encoding.encodeRevision !== 'function') throw new Error('Missing Project encoding runtime.'); const semantics = await import('@oomol-lab/open-flow/project-semantics'); if (typeof semantics.prepareFlow !== 'function') throw new Error('Missing Project semantics runtime.'); const workbench = await import('@oomol-lab/open-flow/workbench'); if (typeof workbench.OpenFlowWorkbench !== 'function') throw new Error('Missing Workbench runtime.'); await import.meta.resolve('@oomol-lab/open-flow/workbench.css')",
       ],
       { cwd: directory },
     )

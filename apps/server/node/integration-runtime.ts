@@ -22,7 +22,6 @@ import { Store } from './store.ts'
 
 export interface IntegrationOptions {
   readonly callbackKey: string
-  readonly definitions: readonly IntegrationDefinition[]
   readonly publicOrigin: string
 }
 
@@ -82,6 +81,7 @@ export class IntegrationRuntime {
     connector: ConnectorHost | undefined,
     clock: () => number,
     options: IntegrationOptions | undefined,
+    definitions: readonly IntegrationDefinition[],
     validateFlow: ValidateFlow,
     wake: () => void,
     runCreated: (projectId: string, flowId: string, runId: string) => void,
@@ -90,7 +90,7 @@ export class IntegrationRuntime {
     this.#callbackKey = options?.callbackKey
     this.#clock = clock
     this.#connector = connector
-    this.#definitions = new Map(options?.definitions.map((definition) => [definition.snapshot.key, definition]))
+    this.#definitions = new Map(definitions.map((definition) => [definition.snapshot.key, definition]))
     this.#logger = logger.child({ component: 'integration' })
     this.#publicOrigin = options == null ? undefined : new URL(options.publicOrigin).origin
     this.#store = store
@@ -115,25 +115,28 @@ export class IntegrationRuntime {
   }
 
   bindings(revision: RevisionContent, prepared: PreparedFlow, publishedAt: number) {
-    return Object.entries(prepared.flow.graph.nodes)
+    const nodes = Object.entries(prepared.flow.graph.nodes)
       .filter((entry): entry is [string, Extract<TriggerNode, { readonly kind: 'integration' }>] => entry[1].kind == 'integration')
       .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-      .map(([triggerNodeId, trigger]) => {
-        const definition = this.#definitions.get(trigger.definition.key)
-        if (definition?.snapshot.definitionVersion != trigger.definition.definitionVersion) {
-          throw new AcceptanceError('trigger-invalid', 'Integration Trigger definition is not available.')
-        }
-        const binding = revision.document.bindings[trigger.bindingId]
-        if (binding?.kind != 'connection' || binding.target.length == 0) {
-          throw new AcceptanceError('trigger-invalid', 'Integration Trigger Connection is unresolved.')
-        }
-        return {
-          connectionId: binding.target,
-          reconcileAt: publishedAt,
-          triggerJson: JSON.stringify(trigger),
-          triggerNodeId,
-        }
-      })
+    if (nodes.length > 0 && (this.#callbackKey == null || this.#publicOrigin == null)) {
+      throw new AcceptanceError('trigger-invalid', 'Integration runtime is not configured.')
+    }
+    return nodes.map(([triggerNodeId, trigger]) => {
+      const definition = this.#definitions.get(trigger.definition.key)
+      if (definition?.snapshot.definitionVersion != trigger.definition.definitionVersion) {
+        throw new AcceptanceError('trigger-invalid', 'Integration Trigger definition is not available.')
+      }
+      const binding = revision.document.bindings[trigger.bindingId]
+      if (binding?.kind != 'connection' || binding.target.length == 0) {
+        throw new AcceptanceError('trigger-invalid', 'Integration Trigger Connection is unresolved.')
+      }
+      return {
+        connectionId: binding.target,
+        reconcileAt: publishedAt,
+        triggerJson: JSON.stringify(trigger),
+        triggerNodeId,
+      }
+    })
   }
 
   endpoint(projectId: string, flowId: string, triggerNodeId: string): string | undefined {

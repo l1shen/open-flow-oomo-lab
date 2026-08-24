@@ -4,8 +4,9 @@
 
 `apps/server/Dockerfile` 只交付一个 Server Flow application 进程，包含同源 Workbench、Control API、Run runtime、Trigger runtime 和 SQLite migration。镜像不包含 Connector service、Connector 数据库或多进程 supervisor。
 
-当前发行不包含 Connector transport adapter。Connector-backed Task 和 Runtime Capability 只通过进程内 `ConnectorHost` seam 接入；未注入 host 时稳定返回
-`connector.unavailable`。具体 Provider transport、credential、Connection lifecycle 和管理界面不属于 Open Flow Server。
+Server 可以通过配置的 Connector runtime API 使用 Provider/Action catalog、获准 Connection、Action execution 和 Provider proxy。镜像仍不包含
+Connector service；具体 Provider transport、credential、Connection lifecycle 和管理界面不属于 Open Flow Server。未配置 Connector 时相关能力稳定
+返回 `connector.unavailable`。
 
 当前部署边界是单个 Server 容器、单个 SQLite writer。不能让多个容器并发挂载并写入同一个数据卷。
 
@@ -61,21 +62,38 @@ Workbench 和 API 位于 `http://127.0.0.1:3000`。最终镜像默认监听 `0.0
 
 ## 4. 配置
 
-| 环境变量                             | 用途                                                           |
-| ------------------------------------ | -------------------------------------------------------------- |
-| `OPEN_FLOW_HOST`                     | HTTP 监听地址；镜像默认 `0.0.0.0`。                            |
-| `OPEN_FLOW_PORT`                     | HTTP 监听端口；镜像默认 `3000`。                               |
-| `OPEN_FLOW_DATA_DIR`                 | SQLite 持久目录；镜像默认 `/data/open-flow`。                  |
-| `OPEN_FLOW_OPERATOR_TOKEN`           | operator session bootstrap secret；配置时至少 32 UTF-8 bytes。 |
-| `OPEN_FLOW_SESSION_COOKIE_SECURE`    | TLS ingress 后应设为 `true`；只接受 `true` 或 `false`。        |
-| `OPEN_FLOW_LOG_LEVEL`                | Pino 日志级别；默认 `info`。                                   |
-| `OPEN_FLOW_RUN_EVENT_RETENTION_DAYS` | terminal Run 详细事件的保留天数；默认 `30`。                   |
+| 环境变量                              | 用途                                                           |
+| ------------------------------------- | -------------------------------------------------------------- |
+| `OPEN_FLOW_HOST`                      | HTTP 监听地址；镜像默认 `0.0.0.0`。                            |
+| `OPEN_FLOW_PORT`                      | HTTP 监听端口；镜像默认 `3000`。                               |
+| `OPEN_FLOW_DATA_DIR`                  | SQLite 持久目录；镜像默认 `/data/open-flow`。                  |
+| `OPEN_FLOW_OPERATOR_TOKEN`            | operator session bootstrap secret；配置时至少 32 UTF-8 bytes。 |
+| `OPEN_FLOW_SESSION_COOKIE_SECURE`     | TLS ingress 后应设为 `true`；只接受 `true` 或 `false`。        |
+| `OPEN_FLOW_LOG_LEVEL`                 | Pino 日志级别；默认 `info`。                                   |
+| `OPEN_FLOW_CONNECTOR_ORIGIN`          | Server 可访问的 Connector runtime origin。                     |
+| `OPEN_FLOW_CONNECTOR_TOKEN`           | Server 调用 Connector runtime API 的受限 token。               |
+| `OPEN_FLOW_CONNECTOR_CONSOLE_ORIGIN`  | 用户浏览器可访问的 Connector Console 公网 origin。             |
+| `OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN` | Provider 可访问的 Integration callback 公网 origin。           |
+| `OPEN_FLOW_INTEGRATION_CALLBACK_KEY`  | 派生 Integration callback secret 的至少 32 UTF-8 bytes 密钥。  |
+| `OPEN_FLOW_RUN_EVENT_RETENTION_DAYS`  | terminal Run 详细事件的保留天数；默认 `30`。                   |
+
+`OPEN_FLOW_CONNECTOR_ORIGIN` 和 `OPEN_FLOW_CONNECTOR_TOKEN` 必须同时提供或同时省略。内部 runtime origin 与 Browser 使用的 Console origin 相互独立；
+后者不能使用只在容器网络中可访问的地址，也不能包含 credential、path、query 或 fragment。
+
+Provider Trigger definitions 由公共 Open Flow package 内置，不需要用户或部署者注册。Poll 与 Integration 通过 Connector 的
+`POST /v1/proxy/:service` 运行面执行；OpenConnector 与 OOMOL Connector 都支持该接口。具体可用的 Provider、Connection 和授权范围以当前配置的
+Connector 为准。
+
+`OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN` 与 `OPEN_FLOW_INTEGRATION_CALLBACK_KEY` 必须同时提供或同时省略。前者必须是 Provider 可访问且不带
+credential、path、query 或 fragment 的 HTTP(S) origin，后者只能通过 secret 注入。未配置时 Integration definition 仍可用于 authoring，但 Publish
+会 fail closed。
 
 不配置 operator token 时，health、callback 和已持久化的 runtime 工作仍可运行，但 Control API fail closed，Workbench 显示管理面尚未配置。
 
 ## 5. 健康检查与停止
 
-镜像的 Docker `HEALTHCHECK` 请求 `GET /healthz`，只表示 Server 进程能够响应。部署入口应另外使用 `GET /readyz` 判断是否接收新流量。
+镜像的 Docker `HEALTHCHECK` 请求 `GET /healthz`，只表示 Server 进程能够响应。部署入口应另外使用 `GET /readyz` 判断是否接收新流量；配置外部
+Connector 后，Connector 不可用会让 readiness 返回 503，但 liveness 仍保持 200。
 
 检查状态：
 

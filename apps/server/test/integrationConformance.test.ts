@@ -101,10 +101,7 @@ async function createHarness(fixture: IntegrationConformanceFixture): Promise<In
     snapshot,
   }
   let now = Date.parse(fixture.publishedAt)
-  const open = () =>
-    ServerService.open(file, undefined, () => now, {
-      integration: { callbackKey, definitions: [definition], publicOrigin },
-    })
+  const open = () => ServerService.open(file, undefined, () => now, { integration: { callbackKey, publicOrigin } }, undefined, undefined, [definition])
   let service = open()
   let revisionId = next('revision')
   const published = await service.publishFlow({

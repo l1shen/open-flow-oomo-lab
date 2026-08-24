@@ -119,9 +119,23 @@ async function publish(
   return result.publicationId
 }
 
-function runtime(definition: IntegrationDefinition) {
-  return { integration: { callbackKey: 'callback-key', definitions: [definition], publicOrigin: 'https://flow.example' } } as const
+function runtime() {
+  return { integration: { callbackKey: 'callback-key', publicOrigin: 'https://flow.example' } } as const
 }
+
+it('rejects Integration publication when the callback runtime is not configured', async () => {
+  const definition: IntegrationDefinition = {
+    receive: () => ({ outcome: 'ignored', reason: 'unused' }),
+    reconcile: () => Promise.resolve({ outcome: 'ready' }),
+    snapshot,
+  }
+  const service = ServerService.open(await databaseFile(), undefined, Date.now, {}, undefined, undefined, [definition])
+  try {
+    await expect(publish(service, 'ready', null)).rejects.toMatchObject({ code: 'trigger-invalid', message: 'Integration runtime is not configured.' })
+  } finally {
+    await service.close()
+  }
+})
 
 describe('Server Integration reconciliation', () => {
   it('applies a one-second transient retry floor without a busy loop', async () => {
@@ -137,7 +151,7 @@ describe('Server Integration reconciliation', () => {
       snapshot,
     }
     const at = Date.parse('2026-08-21T00:00:00.000Z')
-    const service = ServerService.open(await databaseFile(), undefined, () => at, runtime(definition), undefined, captured.logger)
+    const service = ServerService.open(await databaseFile(), undefined, () => at, runtime(), undefined, captured.logger, [definition])
     try {
       await publish(service, 'transient', null)
       await service.tickIntegration(new Date(at).toISOString())
@@ -167,7 +181,7 @@ describe('Server Integration reconciliation', () => {
     }
     let now = Date.parse('2026-08-21T00:00:00.000Z')
     const file = await databaseFile()
-    const service = ServerService.open(file, undefined, () => now, runtime(definition))
+    const service = ServerService.open(file, undefined, () => now, runtime(), undefined, undefined, [definition])
     try {
       let publicationId = await publish(service, 'connection', null)
       await service.tickIntegration(new Date(now).toISOString())
@@ -232,7 +246,7 @@ describe('Server Integration callback fencing', () => {
     }
     let now = Date.parse('2026-08-21T00:00:00.000Z')
     const file = await databaseFile()
-    const service = ServerService.open(file, undefined, () => now, runtime(definition))
+    const service = ServerService.open(file, undefined, () => now, runtime(), undefined, undefined, [definition])
     try {
       let publicationId = await publish(service, 'ready', null)
       await service.tickIntegration(new Date(now).toISOString())

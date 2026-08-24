@@ -1,7 +1,9 @@
 import type { ProjectChangeEvent } from '@oomol-lab/open-flow/control-api'
+import type { IntegrationDefinition } from '@oomol-lab/open-flow/integration-trigger'
 import type { PollDefinition } from '@oomol-lab/open-flow/poll-trigger'
 import type { ConnectorCapability, JsonValue, RevisionContent, TriggerNode } from '@oomol-lab/open-flow/project-change'
 import type { PreparedFlow } from '@oomol-lab/open-flow/project-semantics'
+import type { ProviderTriggerDefinition } from '@oomol-lab/open-flow/provider-triggers'
 import type { RunAcceptance } from '@oomol-lab/open-flow/run-lifecycle'
 import type { InvokeLlmTask, RuntimeCapabilityCall, RuntimeCapabilityResponse } from '@oomol-lab/open-flow/runtime-contract'
 import type { FlowRunOptions, TaskInvocation } from '@oomol-lab/open-flow/scheduler'
@@ -23,6 +25,7 @@ import {
 } from '@oomol-lab/open-flow/poll-trigger'
 import { canonicalJsonBytes, digestBytes, encodeRevision } from '@oomol-lab/open-flow/project-encoding'
 import { createRuntimeProgram, matchesSchema, prepareFlow, triggerPayloadSchema, validateFlowInputs } from '@oomol-lab/open-flow/project-semantics'
+import { triggerDefinitions as providerTriggerDefinitions } from '@oomol-lab/open-flow/provider-triggers'
 import { createEventProjector } from '@oomol-lab/open-flow/run-events'
 import { currentEngineContract } from '@oomol-lab/open-flow/runtime-contract'
 import { runFlow } from '@oomol-lab/open-flow/scheduler'
@@ -82,7 +85,6 @@ interface PollOccurrenceInput {
 export interface ServerRuntime {
   readonly integration?: IntegrationOptions
   readonly llm?: InvokeLlmTask
-  readonly polls?: readonly PollDefinition[]
   readonly runEventRetentionMs?: number
 }
 
@@ -165,17 +167,17 @@ export class ServerService {
     runtime: ServerRuntime,
     connectorConsoleOrigin: URL | undefined,
     logger: Logger,
+    triggerDefinitions: readonly ProviderTriggerDefinition[],
   ) {
     this.#clock = clock
     this.#connector = connector
     this.#logger = logger.child({ component: 'runtime' })
     this.#llm = runtime.llm
-    this.#pollDefinitions = new Map(runtime.polls?.map((definition) => [definition.snapshot.key, definition]))
+    const pollDefinitions = triggerDefinitions.filter((definition): definition is PollDefinition => definition.snapshot.type == 'poll')
+    const integrationDefinitions = triggerDefinitions.filter((definition): definition is IntegrationDefinition => definition.snapshot.type == 'integration')
+    this.#pollDefinitions = new Map(pollDefinitions.map((definition) => [definition.snapshot.key, definition]))
     this.#store = store
-    const triggerDefinitions = [
-      ...(runtime.polls ?? []).map((definition) => definition.snapshot),
-      ...(runtime.integration?.definitions ?? []).map((definition) => definition.snapshot),
-    ].toSorted((left, right) => left.key.localeCompare(right.key))
+    const snapshots = triggerDefinitions.map((definition) => definition.snapshot).toSorted((left, right) => left.key.localeCompare(right.key))
     this.control = new ControlService(
       store,
       clock,
@@ -188,7 +190,7 @@ export class ServerService {
         this.#armPoll()
         this.#armMaintenance(0)
       },
-      triggerDefinitions,
+      snapshots,
       (projectId, flowId, triggerNodeId) => this.#testPollTrigger(projectId, flowId, triggerNodeId),
       (event) => this.#notifyProject(event),
       connector,
@@ -199,6 +201,7 @@ export class ServerService {
       connector,
       clock,
       runtime.integration,
+      integrationDefinitions,
       validatedFlow,
       () => this.#wake(),
       (projectId, flowId, runId) => this.#runCreated(projectId, flowId, runId),
@@ -213,6 +216,7 @@ export class ServerService {
     runtime: ServerRuntime = {},
     connectorConsoleOrigin?: string,
     logger: Logger = silentLogger,
+    triggerDefinitions: readonly ProviderTriggerDefinition[] = providerTriggerDefinitions,
   ): ServerService {
     if (runtime.runEventRetentionMs != null && (!Number.isSafeInteger(runtime.runEventRetentionMs) || runtime.runEventRetentionMs <= 0)) {
       throw new TypeError('Run event retention must be a positive safe integer number of milliseconds.')
@@ -232,7 +236,7 @@ export class ServerService {
       }
     }
     migrateDatabase(databaseFile)
-    return new ServerService(new Store(databaseFile, clock, runtime.runEventRetentionMs), connector, clock, runtime, consoleOrigin, logger)
+    return new ServerService(new Store(databaseFile, clock, runtime.runEventRetentionMs), connector, clock, runtime, consoleOrigin, logger, triggerDefinitions)
   }
 
   async acceptRun(input: AcceptRunInput): Promise<RunAcceptance> {

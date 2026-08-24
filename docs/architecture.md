@@ -92,11 +92,13 @@ Publication 是指定 Flow 在固定 ProjectRevision 上的不可变发布记录
 Connector service 拥有 Provider 授权、credential、Connection lifecycle 和 proxy transport。Open Flow 只保存稳定的 opaque Connection identity，
 不能把 credential、token 或 Connector 数据库复制进 Revision、Browser 或 RunEvent。
 
-公共 package 只定义 Workbench 所需的 Connector 投影和部署中立 `connector-proxy` 调用合同，不拥有具体 Connector HTTP transport。Server 通过进程
-注入的 Connector host 接入实现；没有 host 时相关能力必须 fail closed。
+公共 package 定义 Workbench 所需的 Connector 投影、部署中立 `connector-proxy` 调用合同、具体 Provider Trigger definitions 与唯一内置 Registry，
+但不拥有 Connector HTTP transport。Hosted 与 Server 消费同一 Registry；Server 通过部署配置接入 Connector，没有 Connector 时相关执行能力必须
+fail closed。
 
-Trigger 是 Flow graph 中的 source node。Webhook、Cron、Poll 和 Integration 的确定性协议与 conformance 属于公共 package；Provider definition、
-subscription、checkpoint、调度持久化、endpoint routing 和 admission 事务属于部署实现。
+Trigger 是 Flow graph 中的 source node。Webhook、Cron、Poll 和 Integration 的确定性协议、Provider definitions、Registry 与 conformance 属于公共
+package；subscription、checkpoint、调度持久化、endpoint routing 和 admission 事务属于部署实现。Trigger 通过 Connector 的通用 Action 或 proxy
+调用 Provider，不能要求 Connector 增加 Trigger 专用接口，也不由用户或部署者注册 definitions。
 
 一次有效 Trigger occurrence 只能准入普通 Flow Run，之后复用相同的 Run、执行、事件、取消和 terminal 语义。Trigger lifecycle 不能扩张成第二套
 执行系统；重投 occurrence 必须通过稳定 identity 和权威 store 约束为最多一个 Run。
