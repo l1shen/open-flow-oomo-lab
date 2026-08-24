@@ -28,6 +28,12 @@
 - 认证与部署 scope 由 adapter 提供。公共合同不要求特定 Team header、cookie、host token 或 Server 的具体 session 形式。
 - 创建 Project 和 Run 的 `Idempotency-Key` 必须是非空、受限长度的 opaque value。相同 key 与相同 operation 重放同一资源；相同 key 与不同 operation 返回 conflict。
 
+### 1.1 Server 认证
+
+Server 的同一个 `OPEN_FLOW_TOKEN` 支持两种客户端入口：浏览器通过 `POST /auth/session` 换取签名 HttpOnly Cookie；machine client
+直接发送 `Authorization: Bearer <operator-token>`。两者解析为相同的 deployment operator identity，并只用于需要 operator 的 Control API、Run
+和通知路由。health、readiness、Webhook 与 Integration callback 不读取该凭据，也不能把它当作 workload 或 callback authority。
+
 ## 2. 公共资源
 
 ### 2.1 Project

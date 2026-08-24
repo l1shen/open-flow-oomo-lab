@@ -56,7 +56,7 @@ async function start(
       NODE_ENV: 'test',
       OPEN_FLOW_DATA_DIR: dataDirectory,
       OPEN_FLOW_HOST: '127.0.0.1',
-      OPEN_FLOW_OPERATOR_TOKEN: operatorToken,
+      OPEN_FLOW_TOKEN: operatorToken,
       OPEN_FLOW_PORT: '0',
       ...environment,
     },

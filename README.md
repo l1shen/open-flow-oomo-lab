@@ -27,7 +27,7 @@ The current product boundary and HTTP contracts are documented in
 docker build --file apps/server/Dockerfile --tag open-flow-server:dev .
 docker run --rm \
   --publish 3000:3000 \
-  --env OPEN_FLOW_OPERATOR_TOKEN=replace-with-at-least-32-random-bytes \
+  --env OPEN_FLOW_TOKEN=replace-with-at-least-32-random-bytes \
   --volume open-flow-data:/data/open-flow \
   open-flow-server:dev
 ```

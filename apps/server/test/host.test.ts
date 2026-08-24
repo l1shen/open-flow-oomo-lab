@@ -51,6 +51,9 @@ it('uses a signed operator session, expires it on time or token rotation, and cl
     })
     expect(project.status).toBe(201)
     expect((await app.request('/v1/projects')).status).toBe(401)
+    expect((await app.request('/v1/projects', { headers: { authorization: `Bearer ${token}` } })).status).toBe(200)
+    expect((await app.request('/v1/projects', { headers: { authorization: 'Bearer wrong' } })).status).toBe(401)
+    expect((await app.request('/v1/projects', { headers: { authorization: `Basic ${token}` } })).status).toBe(401)
 
     const rotated = createServerApp(service, {
       operator: new OperatorSession('open-flow-server-rotated-token-00000001', false, () => now),
@@ -87,6 +90,7 @@ it('reports missing operator configuration without disabling callbacks or health
     expect(await (await app.request('/auth/session')).json()).toEqual({ authenticated: false, configured: false, version: 1 })
     expect((await app.request('/auth/session', { body: JSON.stringify({ token, version: 1 }), method: 'POST' })).status).toBe(503)
     expect((await app.request('/v1/projects')).status).toBe(401)
+    expect((await app.request('/v1/projects', { headers: { authorization: `Bearer ${token}` } })).status).toBe(401)
     expect((await app.request('/v1/runs/missing')).status).toBe(401)
     expect((await app.request('/healthz')).status).toBe(200)
     expect((await app.request('/v1/webhooks/not-an-endpoint')).status).toBe(404)

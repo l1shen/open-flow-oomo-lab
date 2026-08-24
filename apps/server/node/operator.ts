@@ -21,7 +21,7 @@ export class OperatorSession {
 
   constructor(token: string, secure: boolean, now: () => number = Date.now) {
     const bytes = encoder.encode(token)
-    if (bytes.byteLength < 32) throw new Error('OPEN_FLOW_OPERATOR_TOKEN must contain at least 32 UTF-8 bytes.')
+    if (bytes.byteLength < 32) throw new Error('OPEN_FLOW_TOKEN must contain at least 32 UTF-8 bytes.')
     this.#cookie = { httpOnly: true, path: '/', sameSite: 'Strict', secure }
     this.#now = now
     this.#secret = token
@@ -29,6 +29,9 @@ export class OperatorSession {
   }
 
   async actor(request: Request): Promise<string | undefined> {
+    const authorization = request.headers.get('authorization')
+    if (authorization?.startsWith('Bearer ') && this.matches(authorization.slice(7))) return actorId
+
     const cookie = request.headers.get('cookie')
     if (cookie == null) return
     const value = (await parseSigned(cookie, this.#secret, cookieName))[cookieName]

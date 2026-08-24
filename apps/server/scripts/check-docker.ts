@@ -148,7 +148,7 @@ async function startContainer(name: string): Promise<void> {
     'run',
     '--detach',
     '--env',
-    `OPEN_FLOW_OPERATOR_TOKEN=${operatorToken}`,
+    `OPEN_FLOW_TOKEN=${operatorToken}`,
     '--name',
     name,
     '--publish',

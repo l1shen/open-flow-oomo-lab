@@ -13,9 +13,9 @@ const backendPort = Number(process.env.OPEN_FLOW_PORT ?? '3000')
 if (!Number.isInteger(backendPort) || backendPort < 1 || backendPort > 65_535) {
   throw new Error('OPEN_FLOW_PORT must be an integer between 1 and 65535 in development.')
 }
-const configuredOperatorToken = process.env.OPEN_FLOW_OPERATOR_TOKEN
+const configuredOperatorToken = process.env.OPEN_FLOW_TOKEN
 if (configuredOperatorToken != null && Buffer.byteLength(configuredOperatorToken) < 32) {
-  throw new Error('OPEN_FLOW_OPERATOR_TOKEN must contain at least 32 UTF-8 bytes. Remove it to use a generated development token.')
+  throw new Error('OPEN_FLOW_TOKEN must contain at least 32 UTF-8 bytes. Remove it to use a generated development token.')
 }
 const operatorToken = configuredOperatorToken ?? randomBytes(32).toString('base64url')
 
@@ -48,7 +48,7 @@ const backend = start(
   {
     ...process.env,
     OPEN_FLOW_HOST: '127.0.0.1',
-    OPEN_FLOW_OPERATOR_TOKEN: operatorToken,
+    OPEN_FLOW_TOKEN: operatorToken,
     OPEN_FLOW_PORT: String(backendPort),
   },
 )

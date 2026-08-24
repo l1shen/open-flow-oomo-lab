@@ -39,10 +39,11 @@ bun run --filter @oomol-lab/open-flow-server test:docker
 
 ## 3. 启动
 
-operator token 至少包含 32 UTF-8 bytes。生产部署应通过 secret 或只供部署者读取的 env file 注入，不要把 token 写入 Dockerfile、镜像层或仓库文件。例如 `.env.server` 可以包含：
+operator token 至少包含 32 UTF-8 bytes。它既用于浏览器建立签名 operator session，也可由 machine client 作为 Control API Bearer token 使用。
+生产部署应通过 secret 或只供部署者读取的 env file 注入，不要把 token 写入 Dockerfile、镜像层或仓库文件。例如 `.env.server` 可以包含：
 
 ```dotenv
-OPEN_FLOW_OPERATOR_TOKEN=replace-with-at-least-32-random-bytes
+OPEN_FLOW_TOKEN=replace-with-at-least-32-random-bytes
 OPEN_FLOW_LOG_LEVEL=info
 ```
 
@@ -62,20 +63,20 @@ Workbench 和 API 位于 `http://127.0.0.1:3000`。最终镜像默认监听 `0.0
 
 ## 4. 配置
 
-| 环境变量                              | 用途                                                           |
-| ------------------------------------- | -------------------------------------------------------------- |
-| `OPEN_FLOW_HOST`                      | HTTP 监听地址；镜像默认 `0.0.0.0`。                            |
-| `OPEN_FLOW_PORT`                      | HTTP 监听端口；镜像默认 `3000`。                               |
-| `OPEN_FLOW_DATA_DIR`                  | SQLite 持久目录；镜像默认 `/data/open-flow`。                  |
-| `OPEN_FLOW_OPERATOR_TOKEN`            | operator session bootstrap secret；配置时至少 32 UTF-8 bytes。 |
-| `OPEN_FLOW_SESSION_COOKIE_SECURE`     | TLS ingress 后应设为 `true`；只接受 `true` 或 `false`。        |
-| `OPEN_FLOW_LOG_LEVEL`                 | Pino 日志级别；默认 `info`。                                   |
-| `OPEN_FLOW_CONNECTOR_ORIGIN`          | Server 可访问的 Connector runtime origin。                     |
-| `OPEN_FLOW_CONNECTOR_TOKEN`           | Server 调用 Connector runtime API 的受限 token。               |
-| `OPEN_FLOW_CONNECTOR_CONSOLE_ORIGIN`  | 用户浏览器可访问的 Connector Console 公网 origin。             |
-| `OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN` | Provider 可访问的 Integration callback 公网 origin。           |
-| `OPEN_FLOW_INTEGRATION_CALLBACK_KEY`  | 派生 Integration callback secret 的至少 32 UTF-8 bytes 密钥。  |
-| `OPEN_FLOW_RUN_EVENT_RETENTION_DAYS`  | terminal Run 详细事件的保留天数；默认 `30`。                   |
+| 环境变量                              | 用途                                                                           |
+| ------------------------------------- | ------------------------------------------------------------------------------ |
+| `OPEN_FLOW_HOST`                      | HTTP 监听地址；镜像默认 `0.0.0.0`。                                            |
+| `OPEN_FLOW_PORT`                      | HTTP 监听端口；镜像默认 `3000`。                                               |
+| `OPEN_FLOW_DATA_DIR`                  | SQLite 持久目录；镜像默认 `/data/open-flow`。                                  |
+| `OPEN_FLOW_TOKEN`                     | 浏览器 session 与 machine client 共用的 operator secret；至少 32 UTF-8 bytes。 |
+| `OPEN_FLOW_SESSION_COOKIE_SECURE`     | TLS ingress 后应设为 `true`；只接受 `true` 或 `false`。                        |
+| `OPEN_FLOW_LOG_LEVEL`                 | Pino 日志级别；默认 `info`。                                                   |
+| `OPEN_FLOW_CONNECTOR_ORIGIN`          | Server 可访问的 Connector runtime origin。                                     |
+| `OPEN_FLOW_CONNECTOR_TOKEN`           | Server 调用 Connector runtime API 的受限 token。                               |
+| `OPEN_FLOW_CONNECTOR_CONSOLE_ORIGIN`  | 用户浏览器可访问的 Connector Console 公网 origin。                             |
+| `OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN` | Provider 可访问的 Integration callback 公网 origin。                           |
+| `OPEN_FLOW_INTEGRATION_CALLBACK_KEY`  | 派生 Integration callback secret 的至少 32 UTF-8 bytes 密钥。                  |
+| `OPEN_FLOW_RUN_EVENT_RETENTION_DAYS`  | terminal Run 详细事件的保留天数；默认 `30`。                                   |
 
 `OPEN_FLOW_CONNECTOR_ORIGIN` 和 `OPEN_FLOW_CONNECTOR_TOKEN` 必须同时提供或同时省略。内部 runtime origin 与 Browser 使用的 Console origin 相互独立；
 后者不能使用只在容器网络中可访问的地址，也不能包含 credential、path、query 或 fragment。

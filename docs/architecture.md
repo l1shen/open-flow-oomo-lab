@@ -29,7 +29,8 @@ ProjectRevision 不保存 credential、Run、Engine IR、Provider 状态或部�
 
 ### Scope 与身份
 
-Hosted 以认证 principal 中的稳定 tenant identity 隔离产品资源。Server 首版提供单 deployment workspace，由认证 operator session 访问。
+Hosted 以认证 principal 中的稳定 tenant identity 隔离产品资源。Server 首版提供单 deployment workspace，由同一 deployment operator
+credential 认证浏览器 session 与 machine client。
 客户端选择的 scope、operator identity、workload authority 和 callback endpoint identity 不能互相替代。
 
 每个 Workbench session 只绑定一个 deployment scope。切换 scope 必须销毁旧 session、请求和实时订阅。实时通知只表示权威资源可能变化，

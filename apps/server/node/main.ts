@@ -60,7 +60,7 @@ async function main(): Promise<void> {
     }
     integration = { callbackKey: integrationCallbackKey, publicOrigin: publicOrigin.origin }
   }
-  const operatorToken = process.env.OPEN_FLOW_OPERATOR_TOKEN
+  const operatorToken = process.env.OPEN_FLOW_TOKEN
   const secureCookie = process.env.OPEN_FLOW_SESSION_COOKIE_SECURE
   if (secureCookie != null && secureCookie != 'true' && secureCookie != 'false') {
     throw new Error('OPEN_FLOW_SESSION_COOKIE_SECURE must be true or false.')
