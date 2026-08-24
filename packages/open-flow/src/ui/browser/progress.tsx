@@ -23,7 +23,13 @@ function ProgressTrack({ className, ...props }: ProgressPrimitive.Track.Props) {
 }
 
 function ProgressIndicator({ className, ...props }: ProgressPrimitive.Indicator.Props) {
-  return <ProgressPrimitive.Indicator data-slot="progress-indicator" className={cn('h-full bg-primary transition-all', className)} {...props} />
+  return (
+    <ProgressPrimitive.Indicator
+      data-slot="progress-indicator"
+      className={cn('h-full bg-primary transition-[width] motion-reduce:transition-none', className)}
+      {...props}
+    />
+  )
 }
 
 function ProgressLabel({ className, ...props }: ProgressPrimitive.Label.Props) {

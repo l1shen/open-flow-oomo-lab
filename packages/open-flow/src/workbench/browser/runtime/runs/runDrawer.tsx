@@ -214,7 +214,7 @@ export function RunLogButton({
       type="button"
       variant="ghost"
     >
-      <Icon name="download" size={15} />
+      <Icon name="download" />
     </Button>
   )
 }
@@ -400,7 +400,7 @@ export function RunDetails({
                       type="button"
                       variant="ghost"
                     >
-                      <Icon name={eventIcon(event)} size={16} />
+                      <Icon name={eventIcon(event)} />
                       <span>{subject}</span>
                       <Icon data-icon="inline-end" name="fit" />
                     </Button>
@@ -563,17 +563,17 @@ export function RunDrawer({
           </Button>
         )}
         <Button aria-label={t(open ? 'run.collapse' : 'run.expand')} onClick={onToggle} size="icon-sm" variant="ghost">
-          <Icon name={open ? 'chevron-down' : 'chevron-up'} size={16} />
+          <Icon name={open ? 'chevron-down' : 'chevron-up'} />
         </Button>
         <Button aria-label={t('run.close')} onClick={onClose} size="icon-sm" variant="ghost">
-          <Icon name="close" size={16} />
+          <Icon name="close" />
         </Button>
       </header>
       {open && (
         <div className="run-content">
           <div className="run-toolbar">
             <Tabs className="run-tabs-root" onValueChange={(value) => value != null && setTab(value as 'output' | 'timeline')} value={tab}>
-              <TabsList aria-label={t('run.detailViews')} className="run-tabs" variant="line">
+              <TabsList aria-label={t('run.detailViews')} variant="line">
                 <TabsTrigger aria-controls="run-drawer-timeline-panel" id="run-drawer-timeline-tab" value="timeline">
                   {t('run.timeline')}
                 </TabsTrigger>

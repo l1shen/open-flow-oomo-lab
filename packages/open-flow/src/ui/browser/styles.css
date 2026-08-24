@@ -3,7 +3,10 @@
 @config './tailwind.config.ts';
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
+@import 'tw-animate-css';
 @source './';
+@source '../../designer/browser';
+@source '../../workbench/browser';
 
 @layer base {
   :where(.open-flow-workbench, .oo-designer-root),
@@ -40,8 +43,12 @@
 @theme inline {
   --color-background: var(--ui-background);
   --color-foreground: var(--ui-foreground);
+  --color-card: var(--ui-card);
+  --color-card-foreground: var(--ui-card-foreground);
   --color-primary: var(--ui-primary);
   --color-primary-foreground: var(--ui-primary-foreground);
+  --color-popover: var(--ui-popover);
+  --color-popover-foreground: var(--ui-popover-foreground);
   --color-secondary: var(--ui-secondary);
   --color-secondary-foreground: var(--ui-secondary-foreground);
   --color-muted: var(--ui-muted);

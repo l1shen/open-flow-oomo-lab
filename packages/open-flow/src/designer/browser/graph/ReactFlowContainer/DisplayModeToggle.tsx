@@ -1,11 +1,11 @@
-import styles from './DisplayModeToggle.module.scss'
 import type { Val } from 'value-enhancer'
 import type { FlowDisplayMode } from '../../../common/flowDisplay.ts'
 
+import { Panel } from '@xyflow/react'
 import { memo } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
-import { Tabs, TabsList, TabsTrigger } from '../../../../ui/browser/tabs.tsx'
+import { ToggleGroup, ToggleGroupItem } from '../../../../ui/browser/toggle-group.tsx'
 
 export interface DisplayModeToggleProps {
   displayMode$: Val<FlowDisplayMode>
@@ -16,22 +16,24 @@ export const DisplayModeToggle: React.FC<DisplayModeToggleProps> = /*#__PURE__*/
   const displayMode = useVal(displayMode$)
 
   return (
-    <div className={styles.container} data-canvas-control-scope>
-      <Tabs
-        onValueChange={(value) => {
-          if (value == 'overview' || value == 'detail') displayMode$.set(value)
+    <Panel data-canvas-control-scope position="bottom-center">
+      <ToggleGroup<FlowDisplayMode>
+        aria-label={t('flowDisplayMode.overviewDescription')}
+        onValueChange={(values) => {
+          const value = values.at(-1)
+          if (value != null) displayMode$.set(value)
         }}
-        value={displayMode}
+        spacing={0}
+        value={[displayMode]}
+        variant="outline"
       >
-        <TabsList aria-label={t('flowDisplayMode.overviewDescription')}>
-          <TabsTrigger title={t('flowDisplayMode.overviewDescription')} value="overview">
-            {t('flowDisplayMode.overview')}
-          </TabsTrigger>
-          <TabsTrigger title={t('flowDisplayMode.detailDescription')} value="detail">
-            {t('flowDisplayMode.detail')}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-    </div>
+        <ToggleGroupItem title={t('flowDisplayMode.overviewDescription')} value="overview">
+          {t('flowDisplayMode.overview')}
+        </ToggleGroupItem>
+        <ToggleGroupItem title={t('flowDisplayMode.detailDescription')} value="detail">
+          {t('flowDisplayMode.detail')}
+        </ToggleGroupItem>
+      </ToggleGroup>
+    </Panel>
   )
 })

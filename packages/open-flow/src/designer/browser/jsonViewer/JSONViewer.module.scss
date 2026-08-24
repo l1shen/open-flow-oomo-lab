@@ -37,7 +37,7 @@
 .container-hide-top {
   @extend .container;
 
-  & > div > span[role='button']:first-child {
+  & > div > button:first-child {
     display: none;
   }
 }
@@ -71,6 +71,18 @@
 .collapsed-content {
   padding-right: 0;
   cursor: pointer;
+}
+
+.inlineButton {
+  display: inline;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
 }
 
 .compact-value {

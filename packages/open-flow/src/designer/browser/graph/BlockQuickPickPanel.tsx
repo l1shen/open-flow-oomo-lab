@@ -229,7 +229,7 @@ function BlockQuickPickPanelItem(props: BlockQuickPickPanelItemProps) {
         if (!nextOpen) props.onMenuClose?.()
       }}
     >
-      <DropdownMenuTrigger render={row} />
+      <DropdownMenuTrigger nativeButton={false} render={row} />
       <DropdownMenuContent
         align="start"
         className={clsx(styles.menu, props.hideDescription && !props.item.choices?.length && styles.hideDescription)}

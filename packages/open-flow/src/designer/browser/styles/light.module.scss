@@ -31,6 +31,10 @@
   --foreground: var(--text-5);
   --ui-background: var(--fill-1);
   --ui-foreground: var(--text-5);
+  --ui-card: var(--widget-popup-background);
+  --ui-card-foreground: var(--widget-font-color);
+  --ui-popover: var(--widget-popup-background);
+  --ui-popover-foreground: var(--widget-font-color);
   --ui-primary: var(--brand-highlight-color);
   --ui-primary-foreground: var(--fill-1);
   --ui-secondary: var(--fill-4);
@@ -127,15 +131,16 @@
   --edge-error: var(--seti-red);
   --flow-bg: var(--fill-3);
 
-  // React Flow consumes these compatibility tokens, but their values must stay
-  // aligned with the shared UI token contract.
-  --rf-controls-border: var(--ui-border);
-  --rf-button-bg: var(--ui-background);
-  --rf-button-fg: var(--ui-muted-foreground);
-  --rf-button-border: var(--ui-border);
-  --rf-button-hover: var(--ui-muted);
-  --rf-minimap-bg: var(--node-background-color);
-  --rf-minimap-node: var(--widget-background);
+  // Keep React Flow's built-in canvas chrome aligned with the shared UI contract.
+  --xy-controls-button-background-color: var(--ui-background);
+  --xy-controls-button-background-color-hover: var(--ui-muted);
+  --xy-controls-button-border-color: var(--ui-border);
+  --xy-controls-button-color: var(--ui-muted-foreground);
+  --xy-controls-button-color-hover: var(--ui-foreground);
+  --xy-controls-box-shadow: var(--floating-control-shadow);
+  --xy-minimap-background-color: var(--node-background-color);
+  --xy-minimap-mask-background-color: rgb(0 0 0 / 10%);
+  --xy-minimap-node-background-color: var(--widget-background);
 
   --highlight-indicate-color: var(--brand-7);
 

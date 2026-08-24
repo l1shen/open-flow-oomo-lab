@@ -183,7 +183,7 @@ function renderRow(index: number, row: Row, collection: string, color?: string):
     <div key={index} className={styles.row} style={ROW_STYLE}>
       {Array.isArray(row) ? (
         row.map((icon) => (
-          <button data-icon={icon} title={icon} key={icon} style={ICON_STYLE}>
+          <button aria-label={icon} data-icon={icon} title={icon} key={icon} style={ICON_STYLE} type="button">
             <LazyIcon collection={collection} icon={icon} color={color} className={styles.icon} />
           </button>
         ))
@@ -398,32 +398,48 @@ const IconPickerImpl = ({
     >
       <div className={styles.tabs} onClick={onClickTabs}>
         {emoji && (
-          <button data-tab="twemoji" className={clsx(styles.tab, tab === 'twemoji' && 'is-active')}>
+          <button aria-pressed={tab === 'twemoji'} data-tab="twemoji" className={clsx(styles.tab, tab === 'twemoji' && 'is-active')} type="button">
             {t('emoji')}
           </button>
         )}
         {carbon && (
-          <button data-tab="carbon" className={clsx(styles.tab, tab === 'carbon' && 'is-active')} title="Carbon">
+          <button aria-pressed={tab === 'carbon'} data-tab="carbon" className={clsx(styles.tab, tab === 'carbon' && 'is-active')} title="Carbon" type="button">
             Carbon
           </button>
         )}
-        <button className={styles.close} onClick={onClickClose}>
+        <button aria-label={t('close')} className={styles.close} onClick={onClickClose} type="button">
           <IconifyIcon collection="carbon" icon="close" />
         </button>
       </div>
       <div className={styles.filter}>
-        <input type="search" placeholder={t('filter')} value={searchText} onChange={(e) => setSearchText(e.target.value)} autoFocus />
-        <button className={styles.shuffle} onClick={onClickShuffle} title={t('random')}>
+        <input
+          aria-label={t('filter')}
+          autoComplete="off"
+          type="search"
+          placeholder={t('filter')}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          autoFocus
+        />
+        <button aria-label={t('random')} className={styles.shuffle} onClick={onClickShuffle} title={t('random')} type="button">
           <IconifyIcon collection="carbon" icon="shuffle" />
         </button>
         {hasColors && (
-          <button className={styles['pick-colors']} onClick={toggleColorsPanel}>
+          <button aria-expanded={colorsPanel} aria-label={t('color')} className={styles['pick-colors']} onClick={toggleColorsPanel} type="button">
             <IconifyIcon collection="carbon" icon="color-palette" color={selectedColor} />
           </button>
         )}
         <div onClick={onClickColors} className={styles.colors} style={hasColors && colorsPanel ? {} : { display: 'none' }}>
           {COLORS.map((color) => (
-            <button className={styles.color} key={color} data-color={color} style={{ backgroundColor: color }} />
+            <button
+              aria-label={`${t('color')}: ${color}`}
+              aria-pressed={selectedColor === color}
+              className={styles.color}
+              key={color}
+              data-color={color}
+              style={{ backgroundColor: color }}
+              type="button"
+            />
           ))}
         </div>
       </div>
@@ -443,7 +459,7 @@ const IconPickerImpl = ({
         </div>
       )}
       {filteredIcons && filteredIcons.length > maxItems && (
-        <button className={styles.more} onClick={loadMore}>
+        <button className={styles.more} onClick={loadMore} type="button">
           {t('more')}
         </button>
       )}

@@ -37,7 +37,9 @@ export const NodeIndicator: React.FC<NodeIndicatorProps> = /*#__PURE__*/ memo(fu
         const rfNode = nodeStore.$.rfNode.value
         if (rfNode) {
           const viewport = rf.getViewport()
-          const mouse = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY })
+          const rect = ev.currentTarget.getBoundingClientRect()
+          const pointer = ev.detail === 0 ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: ev.clientX, y: ev.clientY }
+          const mouse = rf.screenToFlowPosition(pointer)
           const x = rfNode.position.x + 50
           const y = rfNode.position.y + 50
           rf.setViewport(
@@ -158,7 +160,14 @@ export const NodeIndicator: React.FC<NodeIndicatorProps> = /*#__PURE__*/ memo(fu
   }
 
   return (
-    <div className={clsx(styles.indicator, hiding && styles.hiding)} style={style} tabIndex={-1} onClick={onClick} title={title || nodeId}>
+    <button
+      aria-label={title || nodeId}
+      className={clsx(styles.indicator, hiding && styles.hiding)}
+      style={style}
+      onClick={onClick}
+      title={title || nodeId}
+      type="button"
+    >
       <Bubble />
       {type === RF_NODE_TYPE.InputNode ? (
         <i className={clsx('i-carbon:port-input', styles.icon)} />
@@ -167,7 +176,7 @@ export const NodeIndicator: React.FC<NodeIndicatorProps> = /*#__PURE__*/ memo(fu
       ) : (
         <span className={styles.title}>{title || nodeId}</span>
       )}
-    </div>
+    </button>
   )
 })
 

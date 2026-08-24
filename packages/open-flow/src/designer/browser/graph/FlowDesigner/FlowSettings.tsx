@@ -76,11 +76,8 @@ function Configs() {
     <>
       <HandleRow
         variant="value-only"
-        value={
-          <div className={styles.subtitle} onClick={() => setMetadataExpanded((e) => !e)}>
-            {t('blockEditor.metadata')}
-          </div>
-        }
+        value={<div className={styles.subtitle}>{t('blockEditor.metadata')}</div>}
+        valueExpands
         expanded={metadataExpanded}
         onExpandedChange={setMetadataExpanded}
       />
@@ -89,11 +86,8 @@ function Configs() {
         <>
           <HandleRow
             variant="value-only"
-            value={
-              <div className={styles.subtitle} onClick={() => setForwardPreviewExpanded((e) => !e)}>
-                {t('subflowSettings.forwardPreview')}
-              </div>
-            }
+            value={<div className={styles.subtitle}>{t('subflowSettings.forwardPreview')}</div>}
+            valueExpands
             expanded={forwardPreviewExpanded}
             onExpandedChange={setForwardPreviewExpanded}
           />
@@ -338,7 +332,7 @@ function MetadataConfigs({ store }: { readonly store: FlowDesignerStore | Subflo
         expanded={descriptionExpanded}
         onExpandedChange={setDescriptionExpanded}
         name={
-          <Label className={styles.label} tooltipClassName={styles.labelTooltip} title="description" onClick={toggleDescription}>
+          <Label className={styles.label} tooltipClassName={styles.labelTooltip} title="description">
             {t('blockEditor.description')}
           </Label>
         }

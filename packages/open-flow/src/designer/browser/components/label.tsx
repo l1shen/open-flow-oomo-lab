@@ -19,7 +19,6 @@ export interface LabelProps {
   suffix?: React.ReactNode
   children?: React.ReactNode
   isSuffix?: boolean
-  onClick?: React.MouseEventHandler
 }
 
 /**
@@ -42,7 +41,7 @@ export const Label: React.ForwardRefExoticComponent<LabelProps & React.RefAttrib
         className={clsx(styles.wrapper, props.wrapperClassName, props.disabled && styles.disabled, props.isSuffix && styles.isSuffix)}
         title={props.htmlTitle}
       >
-        <div className={clsx(styles.label, props.className)} onClick={props.onClick}>
+        <div className={clsx(styles.label, props.className)}>
           {props.prefix && <div className={styles.prefix}>{props.prefix}</div>}
           <label ref={ref} htmlFor={props.htmlFor} style={props.style}>
             {props.children}

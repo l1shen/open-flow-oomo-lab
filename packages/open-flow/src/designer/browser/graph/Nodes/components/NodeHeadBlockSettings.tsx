@@ -113,11 +113,8 @@ function Configs() {
     <>
       <HandleRow
         variant="value-only"
-        value={
-          <div className={styles.subtitle} onClick={() => setMetadataExpanded((e) => !e)}>
-            {t('blockEditor.metadata')}
-          </div>
-        }
+        value={<div className={styles.subtitle}>{t('blockEditor.metadata')}</div>}
+        valueExpands
         expanded={metadataExpanded}
         onExpandedChange={setMetadataExpanded}
       />
@@ -125,11 +122,8 @@ function Configs() {
       {showRunningConfig && (
         <HandleRow
           variant="value-only"
-          value={
-            <div className={styles.subtitle} onClick={() => setRunningExpanded((e) => !e)}>
-              {t('blockEditor.runningConfig.title')}
-            </div>
-          }
+          value={<div className={styles.subtitle}>{t('blockEditor.runningConfig.title')}</div>}
+          valueExpands
           expanded={runningExpanded}
           onExpandedChange={setRunningExpanded}
         />
@@ -155,11 +149,8 @@ function SubflowConfigs(props: { readonly subflow: string | undefined; readonly 
     <>
       <HandleRow
         variant="value-only"
-        value={
-          <div className={styles.subtitle} onClick={() => setExpanded((e) => !e)}>
-            {t('blockEditor.taskHeader')}
-          </div>
-        }
+        value={<div className={styles.subtitle}>{t('blockEditor.taskHeader')}</div>}
+        valueExpands
         expanded={expanded}
         onExpandedChange={setExpanded}
       />
@@ -177,7 +168,7 @@ function SubflowConfigs(props: { readonly subflow: string | undefined; readonly 
               <Button
                 className={styles.link}
                 wrapperClassName={styles.linkWrapper}
-                prefix={<i className={clsx(defaultSubflowIcon, 'font-size-4')} />}
+                prefix={<i className={clsx(defaultSubflowIcon, 'text-[1rem]')} />}
                 onClick={props.subflowNodeStore?.openBlockDesigner}
               >
                 {props.subflow}
@@ -200,11 +191,8 @@ function TaskConfigs(props: { readonly task: string | null }) {
     <>
       <HandleRow
         variant="value-only"
-        value={
-          <div className={styles.subtitle} onClick={() => setExpanded((e) => !e)}>
-            {t('blockEditor.taskHeader')}
-          </div>
-        }
+        value={<div className={styles.subtitle}>{t('blockEditor.taskHeader')}</div>}
+        valueExpands
         expanded={expanded}
         onExpandedChange={setExpanded}
       />
@@ -222,7 +210,7 @@ function TaskConfigs(props: { readonly task: string | null }) {
               <Button
                 className={styles.link}
                 wrapperClassName={styles.linkWrapper}
-                prefix={<i className={clsx(defaultNodeIcon, 'font-size-4')} />}
+                prefix={<i className={clsx(defaultNodeIcon, 'text-[1rem]')} />}
                 onClick={taskNodeStore?.openBlockDesigner}
               >
                 {props.task}
@@ -335,7 +323,7 @@ function MetadataConfigs() {
         expanded={descriptionExpanded}
         onExpandedChange={setDescriptionExpanded}
         name={
-          <Label className={styles.label} tooltipClassName={styles.labelTooltip} title="description" onClick={toggleDescription}>
+          <Label className={styles.label} tooltipClassName={styles.labelTooltip} title="description">
             {t('blockEditor.description')}
           </Label>
         }
@@ -681,11 +669,8 @@ function InlineTaskConfigs(props: InlineTaskConfigsProps) {
     <>
       <HandleRow
         variant="value-only"
-        value={
-          <div className={styles.subtitle} onClick={() => setExecutorExpanded((e) => !e)}>
-            {t('blockEditor.executor.title')}
-          </div>
-        }
+        value={<div className={styles.subtitle}>{t('blockEditor.executor.title')}</div>}
+        valueExpands
         expanded={executorExpanded}
         onExpandedChange={setExecutorExpanded}
       />

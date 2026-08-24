@@ -44,6 +44,30 @@
   }
 }
 
+.headerToggle.headerToggle {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  height: 100%;
+  padding: 0;
+  border-color: transparent;
+  border-radius: var(--widget-radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  justify-content: flex-start;
+  text-align: start;
+
+  &:hover,
+  &:active {
+    background: transparent;
+  }
+
+  > i {
+    flex: none;
+  }
+}
+
 .title {
   user-select: none;
   margin-right: auto;

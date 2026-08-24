@@ -100,7 +100,7 @@ export const ValueSection: React.FC<ValueSectionProps> = /*#__PURE__*/ memo(({ s
         </CssWrapper>
       )}
       {canEditSchema && handles.length === 0 && (
-        <button data-drop-or-click="true" className={styles.dropTip} onClick={actionAdd?.onClick}>
+        <button data-drop-or-click="true" className={styles.dropTip} onClick={actionAdd?.onClick} type="button">
           <HandleIcon />
           <span className={styles.dropOr}>{t('handleEditor.dropOr')}</span>
           <i className="i-codicon:add" />

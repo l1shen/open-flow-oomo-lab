@@ -13,7 +13,7 @@ import { useLang, useTranslate } from 'val-i18n-react'
 import { compute } from 'value-enhancer'
 import { shallowPlainObjectEqual } from '../../../base/common/equality.ts'
 import { Button } from '../../../ui/browser/button.tsx'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../../ui/browser/dropdown-menu.tsx'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../../ui/browser/dropdown-menu.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/browser/popover.tsx'
 import { fixTranslateKey, generateTranslateKey, getOwnValue, isBannedName, toUserTranslateKey } from '../base/trivial.ts'
 import { useGetStaticPopupContainer } from '../graph/ReactFlowContainer/useGetPopupContainer.ts'
@@ -271,9 +271,11 @@ function TranslateButton({
           }
         />
         <DropdownMenuContent align="end" className={styles.translateMenu} container={getPopupContainer()} side="bottom" sideOffset={0}>
-          <DropdownMenuItem onClick={() => onCreateKey(resolveTranslationSeed(displayValue, translationFallback), currentLang)}>
-            {t('l10n.createKey')}
-          </DropdownMenuItem>
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={() => onCreateKey(resolveTranslationSeed(displayValue, translationFallback), currentLang)}>
+              {t('l10n.createKey')}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     )

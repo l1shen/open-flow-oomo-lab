@@ -1,0 +1,344 @@
+.open-flow-workbench {
+  .workspace {
+    position: relative;
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    grid-template-rows: minmax(64px, auto) minmax(0, 1fr);
+    background: var(--canvas);
+  }
+
+  .workspace-header {
+    z-index: 3;
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 20px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--canvas);
+  }
+
+  .workspace-title,
+  .workspace-actions,
+  .saved-state,
+  .draft-change {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .workspace-title {
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .workspace-title strong {
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workspace-title > span {
+    color: var(--muted);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .workspace-title .draft-change {
+    gap: 8px;
+    margin-left: 10px;
+  }
+
+  .workspace-tabs-root {
+    display: contents;
+  }
+
+  .workspace-actions {
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .action-help {
+    display: inline-flex;
+  }
+
+  .validation-state {
+    flex: none;
+  }
+
+  .diagnostics-panel {
+    position: absolute;
+    z-index: 7;
+    top: 64px;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    width: 420px;
+    min-width: 0;
+    flex-direction: column;
+    overscroll-behavior: contain;
+    border-left: 1px solid var(--border);
+    background: var(--canvas);
+    outline: none;
+  }
+
+  .run-input-panel {
+    position: absolute;
+    z-index: 7;
+    top: 64px;
+    right: 0;
+    bottom: 0;
+    width: 460px;
+    min-width: 0;
+    overscroll-behavior: contain;
+    border-left: 1px solid var(--border);
+    background: var(--canvas);
+    outline: none;
+  }
+
+  .diagnostics-panel:focus-visible,
+  .run-input-panel:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+  }
+
+  .run-input-panel > form {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .run-input-panel > form > header {
+    display: flex;
+    min-height: 58px;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .run-input-panel > form > header > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .run-input-panel > form > header strong {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .run-input-panel > form > header span {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .run-input-content {
+    min-height: 0;
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .run-input-content > p {
+    max-width: 58ch;
+    margin: 0 0 16px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 17px;
+  }
+
+  .run-input-group {
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .run-input-group:first-of-type {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .run-input-group > header {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .run-input-group > header > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .run-input-group > header strong {
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .run-input-group > header code {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .run-input-group > header > span {
+    flex: none;
+    color: var(--danger);
+    font-size: 10px;
+  }
+
+  .run-input-panel > form > footer {
+    display: flex;
+    min-height: 58px;
+    flex: none;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .diagnostics-panel > header {
+    display: flex;
+    min-height: 58px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diagnostics-panel > header > div:first-child {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .diagnostics-panel > header strong {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .diagnostics-panel > header span {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .diagnostics-panel-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .diagnostics-list {
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+    scrollbar-gutter: stable;
+  }
+
+  .diagnostics-list li {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diagnostic-row {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 7px;
+    padding: 13px 16px;
+    text-align: left;
+  }
+
+  .diagnostic-row.unavailable {
+    cursor: default;
+  }
+
+  .diagnostic-row-heading {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 10px;
+  }
+
+  .diagnostic-row-heading code {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .diagnostic-scope {
+    flex: none;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: var(--subtle);
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .diagnostic-row > strong {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 18px;
+  }
+
+  .diagnostic-path {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 15px;
+    overflow-wrap: anywhere;
+  }
+
+  .diagnostic-row-action {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .diagnostic-row[data-slot='button'] .diagnostic-row-action {
+    color: var(--signature);
+  }
+
+  .saved-state {
+    width: 112px;
+    flex: 0 0 112px;
+    gap: 5px;
+    margin-right: 4px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+  }
+}

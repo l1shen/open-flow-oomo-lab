@@ -189,6 +189,49 @@ describe('RunRequestStore', () => {
     store.dispose()
   })
 
+  it('does not supersede an active Live request when the requested Flow has no Draft', async () => {
+    const revision = Promise.withResolvers<Draft>()
+    const liveFlow: Flow = {
+      draft: null,
+      flowId: 'main',
+      hasUnpublishedChanges: false,
+      live: {
+        publication: {
+          actorId: 'actor-1',
+          closureDigest: 'live-closure',
+          createdAt: '2026-08-10T00:00:00.000Z',
+          engineContract: 'open-flow-engine/v1',
+          flowId: 'main',
+          modelVersion: 1,
+          operation: 'publish',
+          projectId: 'project-1',
+          publicationId: 'publication-live',
+          revisionDigest: 'live-digest',
+          revisionId: 'revision-live',
+          version: 1,
+        },
+        revision: 1,
+        status: 'runnable',
+      },
+    }
+    const store = new RunRequestStore(
+      { createDraftRun: vi.fn(), createLiveRun: vi.fn(), getRevision: vi.fn(() => revision.promise) },
+      { follow: vi.fn(() => true), prepareStart: vi.fn(() => () => true) },
+      vi.fn(),
+    )
+
+    const requestingLive = store.requestLive('project-1', liveFlow)
+    expect(store.$.starting.value).toBe(true)
+    await expect(store.requestDraft('project-1', liveFlow, draft())).resolves.toBe('unavailable')
+    expect(store.$.starting.value).toBe(true)
+
+    revision.resolve(draft())
+    await expect(requestingLive).resolves.toBe('input')
+    expect(store.$.starting.value).toBe(false)
+    expect(store.$.inputRequest.value?.source).toBe('live')
+    store.dispose()
+  })
+
   it('ignores a run accepted after the current project session was reset', async () => {
     const pending = Promise.withResolvers<DraftRun>()
     const createDraftRun = vi.fn(() => pending.promise)

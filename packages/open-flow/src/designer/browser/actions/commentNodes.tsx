@@ -183,7 +183,7 @@ function createPreviewWidget(i18n: I18n, dark$: ReadonlyVal<boolean>, readonly: 
         preview$.set(
           <I18nProvider i18n={i18n}>
             <div className={styles.emptyContainer}>
-              <button className={`${styles.empty} nodrag`} onClick={() => doubleClickHandler()}>
+              <button className={`${styles.empty} nodrag`} onClick={() => doubleClickHandler()} type="button">
                 <span className={styles.emptyIcon}>
                   <i className="i-codicon:go-to-file" />
                 </span>

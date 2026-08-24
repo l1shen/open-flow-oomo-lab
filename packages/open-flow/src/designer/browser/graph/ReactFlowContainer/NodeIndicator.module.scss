@@ -7,6 +7,17 @@
   transition: opacity 0.2s linear;
   opacity: 1;
   cursor: pointer;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.indicator:focus-visible {
+  outline: 2px solid var(--ui-ring);
+  outline-offset: 4px;
 }
 
 .hiding {
@@ -25,4 +36,10 @@
 
 .icon {
   font-size: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicator {
+    transition: none;
+  }
 }

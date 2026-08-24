@@ -1,7 +1,6 @@
 import { icons as carbonIcons } from '@iconify-json/carbon'
 import { icons as codiconIcons } from '@iconify-json/codicon'
 import { presetIcons } from '@unocss/preset-icons'
-import { presetWind3 } from '@unocss/preset-wind3'
 import { defineConfig } from '@unocss/vite'
 import { glob, readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -49,10 +48,6 @@ export default defineConfig({
         'user-select': 'none',
         'cursor': 'inherit',
       },
-    }),
-    presetWind3({
-      preflight: false,
-      arbitraryVariants: false,
     }),
   ],
 })

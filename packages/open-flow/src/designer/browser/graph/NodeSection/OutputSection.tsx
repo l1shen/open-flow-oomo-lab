@@ -4,7 +4,7 @@ import type { OutputSectionStore } from '../../stores/node/nodeSection/outputSec
 import type { ICardAction } from './card.tsx'
 
 import { useStoreApi, useUpdateNodeInternals } from '@xyflow/react'
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useId, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { NODE_HANDLE_CLASSNAME } from '../../base/designer.ts'
@@ -29,6 +29,7 @@ export interface OutputSectionProps {
 
 export const OutputSection: React.FC<OutputSectionProps> = /* @__PURE__ */ memo(({ section }) => {
   const t = useTranslate()
+  const additionalLabelId = useId()
   const nodeStore = useNodeStore()
   const designerStore = useDesignerStore()
   const subflowViewMode = useSubflowViewMode()
@@ -114,10 +115,17 @@ export const OutputSection: React.FC<OutputSectionProps> = /* @__PURE__ */ memo(
 
     return (
       <div className={`${NODE_HANDLE_CLASSNAME} ${styles.additionalHeader}`}>
-        <button className={`${styles.arrow} nodrag`} disabled={additionalAt === handles.length} onClick={toggle}>
+        <button
+          aria-expanded={additional}
+          aria-labelledby={additionalLabelId}
+          className={`${styles.arrow} nodrag`}
+          disabled={additionalAt === handles.length}
+          onClick={toggle}
+          type="button"
+        >
           {additional ? <i className="i-carbon:chevron-down" /> : <i className="i-carbon:chevron-right" />}
         </button>
-        <span>{t('blockEditor.defaultAdditionalOutputs')}</span>
+        <span id={additionalLabelId}>{t('blockEditor.defaultAdditionalOutputs')}</span>
         <NodeSectionActionButton action={action} />
       </div>
     )
@@ -159,12 +167,12 @@ export const OutputSection: React.FC<OutputSectionProps> = /* @__PURE__ */ memo(
         handles.length === 0 &&
         additionalAt < 0 &&
         (isInBlock ? (
-          <button data-drop-or-click="true" className={styles.dropTip} onClick={actionAdd?.onClick}>
+          <button data-drop-or-click="true" className={styles.dropTip} onClick={actionAdd?.onClick} type="button">
             <i className="i-codicon:add" />
             <span className={styles.click}>{t('handleEditor.click')}</span>
           </button>
         ) : (
-          <button data-drop-or-click="true" className={styles.dropTip} onClick={actionAdd?.onClick}>
+          <button data-drop-or-click="true" className={styles.dropTip} onClick={actionAdd?.onClick} type="button">
             <HandleIcon />
             <span className={styles.dropOr}>{t('handleEditor.dropOr')}</span>
             <i className="i-codicon:add" />

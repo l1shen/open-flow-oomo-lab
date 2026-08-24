@@ -35,30 +35,41 @@ export function DiagnosticsPanel({ checked, checking, items, onClose, onRefresh,
   }
 
   return (
-    <aside aria-labelledby="diagnostics-title" className="diagnostics-panel" id="diagnostics-panel" onKeyDown={keyDown} ref={panel} role="dialog" tabIndex={-1}>
+    <aside
+      aria-busy={checking}
+      aria-labelledby="diagnostics-title"
+      className="diagnostics-panel"
+      id="diagnostics-panel"
+      onKeyDown={keyDown}
+      ref={panel}
+      role="dialog"
+      tabIndex={-1}
+    >
       <header>
         <div>
           <strong id="diagnostics-title">{t('diagnostics.title')}</strong>
-          <span>{checking ? t('diagnostics.checking') : checked ? t('diagnostics.summary', { count: items.length }) : t('diagnostics.notChecked')}</span>
+          <span aria-live="polite">
+            {checking ? t('diagnostics.checking') : checked ? t('diagnostics.summary', { count: items.length }) : t('diagnostics.notChecked')}
+          </span>
         </div>
         <div className="diagnostics-panel-actions">
           <Button disabled={checking} onClick={onRefresh} size="sm" variant="outline">
             {t('diagnostics.refresh')}
           </Button>
           <Button aria-label={t('diagnostics.close')} onClick={onClose} size="icon-sm" variant="ghost">
-            <Icon name="close" size={16} />
+            <Icon name="close" />
           </Button>
         </div>
       </header>
       {items.length == 0 ? (
         checking ? (
-          <div aria-label={t('diagnostics.checking')} className="diagnostics-loading" role="status">
-            <Skeleton />
-            <Skeleton />
-            <Skeleton />
+          <div aria-label={t('diagnostics.checking')} className="flex flex-col gap-2.5 p-4" role="status">
+            <Skeleton className="h-[76px]" />
+            <Skeleton className="h-[76px]" />
+            <Skeleton className="h-[76px]" />
           </div>
         ) : (
-          <Empty className="diagnostics-empty border-0">
+          <Empty className="min-h-60">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <Icon name="check" />

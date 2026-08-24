@@ -72,44 +72,45 @@ function ExpandableObject({
   const childLevel = level + 1
   const lastIndex = data.length - 1
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
-    if (e.key === ' ') {
-      e.preventDefault()
-      toggleExpanded()
-    }
-  }
-
   return (
     <div className={styles['basic-element-style']} role="list">
-      <span
-        className={expanderIconStyle}
+      <button
+        className={`${styles.inlineButton} ${expanderIconStyle}`}
         onClick={toggleExpanded}
-        onKeyDown={onKeyDown}
-        role="button"
-        tabIndex={0}
+        type="button"
         aria-label={ariaLabel}
         aria-expanded={expanded}
         aria-controls={expanded ? contentsId : undefined}
       />
       {field != null &&
         (clickToExpandNode ? (
-          <span
-            className={isNumber(field) ? styles['clickable-index-label'] : styles['clickable-label']}
+          <button
+            aria-controls={expanded ? contentsId : undefined}
+            aria-expanded={expanded}
+            aria-label={ariaLabel}
+            className={`${styles.inlineButton} ${isNumber(field) ? styles['clickable-index-label'] : styles['clickable-label']}`}
             onClick={toggleExpanded}
-            onKeyDown={onKeyDown}
-            role="button"
             tabIndex={-1}
+            type="button"
           >
             {field}:
-          </span>
+          </button>
         ) : (
           <span className={isNumber(field) ? styles['index-label'] : styles['label']}>{field}:</span>
         ))}
       {expanded ? (
         <>
-          <span className={styles['bracket']} onClick={toggleExpanded} onKeyDown={onKeyDown}>
+          <button
+            aria-controls={contentsId}
+            aria-expanded
+            aria-label={ariaLabel}
+            className={`${styles.inlineButton} ${styles['bracket']}`}
+            onClick={toggleExpanded}
+            tabIndex={-1}
+            type="button"
+          >
             {openBracket}
-          </span>
+          </button>
           {data.length > (groupSize || 0) && pseudoGroupIndex == null && (
             <span className={styles['item-count']}>
               {data.length} {data.length > 1 ? 'items' : 'item'}
@@ -147,18 +148,24 @@ function ExpandableObject({
                   />
                 ))}
           </div>
-          <span className={styles['bracket']} onClick={toggleExpanded} onKeyDown={onKeyDown}>
+          <button
+            aria-controls={contentsId}
+            aria-expanded
+            aria-label={ariaLabel}
+            className={`${styles.inlineButton} ${styles['bracket']}`}
+            onClick={toggleExpanded}
+            tabIndex={-1}
+            type="button"
+          >
             {closeBracket}
-          </span>
+          </button>
         </>
       ) : (
-        <span
-          className={styles['collapsed-content']}
+        <button
+          className={`${styles.inlineButton} ${styles['collapsed-content']}`}
           onClick={toggleExpanded}
-          onKeyDown={onKeyDown}
-          role="button"
-          tabIndex={-1} // No need to be able to tab to this button, can just use the other button
-          aria-hidden={true} // No need for screen readers to see this button, they can just use the other button
+          tabIndex={-1}
+          type="button"
           aria-label={ariaLabel}
           aria-expanded={expanded}
         >
@@ -167,7 +174,7 @@ function ExpandableObject({
           ) : (
             <CompactValue value={value} />
           )}
-        </span>
+        </button>
       )}
       {!lastElement && pseudoGroupIndex == null && <span className={styles['punctuation']}>,</span>}
     </div>

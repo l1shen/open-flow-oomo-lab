@@ -9,7 +9,6 @@ import { useLang, useTranslate } from 'val-i18n-react'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../../../../ui/browser/empty.tsx'
 import { Tabs, TabsList, TabsTrigger } from '../../../../ui/browser/tabs.tsx'
-import { cn } from '../../../../ui/browser/utils.ts'
 import { Icon } from '../icons.tsx'
 import { duration, RunDetails, RunEventFilters, RunLogButton, runLabel, statusClass } from './runDrawer.tsx'
 import { canCancelRun } from './runStore.ts'
@@ -100,7 +99,7 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
               </Button>
             </div>
           ) : runs.length == 0 ? (
-            <Empty className="run-list-empty border-0">
+            <Empty className="h-full">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <Icon name="play" />
@@ -113,7 +112,7 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
             runs.map((candidate) => (
               <Button
                 aria-current={candidate.runId == run?.runId ? 'true' : undefined}
-                className={cn('run-list-item', candidate.runId == run?.runId && 'active')}
+                className="run-list-item"
                 key={candidate.runId}
                 onClick={(event) => {
                   selectedRun.current = event.currentTarget
@@ -142,7 +141,7 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
           )}
         </div>
         {nextCursor != null && (
-          <Button className="run-load-more" disabled={loadingMore} onClick={() => void store.runs.loadMore()} variant="outline">
+          <Button className="mx-2 mb-2" disabled={loadingMore} onClick={() => void store.runs.loadMore()} size="lg" variant="outline">
             {t(loadingMore ? 'run.loadingMore' : loadMoreFailed ? 'run.retryLoadMore' : 'run.loadMore')}
           </Button>
         )}
@@ -154,8 +153,8 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
           <>
             <header className="run-detail-header">
               {narrow && (
-                <Button className="run-history-back" onClick={closeNarrowDetail} size="sm" variant="ghost">
-                  <Icon name="chevron-left" size={16} /> {t('run.history')}
+                <Button onClick={closeNarrowDetail} size="sm" variant="ghost">
+                  <Icon name="chevron-left" /> {t('run.history')}
                 </Button>
               )}
               <div>
@@ -195,7 +194,7 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
             <div className="run-history-content">
               <div className="run-toolbar">
                 <Tabs className="run-tabs-root" onValueChange={(value) => value != null && setTab(value as 'output' | 'timeline')} value={tab}>
-                  <TabsList aria-label={t('run.detailViews')} className="run-tabs" variant="line">
+                  <TabsList aria-label={t('run.detailViews')} variant="line">
                     <TabsTrigger aria-controls="run-history-timeline-panel" id="run-history-timeline-tab" value="timeline">
                       {t('run.timeline')}
                     </TabsTrigger>

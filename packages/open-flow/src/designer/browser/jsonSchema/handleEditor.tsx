@@ -640,7 +640,7 @@ function ValueText(props: ValueProps) {
       onClear={toTrue(props.store.context.canEditValue) && (() => props.store.value$?.set(props.nullable ? null : undefined))}
       disabled={!props.store.context.canEditValue}
     >
-      <span data-type={props.type}>{props.isInsideAnyOf ? <i className={`${foldIcon} mb-2px`} /> : string}</span>
+      <span data-type={props.type}>{props.isInsideAnyOf ? <i className={`${foldIcon} mb-[2px]`} /> : string}</span>
     </Button>
   )
 }
@@ -900,7 +900,7 @@ function ValueAny(props: ValueProps) {
         titlePlacement="bottomRight"
         disabled={!props.store.context.canEditValue}
         onClick={toTrue(props.store.context.canEditValue) && (() => setMenuOpen(true))}
-        className="!justify-start"
+        className="justify-start!"
       >
         <span className={`${styles.buttonText} ${styles.btnSetValue}`}>{`<${t('inputHandleEditor.valueUnset')}>`}</span>
       </Button>
@@ -952,7 +952,7 @@ function ValueObject(props: ValueProps) {
       onClear={toTrue(props.store.context.canEditValue) && (() => props.store.value$?.set(props.nullable ? null : undefined))}
       disabled={!props.store.context.canEditValue}
     >
-      <span data-type={props.type}>{props.isInsideAnyOf ? <i className={`${foldIcon} mb-2px`} /> : string}</span>
+      <span data-type={props.type}>{props.isInsideAnyOf ? <i className={`${foldIcon} mb-[2px]`} /> : string}</span>
     </Button>
   )
 }
@@ -1430,7 +1430,7 @@ function ValueBinary(props: ValueProps) {
 function ValueNull(props: ValueProps) {
   if (props.onRequestType != null && props.store.context.canEditValue) {
     return (
-      <Button className="!justify-start" isSuffix={props.isSuffix} onClick={props.onRequestType}>
+      <Button className="justify-start!" isSuffix={props.isSuffix} onClick={props.onRequestType}>
         <Null />
       </Button>
     )
@@ -1494,7 +1494,7 @@ function ValueNullable(props: ValueProps) {
       onClear={toTrue(props.store.context.canEditValue) && onClick}
       clearIcon="i-codicon:edit"
       onClick={onClick}
-      className="!justify-start"
+      className="justify-start!"
     >
       <Null />
     </Button>
@@ -1551,7 +1551,7 @@ function ValueError(props: ValueProps) {
       onClear={toTrue(props.store.context.canEditValue) && onClear}
       clearIcon={props.nullable ? undefined : 'i-codicon:edit'}
       onClick={onClick}
-      className="!justify-start"
+      className="justify-start!"
     >
       {value === undefined ? (
         <span className={`${styles.buttonText} ${styles.btnSetValue}`}>{`<${t('inputHandleEditor.valueUnset')}>`}</span>
@@ -1566,7 +1566,7 @@ function ValueOpenSchemaEditor(props: ValueProps) {
   const t = useTranslate()
 
   return (
-    <Button isSuffix onClick={() => props.store.context.requestOpenSchemaEditor()} className={`!justify-start ${styles.btnDefineSchema}`}>
+    <Button isSuffix onClick={() => props.store.context.requestOpenSchemaEditor()} className={`justify-start! ${styles.btnDefineSchema}`}>
       {'<'}
       {props.type === 'anyOf' || props.type === 'select' || props.type === 'multiSelect'
         ? t('inputHandleEditor.defineOptions')

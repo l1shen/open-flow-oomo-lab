@@ -1,0 +1,149 @@
+.open-flow-workbench {
+  .editor-grid {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .editor-grid.context-panel-closed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .canvas-panel {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background-color: var(--canvas);
+  }
+
+  .canvas-panel:focus-visible {
+    outline: 2px solid var(--ui-ring);
+    outline-offset: -2px;
+  }
+
+  .workbench-designer-canvas {
+    width: 100%;
+    height: 100%;
+  }
+
+  .designer-overlay {
+    position: absolute;
+    z-index: 5;
+    top: 16px;
+  }
+
+  .designer-overlay.top-left {
+    left: 16px;
+  }
+
+  .designer-overlay.top-right {
+    right: 16px;
+    gap: 0;
+  }
+
+  .designer-overlay.top-right > [data-slot='button'] {
+    border-radius: 0;
+    background-clip: border-box;
+  }
+
+  .designer-overlay.top-right > [data-slot='button']:first-child {
+    border-radius: var(--ui-radius) 0 0 var(--ui-radius);
+  }
+
+  .designer-overlay.top-right > [data-slot='button']:last-child {
+    border-radius: 0 var(--ui-radius) var(--ui-radius) 0;
+  }
+
+  .designer-delete-action {
+    color: var(--danger);
+  }
+
+  .designer-delete-action:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    color: var(--danger);
+  }
+
+  .designer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .node-icon {
+    display: inline-grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+  }
+
+  .node-icon.small {
+    width: 26px;
+    height: 26px;
+  }
+
+  .canvas-empty {
+    position: absolute;
+    z-index: 4;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--muted);
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .canvas-empty [data-slot='button'],
+  .canvas-empty-recommendations {
+    margin-top: 4px;
+    pointer-events: auto;
+  }
+
+  .canvas-empty strong {
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .canvas-empty-description {
+    max-width: 360px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .canvas-empty-recommendations {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .canvas-empty-shortcut {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 11px;
+    pointer-events: auto;
+  }
+
+  .empty-icon {
+    display: inline-grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    margin-bottom: 4px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-secondary);
+  }
+}

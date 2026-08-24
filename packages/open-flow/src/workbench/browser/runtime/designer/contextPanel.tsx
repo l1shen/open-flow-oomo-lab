@@ -1,6 +1,4 @@
-import darkTheme from '../../../../designer/browser/styles/dark.module.scss'
-import lightTheme from '../../../../designer/browser/styles/light.module.scss'
-import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode } from 'react'
+import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode, RefObject } from 'react'
 import type { IAddNodeMenuItem } from '../../../../designer/browser/stores/designer/designer.store.ts'
 import type { WorkbenchTheme } from '../contract.ts'
 import type { IconName } from '../icons.tsx'
@@ -13,12 +11,14 @@ import { OverlayScrollbar } from '../../../../designer/browser/components/overla
 import { filterBlockPickerItems, useBlockPickerItems } from '../../../../designer/browser/graph/blockPicker.ts'
 import { BlockPickerRow } from '../../../../designer/browser/graph/BlockQuickPickPanel.tsx'
 import { setAddItemId } from '../../../../designer/browser/graph/ReactFlowContainer/addItemDrag.ts'
+import { designerThemeClass } from '../../../../designer/browser/theme/designerThemeClass.ts'
 import { ThemeProvider } from '../../../../designer/browser/theme/ThemeProvider.tsx'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../../../../ui/browser/input-group.tsx'
 import { Spinner } from '../../../../ui/browser/spinner.tsx'
 import { Icon } from '../icons.tsx'
 import { indexAddNodeOptions } from './addNodeOptions.ts'
+import { cycleContextPanelFocus, observeContextPanelOverlay } from './contextPanelBehavior.ts'
 
 interface ContextPanelProps {
   readonly children: ReactNode
@@ -49,24 +49,22 @@ interface BlockLibraryProps {
   readonly provideChoices: (optionId: string, signal: AbortSignal) => Promise<readonly AddNodeOption[] | undefined>
 }
 
-function useOverlayPanel(): boolean {
-  const [overlay, setOverlay] = useState(() => typeof window != 'undefined' && window.matchMedia('(max-width: 980px)').matches)
+function useOverlayPanel(panel: RefObject<HTMLElement | null>): boolean {
+  const [overlay, setOverlay] = useState(false)
 
   useEffect(() => {
-    const query = window.matchMedia('(max-width: 980px)')
-    const update = (): void => setOverlay(query.matches)
-    query.addEventListener('change', update)
-    update()
-    return () => query.removeEventListener('change', update)
-  }, [])
+    const root = panel.current?.closest<HTMLElement>('.open-flow-workbench')
+    if (root == null) return
+    return observeContextPanelOverlay(root, setOverlay)
+  }, [panel])
 
   return overlay
 }
 
 export function ContextPanel({ children, focusOnOpen, icon, onClose, theme, title }: ContextPanelProps): ReactElement {
   const t = useTranslate()
-  const overlay = useOverlayPanel()
   const panel = useRef<HTMLElement>(null)
+  const overlay = useOverlayPanel(panel)
   const titleId = useId()
 
   useEffect(() => {
@@ -98,20 +96,7 @@ export function ContextPanel({ children, focusOnOpen, icon, onClose, theme, titl
         'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
       ),
     ]
-    if (focusable.length == 0) {
-      event.preventDefault()
-      event.currentTarget.focus()
-      return
-    }
-    const first = focusable[0]!
-    const last = focusable.at(-1)!
-    if (event.shiftKey && (document.activeElement == first || document.activeElement == event.currentTarget)) {
-      event.preventDefault()
-      last.focus()
-    } else if (!event.shiftKey && (document.activeElement == last || document.activeElement == event.currentTarget)) {
-      event.preventDefault()
-      first.focus()
-    }
+    if (cycleContextPanelFocus(event.currentTarget, focusable, event.currentTarget.ownerDocument.activeElement, event.shiftKey)) event.preventDefault()
   }
 
   return (
@@ -121,7 +106,7 @@ export function ContextPanel({ children, focusOnOpen, icon, onClose, theme, titl
         <aside
           aria-labelledby={titleId}
           aria-modal={overlay || undefined}
-          className={clsx('context-panel', theme == 'dark' ? darkTheme.theme : lightTheme.theme)}
+          className={clsx('context-panel', designerThemeClass(theme == 'dark'))}
           data-theme={theme}
           onKeyDown={keyDown}
           ref={panel}
@@ -134,7 +119,7 @@ export function ContextPanel({ children, focusOnOpen, icon, onClose, theme, titl
             </span>
             <strong id={titleId}>{title}</strong>
             <Button aria-label={t('contextPanel.close')} onClick={onClose} size="icon-sm" type="button" variant="ghost">
-              <Icon name="close" size={16} />
+              <Icon name="close" />
             </Button>
           </header>
           <div className="context-panel-content">{children}</div>
@@ -354,7 +339,7 @@ export function BlockLibrary({ browseOptions, disabled, focusRequest, onAdd, onR
   return (
     <div aria-busy={adding || loading} className="block-library">
       <div className="mx-3.5 mb-2 mt-3 flex-none">
-        <InputGroup className="block-library-search">
+        <InputGroup>
           <span className="sr-only">{t('contextPanel.search')}</span>
           <InputGroupAddon>
             <Icon name="search" size={15} />

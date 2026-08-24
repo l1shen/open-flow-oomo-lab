@@ -182,6 +182,7 @@ export function App(): ReactElement {
           </header>
           <div className="workbench-frame">
             <OpenFlowWorkbench
+              hrefFor={routePath}
               host={host}
               language={language}
               location={route}
@@ -207,6 +208,7 @@ export function App(): ReactElement {
                 </button>
               ) : (
                 <>
+                  <input autoComplete="username" name="username" type="hidden" value="operator" />
                   <label htmlFor="operator-token">{t.token}</label>
                   <input
                     autoComplete="current-password"

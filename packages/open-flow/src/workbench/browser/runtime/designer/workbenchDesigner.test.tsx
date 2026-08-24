@@ -91,9 +91,10 @@ describe('WorkbenchDesigner', () => {
 
     expect(markup).toContain('aria-expanded="false"')
     expect(markup).not.toContain('aria-pressed=')
-    expect(markup).toContain('data-slot="canvas-control-group"')
+    expect(markup).toContain('data-slot="badge"')
+    expect(markup).not.toContain('data-slot="canvas-control-group"')
+    expect(markup).not.toContain('data-canvas-control-toolbar=')
     expect(markup).toContain('designer-delete-action')
-    expect(markup).not.toContain('bg-secondary')
     expect(captured.props?.addItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ icon: ':carbon:code:', id: 'javascript', type: 'block' }),

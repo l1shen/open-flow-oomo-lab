@@ -524,7 +524,7 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
           </div>
         )}
         {nextCursor != null && (
-          <Button className="publication-load-more" disabled={loadingMore} onClick={() => void store.publications.loadMore()} variant="outline">
+          <Button className="m-2" disabled={loadingMore} onClick={() => void store.publications.loadMore()} size="lg" variant="outline">
             {t(loadingMore ? 'run.loadingMore' : loadMoreFailed ? 'run.retryLoadMore' : 'run.loadMore')}
           </Button>
         )}

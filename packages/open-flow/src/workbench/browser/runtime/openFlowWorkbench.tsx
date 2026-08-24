@@ -21,6 +21,7 @@ function NotificationBridge({ host, store }: { readonly host: WorkbenchHost; rea
 }
 
 interface WorkbenchProps {
+  readonly hrefFor: (location: WorkbenchLocation) => string
   readonly language: WorkbenchLanguage
   readonly navigation: NavigationStore
   readonly onLanguageChange?: ((language: WorkbenchLanguage) => void) | undefined
@@ -28,13 +29,14 @@ interface WorkbenchProps {
   readonly theme: WorkbenchTheme
 }
 
-function Workbench({ language, navigation, onLanguageChange, store, theme }: WorkbenchProps): ReactElement {
+function Workbench({ hrefFor, language, navigation, onLanguageChange, store, theme }: WorkbenchProps): ReactElement {
   const projectId = useVal(store.workspace.$.projectId)
   const target = useVal(store.workspace.$.target)
   return (
     <div className="app-shell">
       {projectId == null ? (
         <ProjectBrowser
+          hrefForProject={(nextProjectId) => hrefFor({ projectId: nextProjectId, view: 'design' })}
           language={language}
           onCreateProject={(name) => navigation.createProject(name)}
           onLanguageChange={onLanguageChange}
@@ -43,16 +45,18 @@ function Workbench({ language, navigation, onLanguageChange, store, theme }: Wor
         />
       ) : target == null ? (
         <FlowBrowser
+          hrefForFlow={(flow) => hrefFor({ flowId: flow.flowId, projectId, view: flow.draft == null ? 'publications' : 'design' })}
           language={language}
           onCreateFlow={(name) => navigation.createFlow(name)}
           onLanguageChange={onLanguageChange}
           onOpenProjects={() => void navigation.openProjects()}
           onSelectFlow={(flow) => navigation.selectFlow(flow)}
+          projectsHref={hrefFor({ view: 'design' })}
           store={store}
         />
       ) : (
         <Suspense fallback={<main aria-busy="true" className="workspace" />}>
-          <FlowWorkspace language={language} navigation={navigation} onLanguageChange={onLanguageChange} store={store} theme={theme} />
+          <FlowWorkspace hrefFor={hrefFor} language={language} navigation={navigation} onLanguageChange={onLanguageChange} store={store} theme={theme} />
         </Suspense>
       )}
     </div>
@@ -73,6 +77,7 @@ export type {
 
 export interface OpenFlowWorkbenchProps {
   readonly host: WorkbenchHost
+  readonly hrefFor: (location: WorkbenchLocation) => string
   readonly language: WorkbenchLanguage
   readonly location: WorkbenchLocation
   readonly onLanguageChange?: ((language: WorkbenchLanguage) => void) | undefined
@@ -84,7 +89,7 @@ export interface OpenFlowWorkbenchProps {
 
 type SessionProps = Omit<OpenFlowWorkbenchProps, 'sessionKey'>
 
-function Session({ host, language, location, onLanguageChange, onNavigate, preferences, theme }: SessionProps): ReactElement {
+function Session({ host, hrefFor, language, location, onLanguageChange, onNavigate, preferences, theme }: SessionProps): ReactElement {
   const navigate = useRef(onNavigate)
   navigate.current = onNavigate
   const [{ i18n, navigation, store }] = useState(() => {
@@ -127,7 +132,7 @@ function Session({ host, language, location, onLanguageChange, onNavigate, prefe
     <I18nProvider i18n={i18n}>
       <div className="open-flow-workbench" data-theme={theme}>
         <NotificationBridge host={host} store={store} />
-        <Workbench language={language} navigation={navigation} onLanguageChange={onLanguageChange} store={store} theme={theme} />
+        <Workbench hrefFor={hrefFor} language={language} navigation={navigation} onLanguageChange={onLanguageChange} store={store} theme={theme} />
       </div>
     </I18nProvider>
   )

@@ -1,0 +1,26 @@
+.open-flow-workbench {
+  .status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  .status-dot.success {
+    background: var(--success);
+  }
+
+  .status-dot.running {
+    background: var(--warning);
+  }
+
+  .status-dot.danger {
+    background: var(--danger);
+  }
+
+  .status-dot.neutral {
+    background: var(--muted);
+  }
+}

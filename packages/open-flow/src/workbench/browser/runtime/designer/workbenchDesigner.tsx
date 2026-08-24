@@ -17,9 +17,9 @@ import type { WebhookSettings } from './projectChanges.ts'
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLang, useTranslate } from 'val-i18n-react'
-import { CanvasControlGroup } from '../../../../designer/browser/components/canvasControlGroup.tsx'
 import { FlowDesignerView } from '../../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import { compareJSONSchema } from '../../../../manifest/common/schemaCompare.ts'
+import { Badge } from '../../../../ui/browser/badge.tsx'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { Icon } from '../icons.tsx'
 import { indexAddNodeOptions } from './addNodeOptions.ts'
@@ -292,11 +292,11 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
         }}
         selectedNodeIds={selectedNodeIds}
       />
-      <div className="designer-badge designer-overlay top-left">
+      <Badge className="designer-overlay top-left" variant="secondary">
         <span className="status-dot neutral" />
         {t('designer.draftBadge', { kind: t(target?.kind == 'subflow' ? 'common.subflow' : 'common.flow') })}
-      </div>
-      <CanvasControlGroup className="designer-overlay top-right">
+      </Badge>
+      <div className="designer-actions designer-overlay top-right">
         <Button
           aria-expanded={blocksOpen}
           disabled={disabled || target == null}
@@ -306,7 +306,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
           type="button"
           variant="ghost"
         >
-          <Icon data-icon="inline-start" name="plus" size={14} /> {t('designer.addNode')}
+          <Icon data-icon="inline-start" name="plus" /> {t('designer.addNode')}
         </Button>
         {(selectedNodeIds.length > 0 || selectedEdge != null) && (
           <Button
@@ -332,9 +332,9 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
           type="button"
           variant="ghost"
         >
-          <Icon name="panel" size={16} />
+          <Icon name="panel" />
         </Button>
-      </CanvasControlGroup>
+      </div>
       {target != null && model.nodes.length == 0 && (
         <div className="canvas-empty">
           <span className="empty-icon">
@@ -343,7 +343,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
           <strong>{t('designer.emptyTitle', { kind: t(target.kind == 'flow' ? 'common.flow' : 'common.subflow') })}</strong>
           <span className="canvas-empty-description">{t('designer.emptyDescription')}</span>
           <Button disabled={disabled} onClick={(event) => onOpenBlocks(event.currentTarget)} type="button">
-            <Icon data-icon="inline-start" name="plus" size={15} /> {t('designer.addFirstNode')}
+            <Icon data-icon="inline-start" name="plus" /> {t('designer.addFirstNode')}
           </Button>
           {recommendedOptions.length > 0 && (
             <div className="canvas-empty-recommendations">

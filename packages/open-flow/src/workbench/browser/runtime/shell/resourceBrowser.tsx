@@ -16,6 +16,7 @@ import { Input } from '../../../../ui/browser/input.tsx'
 import { Skeleton } from '../../../../ui/browser/skeleton.tsx'
 import { cn } from '../../../../ui/browser/utils.ts'
 import { Icon } from '../icons.tsx'
+import { followWorkbenchLink } from '../navigationLink.ts'
 import { WorkbenchSelect } from './workbenchSelect.tsx'
 
 const CreateResourceDialog = lazy(() => import('./createResourceDialog.tsx'))
@@ -47,6 +48,7 @@ export function LanguageSelect({ language, onLanguageChange }: LanguageSelectPro
 }
 
 interface ProjectBrowserProps extends LanguageSelectProps {
+  readonly hrefForProject: (projectId: string) => string
   readonly onCreateProject: (name: string) => Promise<boolean>
   readonly onSelectProject: (projectId: string) => void
   readonly store: WorkbenchStore
@@ -54,12 +56,13 @@ interface ProjectBrowserProps extends LanguageSelectProps {
 
 interface ProjectItemProps {
   readonly busy: WorkspaceBusy | undefined
+  readonly href: string
   readonly onSelect: (projectId: string) => void
   readonly project: Project
   readonly store: WorkbenchStore
 }
 
-function ProjectItem({ busy, onSelect, project, store }: ProjectItemProps): ReactElement {
+function ProjectItem({ busy, href, onSelect, project, store }: ProjectItemProps): ReactElement {
   const locale = useLang()
   const t = useTranslate()
   const [mode, setMode] = useState<'actions' | 'delete' | 'idle'>('idle')
@@ -71,19 +74,27 @@ function ProjectItem({ busy, onSelect, project, store }: ProjectItemProps): Reac
   return (
     <div className="resource-item-row">
       <Button
+        aria-disabled={project.status == 'retiring'}
         className="resource-list-row project-columns"
-        disabled={project.status == 'retiring'}
-        onClick={() => {
-          setMode('idle')
-          onSelect(project.projectId)
+        nativeButton={false}
+        onClick={(event) => {
+          if (project.status == 'retiring') {
+            event.preventDefault()
+            return
+          }
+          followWorkbenchLink(event, () => {
+            setMode('idle')
+            onSelect(project.projectId)
+          })
         }}
+        render={<a href={project.status == 'retiring' ? undefined : href} />}
+        tabIndex={project.status == 'retiring' ? -1 : undefined}
         title={project.status == 'retiring' ? t('resource.projectRetiringDescription') : project.name}
-        type="button"
         variant="ghost"
       >
         <span className="resource-primary-cell">
           <span className="resource-icon">
-            <Icon name="project" size={16} />
+            <Icon name="project" />
           </span>
           <span>
             <strong>{project.name}</strong>
@@ -100,14 +111,13 @@ function ProjectItem({ busy, onSelect, project, store }: ProjectItemProps): Reac
         <Button
           aria-expanded={mode != 'idle'}
           aria-label={t('resource.projectActions', { name: project.name })}
-          aria-pressed={mode != 'idle'}
           className={cn('resource-row-more', mode != 'idle' && 'active')}
           disabled={busy != null}
           onClick={() => setMode(mode == 'idle' ? 'actions' : 'idle')}
           size="icon-sm"
           variant="ghost"
         >
-          <Icon name="more" size={16} />
+          <Icon name="more" />
         </Button>
       )}
       {mode == 'actions' && (
@@ -137,7 +147,7 @@ function ProjectItem({ busy, onSelect, project, store }: ProjectItemProps): Reac
   )
 }
 
-export function ProjectBrowser({ language, onCreateProject, onLanguageChange, onSelectProject, store }: ProjectBrowserProps): ReactElement {
+export function ProjectBrowser({ hrefForProject, language, onCreateProject, onLanguageChange, onSelectProject, store }: ProjectBrowserProps): ReactElement {
   const t = useTranslate()
   const busy = useVal(store.workspace.$.busy)
   const loadFailed = useVal(store.workspace.$.projectLoadFailed)
@@ -200,10 +210,10 @@ export function ProjectBrowser({ language, onCreateProject, onLanguageChange, on
                 title={t('common.refresh')}
                 variant="outline"
               >
-                <Icon name="refresh" size={16} />
+                <Icon name="refresh" />
               </Button>
               <Button disabled={busy != null} onClick={() => setCreating(true)}>
-                <Icon data-icon="inline-start" name="plus" size={15} />
+                <Icon data-icon="inline-start" name="plus" />
                 {t('resource.newProject')}
               </Button>
             </div>
@@ -215,9 +225,9 @@ export function ProjectBrowser({ language, onCreateProject, onLanguageChange, on
           </div>
           <div className="resource-list">
             {loading ? (
-              Array.from({ length: 5 }, (_, index) => <Skeleton className="h-14 rounded-none" key={index} />)
+              Array.from({ length: 5 }, (_, index) => <Skeleton className="h-14" key={index} />)
             ) : loadFailed ? (
-              <Empty className="min-h-64 border-0" role="alert">
+              <Empty className="min-h-64" role="alert">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     <Icon name="alert" size={20} />
@@ -232,7 +242,7 @@ export function ProjectBrowser({ language, onCreateProject, onLanguageChange, on
                 </EmptyContent>
               </Empty>
             ) : visibleProjects.length == 0 ? (
-              <Empty className="min-h-64 border-0">
+              <Empty className="min-h-64">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     <Icon name="project" size={20} />
@@ -243,13 +253,22 @@ export function ProjectBrowser({ language, onCreateProject, onLanguageChange, on
                 {normalizedFilter.length == 0 && (
                   <EmptyContent>
                     <Button onClick={() => setCreating(true)} variant="outline">
-                      <Icon data-icon="inline-start" name="plus" size={15} /> {t('resource.newProject')}
+                      <Icon data-icon="inline-start" name="plus" /> {t('resource.newProject')}
                     </Button>
                   </EmptyContent>
                 )}
               </Empty>
             ) : (
-              visibleProjects.map((project) => <ProjectItem busy={busy} key={project.projectId} onSelect={onSelectProject} project={project} store={store} />)
+              visibleProjects.map((project) => (
+                <ProjectItem
+                  busy={busy}
+                  href={hrefForProject(project.projectId)}
+                  key={project.projectId}
+                  onSelect={onSelectProject}
+                  project={project}
+                  store={store}
+                />
+              ))
             )}
           </div>
           {nextCursor != null && (
@@ -279,9 +298,11 @@ export function ProjectBrowser({ language, onCreateProject, onLanguageChange, on
 }
 
 interface FlowBrowserProps extends LanguageSelectProps {
+  readonly hrefForFlow: (flow: Flow) => string
   readonly onCreateFlow: (name: string) => Promise<boolean>
   readonly onOpenProjects: () => void
   readonly onSelectFlow: (flow: Flow) => void
+  readonly projectsHref: string
   readonly store: WorkbenchStore
 }
 
@@ -295,11 +316,12 @@ function flowStatus(flow: Flow): { readonly dot: 'running' | 'success'; readonly
 interface FlowItemProps {
   readonly busy: WorkspaceBusy | undefined
   readonly flow: Flow
+  readonly href: string
   readonly onSelect: (flow: Flow) => void
   readonly store: WorkbenchStore
 }
 
-function FlowItem({ busy, flow, onSelect, store }: FlowItemProps): ReactElement {
+function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactElement {
   const t = useTranslate()
   const draft = flow.draft
   const status = flowStatus(flow)
@@ -323,16 +345,19 @@ function FlowItem({ busy, flow, onSelect, store }: FlowItemProps): ReactElement 
     <div className="resource-item-row">
       <Button
         className="resource-list-row flow-columns"
-        onClick={() => {
-          setMode('idle')
-          onSelect(flow)
-        }}
-        type="button"
+        nativeButton={false}
+        onClick={(event) =>
+          followWorkbenchLink(event, () => {
+            setMode('idle')
+            onSelect(flow)
+          })
+        }
+        render={<a href={href} />}
         variant="ghost"
       >
         <span className="resource-primary-cell">
           <span className="resource-icon">
-            <Icon name="flow" size={16} />
+            <Icon name="flow" />
           </span>
           <span>
             <strong>{draft?.name ?? flow.flowId}</strong>
@@ -351,14 +376,13 @@ function FlowItem({ busy, flow, onSelect, store }: FlowItemProps): ReactElement 
         <Button
           aria-expanded={mode != 'idle'}
           aria-label={t('sidebar.flowActions', { name: draft.name })}
-          aria-pressed={mode != 'idle'}
           className={cn('resource-row-more', mode != 'idle' && 'active')}
           disabled={busy != null}
           onClick={() => setMode(mode == 'idle' ? 'actions' : 'idle')}
           size="icon-sm"
           variant="ghost"
         >
-          <Icon name="more" size={16} />
+          <Icon name="more" />
         </Button>
       )}
       {mode == 'actions' && draft != null && (
@@ -429,7 +453,16 @@ function FlowItem({ busy, flow, onSelect, store }: FlowItemProps): ReactElement 
   )
 }
 
-export function FlowBrowser({ language, onCreateFlow, onLanguageChange, onOpenProjects, onSelectFlow, store }: FlowBrowserProps): ReactElement {
+export function FlowBrowser({
+  hrefForFlow,
+  language,
+  onCreateFlow,
+  onLanguageChange,
+  onOpenProjects,
+  onSelectFlow,
+  projectsHref,
+  store,
+}: FlowBrowserProps): ReactElement {
   const t = useTranslate()
   const busy = useVal(store.workspace.$.busy)
   const draft = useVal(store.workspace.$.draft)
@@ -458,7 +491,13 @@ export function FlowBrowser({ language, onCreateFlow, onLanguageChange, onOpenPr
         <header className="resource-page-header">
           <div className="resource-heading">
             <nav aria-label={t('resource.breadcrumb')} className="resource-breadcrumb">
-              <Button onClick={onOpenProjects} size="sm" variant="link">
+              <Button
+                nativeButton={false}
+                onClick={(event) => followWorkbenchLink(event, onOpenProjects)}
+                render={<a href={projectsHref} />}
+                size="sm"
+                variant="link"
+              >
                 {t('resource.workflows')}
               </Button>
               <span>/</span>
@@ -497,10 +536,10 @@ export function FlowBrowser({ language, onCreateFlow, onLanguageChange, onOpenPr
                 title={t('common.refresh')}
                 variant="outline"
               >
-                <Icon name="refresh" size={16} />
+                <Icon name="refresh" />
               </Button>
               <Button disabled={busy != null || draft == null || project?.status == 'retiring'} onClick={() => setCreating(true)}>
-                <Icon data-icon="inline-start" name="plus" size={15} />
+                <Icon data-icon="inline-start" name="plus" />
                 {t('resource.newFlow')}
               </Button>
             </div>
@@ -512,9 +551,9 @@ export function FlowBrowser({ language, onCreateFlow, onLanguageChange, onOpenPr
           </div>
           <div className="resource-list">
             {loading ? (
-              Array.from({ length: 5 }, (_, index) => <Skeleton className="h-14 rounded-none" key={index} />)
+              Array.from({ length: 5 }, (_, index) => <Skeleton className="h-14" key={index} />)
             ) : loadFailed ? (
-              <Empty className="min-h-64 border-0" role="alert">
+              <Empty className="min-h-64" role="alert">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     <Icon name="alert" size={20} />
@@ -531,7 +570,7 @@ export function FlowBrowser({ language, onCreateFlow, onLanguageChange, onOpenPr
                 )}
               </Empty>
             ) : visibleFlows.length == 0 ? (
-              <Empty className="min-h-64 border-0">
+              <Empty className="min-h-64">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     <Icon name="flow" size={20} />
@@ -542,13 +581,13 @@ export function FlowBrowser({ language, onCreateFlow, onLanguageChange, onOpenPr
                 {normalizedFilter.length == 0 && draft != null && (
                   <EmptyContent>
                     <Button onClick={() => setCreating(true)} variant="outline">
-                      <Icon data-icon="inline-start" name="plus" size={15} /> {t('resource.newFlow')}
+                      <Icon data-icon="inline-start" name="plus" /> {t('resource.newFlow')}
                     </Button>
                   </EmptyContent>
                 )}
               </Empty>
             ) : (
-              visibleFlows.map((flow) => <FlowItem busy={busy} flow={flow} key={flow.flowId} onSelect={onSelectFlow} store={store} />)
+              visibleFlows.map((flow) => <FlowItem busy={busy} flow={flow} href={hrefForFlow(flow)} key={flow.flowId} onSelect={onSelectFlow} store={store} />)
             )}
           </div>
         </section>

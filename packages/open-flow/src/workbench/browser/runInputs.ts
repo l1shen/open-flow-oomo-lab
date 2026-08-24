@@ -18,6 +18,7 @@ export class WorkbenchRunInputs {
   public readonly section: InputSectionStore
 
   readonly #inputValues = val<readonly HandleInputFrom[] | undefined>(undefined)
+  public readonly inputValues$: ReadonlyVal<readonly HandleInputFrom[] | undefined> = this.#inputValues
 
   public constructor(inputDefinitions: ReadonlyVal<(InputHandleDef | GroupDividerDef)[] | undefined>, lang: ReadonlyVal<string>) {
     const showSettings = val<NodeShowSettings | undefined>(undefined)

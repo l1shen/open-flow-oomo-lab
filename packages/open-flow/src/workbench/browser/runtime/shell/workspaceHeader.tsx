@@ -11,6 +11,7 @@ import { useTranslate } from 'val-i18n-react'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { Tabs, TabsList, TabsTrigger } from '../../../../ui/browser/tabs.tsx'
 import { Icon } from '../icons.tsx'
+import { followWorkbenchLink } from '../navigationLink.ts'
 import { DiagnosticsPanel } from './diagnosticsPanel.tsx'
 import { LanguageSelect } from './resourceBrowser.tsx'
 
@@ -27,6 +28,8 @@ interface Props {
   readonly onOpenRuns: () => void
   readonly onRunDraft: () => void
   readonly onRunLive: () => void
+  readonly projectHref: string
+  readonly projectsHref: string
   readonly onLanguageChange?: ((language: WorkbenchLanguage) => void) | undefined
   readonly store: WorkbenchStore
 }
@@ -88,6 +91,8 @@ export function WorkspaceHeader({
   onOpenRuns,
   onRunDraft,
   onRunLive,
+  projectHref,
+  projectsHref,
   store,
 }: Props): ReactElement {
   const t = useTranslate()
@@ -124,11 +129,25 @@ export function WorkspaceHeader({
   return (
     <header className="workspace-header">
       <div className="workspace-title">
-        <Button onClick={onOpenProjects} size="sm" variant="link">
+        <Button
+          className="min-w-0 max-w-35 truncate"
+          nativeButton={false}
+          onClick={(event) => followWorkbenchLink(event, onOpenProjects)}
+          render={<a href={projectsHref} />}
+          size="sm"
+          variant="link"
+        >
           {t('resource.workflows')}
         </Button>
         <span>/</span>
-        <Button onClick={onOpenProject} size="sm" variant="link">
+        <Button
+          className="min-w-0 max-w-35 truncate"
+          nativeButton={false}
+          onClick={(event) => followWorkbenchLink(event, onOpenProject)}
+          render={<a href={projectHref} />}
+          size="sm"
+          variant="link"
+        >
           {project?.name ?? project?.projectId ?? t('resource.projects')}
         </Button>
         <span>/</span>
@@ -164,7 +183,7 @@ export function WorkspaceHeader({
         <Button
           aria-controls="diagnostics-panel"
           aria-expanded={diagnosticsOpen}
-          className={`validation-state ${diagnostics?.valid == false ? 'invalid' : ''}`}
+          className="validation-state"
           disabled={target == null || (target.kind == 'flow' && targetFlow?.draft == null) || checkLoading}
           onClick={() => {
             store.runRequests.dismissInputs()
@@ -172,7 +191,7 @@ export function WorkspaceHeader({
           }}
           ref={diagnosticsButton}
           title={t('diagnostics.open')}
-          variant="ghost"
+          variant={invalid ? 'destructive' : 'ghost'}
         >
           <Icon data-icon="inline-start" name={diagnostics?.valid == false ? 'alert' : 'check'} />
           {validationLabel(diagnostics?.valid, diagnostics?.diagnostics.length ?? 0, checkLoading, t)}

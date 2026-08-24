@@ -61,6 +61,7 @@ function Panel({ onStarted, request, store }: Props & { readonly request: RunInp
 
   return (
     <aside
+      aria-busy={starting}
       aria-describedby="run-input-description"
       aria-labelledby="run-input-title"
       className="run-input-panel"
@@ -79,14 +80,14 @@ function Panel({ onStarted, request, store }: Props & { readonly request: RunInp
             </span>
           </div>
           <Button aria-label={t('runInput.close')} disabled={starting} onClick={close} size="icon-sm" type="button" variant="ghost">
-            <Icon name="close" size={16} />
+            <Icon name="close" />
           </Button>
         </header>
         <div className="run-input-content">
           <p id="run-input-description">{t('runInput.description')}</p>
           {request.attempted && !valid && (
-            <Alert className="run-input-error" variant="destructive">
-              <Icon name="alert" size={15} />
+            <Alert className="mb-4" variant="destructive">
+              <Icon name="alert" />
               <AlertDescription>{t('runInput.invalid')}</AlertDescription>
             </Alert>
           )}
@@ -99,7 +100,7 @@ function Panel({ onStarted, request, store }: Props & { readonly request: RunInp
             {t('common.cancel')}
           </Button>
           <Button disabled={starting} type="submit">
-            {starting ? <Spinner data-icon="inline-start" /> : <Icon data-icon="inline-start" name="play" size={15} />}
+            {starting ? <Spinner data-icon="inline-start" /> : <Icon data-icon="inline-start" name="play" />}
             {t(starting ? 'workspace.starting' : request.source == 'draft' ? 'workspace.runDraft' : 'workspace.runLive')}
           </Button>
         </footer>

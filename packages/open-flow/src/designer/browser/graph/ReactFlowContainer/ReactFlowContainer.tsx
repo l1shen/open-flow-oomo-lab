@@ -704,7 +704,7 @@ function ContextMenu({ items, onClose, position }: ContextMenuProps) {
 
   return (
     <DropdownMenu open onOpenChange={(open) => !open && onClose()}>
-      <DropdownMenuTrigger render={<div style={{ position: 'absolute', left: position.x, top: position.y }} />} />
+      <DropdownMenuTrigger nativeButton={false} render={<div style={{ position: 'absolute', left: position.x, top: position.y }} />} />
       <DropdownMenuContent align="start" className={styles.contextMenu} container={getContextMenuContainer()} side="bottom" sideOffset={0}>
         <DropdownMenuGroup>
           {items.map((item) => (
@@ -910,7 +910,7 @@ function BlockQuickPickPanelPopover(props: BlockQuickPickPanelPopoverProps) {
 
   return (
     <Popover open onOpenChange={(open) => !open && props.onClose()}>
-      <PopoverTrigger render={<div style={{ position: 'absolute', left: props.position.x, top: props.position.y }} />} />
+      <PopoverTrigger nativeButton={false} render={<div style={{ position: 'absolute', left: props.position.x, top: props.position.y }} />} />
       <PopoverContent
         align="start"
         className={clsx(styles.contextMenu, styles.quickPickPopover)}

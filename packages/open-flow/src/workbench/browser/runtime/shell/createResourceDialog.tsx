@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslate } from 'val-i18n-react'
 import { resourceNameIssue, resourceNameMaxLength } from '../../../../project/common/change.ts'
 import { Button } from '../../../../ui/browser/button.tsx'
-import { Dialog, DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogTitle } from '../../../../ui/browser/dialog.tsx'
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../../../../ui/browser/dialog.tsx'
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '../../../../ui/browser/field.tsx'
 import { Input } from '../../../../ui/browser/input.tsx'
 import { Icon } from '../icons.tsx'
 
@@ -39,7 +40,7 @@ export default function CreateResourceDialog({
   useEffect(() => setOpen(true), [])
   return (
     <>
-      <div className="resource-dialog-portal" ref={portal} />
+      <div ref={portal} />
       <Dialog
         onOpenChange={setOpen}
         onOpenChangeComplete={(nextOpen) => {
@@ -47,46 +48,41 @@ export default function CreateResourceDialog({
         }}
         open={open}
       >
-        <DialogPortal container={portal}>
-          <DialogOverlay className="resource-dialog-backdrop" />
-          <DialogContent className="resource-dialog-popup" initialFocus={() => input.current}>
-            <form className="resource-dialog-form" onSubmit={onSubmit}>
-              <header className="resource-dialog-header">
-                <DialogTitle>{title}</DialogTitle>
-                <DialogClose aria-label={t('common.cancel')} render={<Button size="icon-sm" variant="ghost" />} type="button">
-                  <Icon name="close" size={16} />
-                </DialogClose>
-              </header>
-              <div className="resource-dialog-body">
-                <label className="resource-dialog-field">
-                  <span>{label}</span>
-                  <Input
-                    autoComplete="off"
-                    aria-describedby={messageId}
-                    aria-invalid={showIssue}
-                    id={id}
-                    name="resource-name"
-                    onChange={(event) => onNameChange(event.target.value)}
-                    ref={input}
-                    required
-                    value={name}
-                  />
-                  <small className={`resource-name-message ${showIssue ? 'error' : ''}`} id={messageId}>
-                    {message}
-                  </small>
-                </label>
-              </div>
-              <footer className="resource-dialog-footer">
-                <DialogClose render={<Button variant="outline" />} type="button">
-                  {t('common.cancel')}
-                </DialogClose>
-                <Button disabled={pending || issue != null} type="submit">
-                  {t(pending ? 'common.creating' : 'common.create')}
-                </Button>
-              </footer>
-            </form>
-          </DialogContent>
-        </DialogPortal>
+        <DialogContent container={portal.current} initialFocus={() => input.current} showCloseButton={false}>
+          <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+            <DialogHeader className="flex-row items-center justify-between">
+              <DialogTitle>{title}</DialogTitle>
+              <DialogClose aria-label={t('common.cancel')} render={<Button size="icon-sm" variant="ghost" />} type="button">
+                <Icon name="close" />
+              </DialogClose>
+            </DialogHeader>
+            <FieldGroup>
+              <Field data-invalid={showIssue}>
+                <FieldLabel htmlFor={id}>{label}</FieldLabel>
+                <Input
+                  autoComplete="off"
+                  aria-describedby={messageId}
+                  aria-invalid={showIssue}
+                  id={id}
+                  name="resource-name"
+                  onChange={(event) => onNameChange(event.target.value)}
+                  ref={input}
+                  required
+                  value={name}
+                />
+                {showIssue ? <FieldError id={messageId}>{message}</FieldError> : <FieldDescription id={messageId}>{message}</FieldDescription>}
+              </Field>
+            </FieldGroup>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />} type="button">
+                {t('common.cancel')}
+              </DialogClose>
+              <Button disabled={pending || issue != null} type="submit">
+                {t(pending ? 'common.creating' : 'common.create')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
       </Dialog>
     </>
   )

@@ -192,6 +192,7 @@ export function NodeHeadContextMenu({ designerStore, children }: NodeHeadContext
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
+        nativeButton={false}
         render={
           <div
             className="flex-1"

@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import type { FlowDesignerViewInput, FlowDesignerViewOutput } from '../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import type { JsonValue } from './api.ts'
-import type { WorkbenchLanguage, WorkbenchTheme } from './contract.ts'
+import type { WorkbenchLanguage, WorkbenchLocation, WorkbenchTheme } from './contract.ts'
 import type { AddNodeOption } from './designer/addNodeOptions.ts'
 import type { CodeTaskPorts } from './designer/projectChanges.ts'
 import type { WorkbenchDesignerHandle } from './designer/workbenchDesigner.tsx'
@@ -321,12 +321,14 @@ function Editor({
 }
 
 export default function FlowWorkspace({
+  hrefFor,
   language,
   navigation,
   onLanguageChange,
   store,
   theme,
 }: {
+  readonly hrefFor: (location: WorkbenchLocation) => string
   readonly language: WorkbenchLanguage
   readonly navigation: NavigationStore
   readonly onLanguageChange?: ((language: WorkbenchLanguage) => void) | undefined
@@ -396,6 +398,8 @@ export default function FlowWorkspace({
         <WorkspaceHeader
           activeView={view}
           language={language}
+          projectHref={hrefFor({ projectId: projectId!, view: 'design' })}
+          projectsHref={hrefFor({ view: 'design' })}
           onOpenDesign={() => navigation.open('design')}
           onOpenProject={() => navigation.openProject()}
           onOpenProjects={() => void navigation.openProjects()}

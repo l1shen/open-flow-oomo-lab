@@ -12,11 +12,12 @@ export interface IframePreviewProps {
   data?: string
   className?: string
   iframeClassName?: string
+  title?: string
   nodeSelected$?: ReadonlyVal<boolean | undefined>
   dark$: ReadonlyVal<boolean>
 }
 
-export const IframePreview: FC<IframePreviewProps> = ({ src, data: html, className, iframeClassName, nodeSelected$, dark$ }) => {
+export const IframePreview: FC<IframePreviewProps> = ({ src, data: html, className, iframeClassName, nodeSelected$, dark$, title = 'Preview' }) => {
   const [focus, setFocus] = useState(false)
 
   useEffect(() => nodeSelected$?.subscribe((selected) => !selected && setFocus(false)), [nodeSelected$])
@@ -56,12 +57,15 @@ export const IframePreview: FC<IframePreviewProps> = ({ src, data: html, classNa
   )
 
   return (
-    <div onClick={() => setFocus(true)} className={className}>
+    <div className={className}>
       <iframe
         className={clsx(styles.iframe, focus && 'designer-preview-active', iframeClassName)}
+        onBlur={() => setFocus(false)}
+        onFocus={() => setFocus(true)}
         src={src}
         srcDoc={html}
         sandbox={getIframeSandbox(html != null)}
+        title={title}
         onLoad={onLoad}
       />
     </div>

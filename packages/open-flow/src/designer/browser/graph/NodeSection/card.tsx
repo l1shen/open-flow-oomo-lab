@@ -84,14 +84,26 @@ export function Card(props: CardProps): JSX.Element {
     return icon && <i className={icon} />
   }
 
-  const header = (
-    <h4 className={`${NODE_HANDLE_CLASSNAME} ${styles.header}`} onClick={props.collapsed$ && (() => props.collapsed$?.set(!collapsed))}>
-      {props.prefix}
+  const title = (
+    <>
       {renderIcon()}
       <span className={styles.title} title={filterString(props.title)}>
         {props.title}
         {props.titleSuffix}
       </span>
+    </>
+  )
+
+  const header = (
+    <h4 className={`${NODE_HANDLE_CLASSNAME} ${styles.header}`}>
+      {props.prefix}
+      {props.collapsed$ ? (
+        <button aria-expanded={!collapsed} className={styles.headerToggle} onClick={() => props.collapsed$?.set(!collapsed)} type="button">
+          {title}
+        </button>
+      ) : (
+        title
+      )}
       {props.help && (
         <DesignerTooltip placement="top" title={props.help}>
           <div className={styles.question}>

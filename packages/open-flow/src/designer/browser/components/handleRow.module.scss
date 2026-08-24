@@ -131,6 +131,21 @@
   }
 }
 
+.valueExpandTrigger {
+  width: 100%;
+  height: var(--widget-height);
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.valueExpandTrigger:focus-visible {
+  outline: 2px solid var(--brand-highlight-color);
+  outline-offset: -2px;
+}
+
 .actions {
   flex: none;
   // Offset the 20px actions by 1px to center them within the 22px row.

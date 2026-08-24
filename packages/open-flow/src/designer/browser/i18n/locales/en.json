@@ -80,10 +80,13 @@
     "source": "View source"
   },
   "components": {
+    "chooseColor": "Choose color",
     "clear": "Clear",
+    "colorValue": "Color value",
     "loading": "Loading",
     "noMatching": "No matching items",
-    "numOptions": "{{count}} options"
+    "numOptions": "{{count}} options",
+    "pickColorFromScreen": "Pick color from screen"
   },
   "trigger": {
     "catalogEmpty": "No matching triggers",

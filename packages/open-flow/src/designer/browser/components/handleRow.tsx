@@ -2,6 +2,7 @@ import styles from './handleRow.module.scss'
 import type { JSX } from 'react/jsx-runtime'
 
 import { clsx } from 'clsx'
+import { useId } from 'react'
 import { HANDLE_ROW_CLASSNAME, HANDLE_ROW_EXPANDED_CLASSNAME } from '../base/designer.ts'
 import { useHandleNoActions } from './handleNoActions.tsx'
 import { NodeMiniMapPhase, useNodeMiniMapPhase } from './minimap.tsx'
@@ -33,6 +34,7 @@ export interface HandleRowProps {
   expandedDisabled?: boolean
   expandKey?: unknown
   onExpandedChange?: (expanded: boolean, key?: unknown) => void
+  valueExpands?: boolean
 
   onDragOver?: (ev: React.DragEvent<HTMLElement>) => void
 }
@@ -51,7 +53,15 @@ function isHandleAction(action: unknown): action is IHandleAction {
 function renderAction(action: unknown, index: number): React.ReactNode {
   if (isHandleAction(action)) {
     return (
-      <button key={index} className={styles.action} title={action.title} disabled={action.disabled} onClick={action.onClick}>
+      <button
+        aria-label={action.title}
+        key={index}
+        className={styles.action}
+        title={action.title}
+        disabled={action.disabled}
+        onClick={action.onClick}
+        type="button"
+      >
         {typeof action.icon === 'string' ? <i className={action.icon} /> : action.icon}
       </button>
     )
@@ -65,6 +75,8 @@ function renderAction(action: unknown, index: number): React.ReactNode {
 }
 
 export function HandleRow(props: HandleRowProps): JSX.Element {
+  const expandLabelId = useId()
+  const expandLabelInValue = props.variant === 'value-only' || props.name == null
   const nodeMiniMapPhase = useNodeMiniMapPhase()
   const isMiniMap = nodeMiniMapPhase !== NodeMiniMapPhase.None && !props.resizable
   const noActions = useHandleNoActions()
@@ -99,19 +111,44 @@ export function HandleRow(props: HandleRowProps): JSX.Element {
         ) : (
           <div className={styles.arrowLevel}>
             <div className={styles.arrowPrefix}>{props.arrowPrefix}</div>
-            <button
-              className={`${styles.arrow} nodrag`}
-              hidden={props.expanded == null}
-              onClick={() => props.onExpandedChange?.(!props.expanded, props.expandKey)}
-              disabled={props.expandedDisabled}
-            >
-              {props.expanded ? <i className="i-carbon:chevron-down" /> : <i className="i-carbon:chevron-right" />}
-            </button>
+            {props.valueExpands ? (
+              <div aria-hidden className={`${styles.arrow} nodrag`} hidden={props.expanded == null}>
+                {props.expanded ? <i className="i-carbon:chevron-down" /> : <i className="i-carbon:chevron-right" />}
+              </div>
+            ) : (
+              <button
+                aria-expanded={props.expanded ?? undefined}
+                aria-labelledby={expandLabelId}
+                className={`${styles.arrow} nodrag`}
+                hidden={props.expanded == null}
+                onClick={() => props.onExpandedChange?.(!props.expanded, props.expandKey)}
+                disabled={props.expandedDisabled}
+                type="button"
+              >
+                {props.expanded ? <i className="i-carbon:chevron-down" /> : <i className="i-carbon:chevron-right" />}
+              </button>
+            )}
           </div>
         )}
-        <div className={styles.nameContent}>{isMiniMap ? null : props.name}</div>
+        <div className={styles.nameContent} id={expandLabelInValue ? undefined : expandLabelId}>
+          {isMiniMap ? null : props.name}
+        </div>
       </div>
-      <div className={styles.value}>{isMiniMap ? null : props.value}</div>
+      <div className={styles.value} id={expandLabelInValue ? expandLabelId : undefined}>
+        {isMiniMap ? null : props.valueExpands ? (
+          <button
+            aria-expanded={props.expanded ?? undefined}
+            className={styles.valueExpandTrigger}
+            disabled={props.expandedDisabled}
+            onClick={() => props.onExpandedChange?.(!props.expanded, props.expandKey)}
+            type="button"
+          >
+            {props.value}
+          </button>
+        ) : (
+          props.value
+        )}
+      </div>
       {noActions ? null : (
         <div className={`${styles.actions} nodrag`}>
           {isMiniMap ? null : actions}

@@ -95,7 +95,7 @@ export const SubflowOutputSection: React.FC<SubflowOutputSectionProps> = /*#__PU
         </>
       )}
       {canEditSchema && handles.length === 0 && (
-        <button data-drop-or-click="true" className={styles.dropTip} onClick={actionAdd?.onClick}>
+        <button data-drop-or-click="true" className={styles.dropTip} onClick={actionAdd?.onClick} type="button">
           <HandleIcon />
           <span className={styles.dropOr}>{t('handleEditor.dropOr')}</span>
           <i className="i-codicon:add" />

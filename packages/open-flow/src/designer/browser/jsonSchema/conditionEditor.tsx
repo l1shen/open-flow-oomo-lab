@@ -623,7 +623,7 @@ function ValueAny(props: ValueProps) {
         variant="danger"
         disabled={!props.store.context.canEditValue}
         onClick={() => setMenuOpen(true)}
-        className="!justify-start"
+        className="justify-start!"
       >
         <span className={styles.buttonText}>{`<${t('inputHandleEditor.valueUnset')}>`}</span>
       </Button>
@@ -666,7 +666,7 @@ function ValueError(props: ValueProps & { readonly error: string }) {
       disabled={!props.store.context.canEditValue}
       isSuffix={props.isSuffix}
       onClick={onClick}
-      className="!justify-start"
+      className="justify-start!"
     >
       {value === undefined ? (
         <span className={`${styles.buttonText} ${styles.btnSetValue}`}>{`<${t('inputHandleEditor.valueUnset')}>`}</span>

@@ -1,0 +1,393 @@
+.open-flow-workbench {
+  @container open-flow-workbench (width <= 1100px) {
+    .workspace-header {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px 12px;
+      min-height: 0;
+      padding: 10px 16px;
+    }
+
+    .workspace-title {
+      grid-column: 1 / -1;
+    }
+
+    .workspace-tabs {
+      justify-self: start;
+    }
+
+    .workspace-actions {
+      justify-self: end;
+    }
+
+    .workspace-actions > .resource-language,
+    .workspace-actions > .saved-state {
+      display: none;
+    }
+
+    .publication-precondition {
+      grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1.3fr);
+      gap: 20px;
+    }
+
+    .publication-precondition dl {
+      grid-template-columns: repeat(2, minmax(112px, 1fr));
+    }
+
+    .publication-revision-overview {
+      gap: 20px;
+    }
+
+    .publication-revision-group + .publication-revision-group {
+      padding-left: 20px;
+    }
+
+    .publication-revision-group:last-child dl {
+      grid-template-columns: repeat(2, minmax(112px, 1fr));
+    }
+
+    .trigger-binding-summary {
+      grid-template-columns: auto minmax(120px, 1fr) auto auto;
+    }
+
+    .trigger-binding-summary code,
+    .run-id,
+    .run-meta:nth-of-type(2),
+    .run-detail-meta code {
+      display: none;
+    }
+
+    .runs-view {
+      grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .diagnostics-panel {
+      width: min(360px, 100%);
+    }
+
+    .run-input-panel {
+      width: min(400px, 100%);
+    }
+  }
+
+  @container open-flow-workbench (width <= 980px) {
+    .editor-grid {
+      position: relative;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .editor-grid > .context-panel {
+      position: absolute;
+      z-index: 6;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(380px, 100%);
+      border-left: 0;
+      box-shadow: -4px 0 8px rgba(0, 0, 0, 0.12);
+    }
+
+    .editor-grid > .context-panel-backdrop {
+      position: absolute;
+      z-index: 5;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      background: rgba(9, 9, 11, 0.2);
+    }
+
+    .workspace-actions > .validation-state {
+      display: none;
+    }
+
+    .publication-precondition,
+    .trigger-binding-detail-sections {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .trigger-binding-detail-sections {
+      gap: 16px;
+    }
+
+    .trigger-binding-detail-sections > section + section {
+      padding-top: 16px;
+      padding-left: 0;
+      border-top: 1px solid var(--border);
+      border-left: 0;
+    }
+  }
+
+  @container open-flow-workbench (width <= 720px) {
+    .resource-page {
+      width: calc(100% - 32px);
+      padding: 24px 0 40px;
+    }
+
+    .resource-page-header {
+      gap: 16px;
+    }
+
+    .resource-heading h1 {
+      font-size: 22px;
+      line-height: 28px;
+    }
+
+    .resource-list-title,
+    .resource-list-actions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .resource-list-actions {
+      width: 100%;
+    }
+
+    .resource-list-actions > [data-slot='button'] {
+      align-self: flex-end;
+    }
+
+    .resource-row-form {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .resource-list-section {
+      margin-top: 24px;
+    }
+
+    .project-columns,
+    .flow-columns {
+      grid-template-columns: minmax(0, 1fr) 104px;
+    }
+
+    .project-columns > :nth-child(2),
+    .flow-columns > :nth-child(2) {
+      display: none;
+    }
+
+    .resource-row-more {
+      opacity: 1;
+    }
+
+    .workspace-header {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      padding: 8px 12px;
+    }
+
+    .workspace-title {
+      grid-column: 1 / -1;
+    }
+
+    .workspace-tabs {
+      justify-self: start;
+    }
+
+    .workspace-actions {
+      min-width: 0;
+    }
+
+    .diagnostics-panel,
+    .run-input-panel {
+      top: 0;
+      width: 100%;
+      max-height: 100dvh;
+      padding-top: env(safe-area-inset-top);
+      padding-right: env(safe-area-inset-right);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      border-left: 0;
+    }
+
+    .editor-grid > .context-panel {
+      padding-top: env(safe-area-inset-top);
+      padding-right: env(safe-area-inset-right);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+    }
+
+    .publication-summary,
+    .publication-triggers,
+    .publication-history > header {
+      padding-right: 16px;
+      padding-left: 16px;
+    }
+
+    .publication-summary {
+      padding: 16px;
+    }
+
+    .publication-revision-overview {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .publication-revision-group + .publication-revision-group {
+      padding-top: 16px;
+      padding-left: 0;
+      border-top: 1px solid var(--border);
+      border-left: 0;
+    }
+
+    .publication-summary-heading,
+    .publication-publish-action,
+    .trigger-binding-row,
+    .publication-confirm {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .publication-precondition dl {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .trigger-binding-row,
+    .trigger-binding-detail {
+      padding-right: 16px;
+      padding-left: 16px;
+    }
+
+    .trigger-binding-summary {
+      grid-template-columns: auto minmax(120px, 1fr) auto;
+    }
+
+    .trigger-binding-kind,
+    .trigger-binding-detail-label {
+      display: none;
+    }
+
+    .publication-table {
+      min-width: 720px;
+    }
+
+    .event-row {
+      min-height: 52px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 4px 12px;
+      padding: 8px 12px;
+    }
+
+    .event-subject,
+    .event-summary {
+      grid-column: 1;
+    }
+
+    .event-row > code,
+    .event-row > time {
+      grid-column: 2;
+      text-align: right;
+    }
+
+    .event-summary {
+      white-space: normal;
+    }
+
+    .runs-view.narrow {
+      display: block;
+      overflow: auto;
+    }
+
+    .runs-view.narrow .run-list-panel,
+    .runs-view.narrow .run-detail-panel {
+      min-height: 100%;
+    }
+
+    .runs-view.narrow .run-list-panel {
+      border-right: 0;
+    }
+
+    .runs-view.narrow .run-detail-panel {
+      display: none;
+    }
+
+    .runs-view.narrow.narrow-detail-open .run-list-panel {
+      display: none;
+    }
+
+    .runs-view.narrow.narrow-detail-open .run-detail-panel {
+      display: grid;
+    }
+
+    .run-detail-header {
+      min-height: 0;
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .run-detail-header > div,
+    .run-detail-actions,
+    .run-detail-meta {
+      width: 100%;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+  }
+
+  @container open-flow-workbench (width <= 520px) {
+    .resource-page-header,
+    .resource-row-confirm {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .workspace-title button:first-child,
+    .workspace-title button:first-child + span {
+      display: none;
+    }
+
+    .workspace-actions .action-help:last-child {
+      display: none;
+    }
+
+    .publication-summary-heading {
+      gap: 10px;
+    }
+
+    .publication-publish-action,
+    .publication-revision-group:last-child dl {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (pointer: coarse) {
+    [data-slot='button'] {
+      min-height: 40px;
+      touch-action: manipulation;
+    }
+
+    [data-slot='button'][data-size^='icon'] {
+      min-width: 40px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .code-editor,
+    .inspector-disclosure > summary > svg,
+    .block-library-expand svg {
+      transition: none;
+    }
+
+    .inspector-section.diagnostic-located,
+    .inspector-disclosure.diagnostic-located {
+      animation: none;
+    }
+  }
+}
+
+@keyframes diagnostic-located {
+  from {
+    background: var(--danger-surface);
+    box-shadow: inset 0 0 0 1px var(--danger-border);
+  }
+
+  to {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px transparent;
+  }
+}

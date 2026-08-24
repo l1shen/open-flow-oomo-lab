@@ -3,6 +3,7 @@ import type { JsonValue, RunEvent, RunResult } from '../api.ts'
 
 import { useLang, useTranslate } from 'val-i18n-react'
 import { collapseAllNested, JSONViewer } from '../../../../designer/browser/jsonViewer/index.ts'
+import { Alert, AlertDescription, AlertTitle } from '../../../../ui/browser/alert.tsx'
 
 function record(value: JsonValue | undefined): Readonly<Record<string, JsonValue>> | undefined {
   if (value == null || typeof value != 'object' || Array.isArray(value)) return undefined
@@ -101,10 +102,12 @@ export function RunEventDetail({ event }: { readonly event: RunEvent }): ReactEl
               : t('run.nodeFailed')
       return (
         <EventDetail label={t('run.nodeError')}>
-          <div className="run-terminal-error" role="alert">
-            <code>{code}</code>
-            <span>{message}</span>
-          </div>
+          <Alert className="mt-2.5" variant="destructive">
+            <AlertTitle>
+              <code>{code}</code>
+            </AlertTitle>
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
         </EventDetail>
       )
     }
@@ -158,10 +161,12 @@ export function RunResultView({ result }: { readonly result: RunResult }): React
       ) : result.status == 'canceled' ? (
         <div className="run-empty">{t('run.canceledWithoutOutput')}</div>
       ) : (
-        <div className="run-terminal-error" role="alert">
-          <code>{result.error.code}</code>
-          <span>{result.error.message}</span>
-        </div>
+        <Alert variant="destructive">
+          <AlertTitle>
+            <code>{result.error.code}</code>
+          </AlertTitle>
+          <AlertDescription>{result.error.message}</AlertDescription>
+        </Alert>
       )}
     </section>
   )

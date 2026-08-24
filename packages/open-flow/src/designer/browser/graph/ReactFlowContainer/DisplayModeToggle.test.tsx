@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { FlowDisplayMode } from '../../../common/flowDisplay.ts'
 
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -10,32 +11,42 @@ import { DisplayModeToggle } from './DisplayModeToggle.tsx'
 const captured = vi.hoisted(() => ({
   props: undefined as
     | {
-        readonly onValueChange: (value: string | null) => void
-        readonly value: FlowDisplayMode
+        readonly children?: ReactNode
+        readonly onValueChange: (value: FlowDisplayMode[]) => void
+        readonly size?: string
+        readonly spacing?: number
+        readonly value: FlowDisplayMode[]
+        readonly variant?: string
       }
     | undefined,
 }))
 
-vi.mock('../../../../ui/browser/tabs.tsx', () => ({
-  Tabs: (props: NonNullable<typeof captured.props>) => {
+vi.mock('../../../../ui/browser/toggle-group.tsx', () => ({
+  ToggleGroup: (props: NonNullable<typeof captured.props>) => {
     captured.props = props
-    return null
+    return <div data-slot="toggle-group">{props.children}</div>
   },
-  TabsList: () => null,
-  TabsTrigger: () => null,
+  ToggleGroupItem: ({ children }: { readonly children?: ReactNode }) => <div data-slot="toggle-group-item">{children}</div>,
 }))
 
 describe('DisplayModeToggle', () => {
-  it('uses the shared Tabs control for overview and detail', () => {
+  it('uses the shared ToggleGroup inside a React Flow Panel', () => {
     const displayMode = val<FlowDisplayMode>('overview')
-    renderToStaticMarkup(
+    const markup = renderToStaticMarkup(
       <I18nProvider i18n={createI18n('en')}>
         <DisplayModeToggle displayMode$={displayMode} />
       </I18nProvider>,
     )
 
-    expect(captured.props?.value).toBe('overview')
-    captured.props?.onValueChange('detail')
+    expect(markup).toContain('react-flow__panel bottom center')
+    expect(markup).toContain('data-canvas-control-scope="true"')
+    expect(markup).toContain('data-slot="toggle-group"')
+
+    expect(captured.props?.value).toEqual(['overview'])
+    expect(captured.props?.size).toBeUndefined()
+    expect(captured.props?.spacing).toBe(0)
+    expect(captured.props?.variant).toBe('outline')
+    captured.props?.onValueChange(['detail'])
     expect(displayMode.value).toBe('detail')
   })
 })

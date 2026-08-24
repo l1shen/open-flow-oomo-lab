@@ -55,7 +55,7 @@ export function EmptyNodeContent(props: EmptyNodeContentProps): JSX.Element | nu
     <div className={styles.container}>
       <div className={styles.content}>
         {canEditSchema ? (
-          <button data-node-empty="true" className={styles.tip} onClick={props.store.openBlockDesigner}>
+          <button data-node-empty="true" className={styles.tip} onClick={props.store.openBlockDesigner} type="button">
             <i className="i-codicon:edit" />
             <span className={styles.click}>{t('handleEditor.editSharedBlock')}</span>
           </button>

@@ -7,6 +7,7 @@ import { clsx } from 'clsx'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { HexAlphaColorPicker } from 'react-colorful'
 import tinycolor from 'tinycolor2'
+import { useTranslate } from 'val-i18n-react'
 import { stopEvent } from '../base/dom.ts'
 import { noop } from '../base/trivial.ts'
 import { Button } from './button.tsx'
@@ -77,7 +78,9 @@ const DEFAULT_COLOR = '#7d7fe9'
 const DEFAULT_COLOR_INSTANCE = /*#__PURE__*/ tinycolor(DEFAULT_COLOR)
 
 export function ColorPicker(props: ColorPickerProps): JSX.Element {
+  const t = useTranslate()
   const typeId = useId()
+  const popoverId = useId()
   const dirtyRef = useRef(false)
   const [value, setValue] = useState(props.value ?? DEFAULT_COLOR)
 
@@ -186,7 +189,15 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
         />
       ))
     } else {
-      return <input value={value.toUpperCase()} onChange={(ev) => onChange(ev.target.value)} />
+      return (
+        <input
+          aria-label={t('components.colorValue')}
+          autoComplete="off"
+          name="color-value"
+          value={value.toUpperCase()}
+          onChange={(ev) => onChange(ev.target.value)}
+        />
+      )
     }
   }
 
@@ -194,6 +205,9 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
     <div ref={wrapperRef} className={clsx(styles.wrapper, props.isSuffix && styles.isSuffix)} style={props.style} onKeyDown={onKeydown}>
       <div className={styles.content}>
         <button
+          aria-controls={showPopover ? popoverId : undefined}
+          aria-expanded={showPopover}
+          aria-label={t('components.chooseColor')}
           className={styles.swatch}
           style={{
             color: lastColor.current.toHexString(),
@@ -201,15 +215,23 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
           }}
           onClick={onClick}
           disabled={props.disabled}
+          type="button"
         />
         {props.isClearable && (
-          <button tabIndex={-1} className={styles.clear} onClick={() => props.onChange?.(null)}>
-            <i className="i-codicon:close" />
+          <button aria-label={t('components.clear')} className={styles.clear} onClick={() => props.onChange?.(null)} type="button">
+            <i aria-hidden className="i-codicon:close" />
           </button>
         )}
       </div>
       {showPopover && (
-        <div className={clsx(styles.popover, props.type === 'HEX8' && styles.enableAlpha)} onBlur={onBlur} tabIndex={-1}>
+        <div
+          aria-label={t('components.chooseColor')}
+          className={clsx(styles.popover, props.type === 'HEX8' && styles.enableAlpha)}
+          id={popoverId}
+          onBlur={onBlur}
+          role="dialog"
+          tabIndex={-1}
+        >
           <HexAlphaColorPicker color={value} onChange={onChange} />
           <div className={styles.inputs}>
             <div className={styles.buttonGroup}>
@@ -226,9 +248,11 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
                   <i className="i-carbon:expand-categories" />
                 </Button>
               )}
-              <button className={styles.eyeDropper} onClick={openEyeDropper}>
-                <i className="i-carbon:eyedropper" />
-              </button>
+              {typeof EyeDropper != 'undefined' && (
+                <button aria-label={t('components.pickColorFromScreen')} className={styles.eyeDropper} onClick={openEyeDropper} type="button">
+                  <i aria-hidden className="i-carbon:eyedropper" />
+                </button>
+              )}
             </div>
             <div className={styles.inputWrapper}>{renderInputs()}</div>
           </div>

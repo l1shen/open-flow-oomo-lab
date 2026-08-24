@@ -80,10 +80,13 @@
     "source": "显示源文本"
   },
   "components": {
+    "chooseColor": "选择颜色",
     "clear": "清除",
+    "colorValue": "颜色值",
     "loading": "加载中",
     "noMatching": "无匹配项",
-    "numOptions": "{{count}} 项"
+    "numOptions": "{{count}} 项",
+    "pickColorFromScreen": "从屏幕取色"
   },
   "trigger": {
     "catalogEmpty": "没有匹配的触发器",

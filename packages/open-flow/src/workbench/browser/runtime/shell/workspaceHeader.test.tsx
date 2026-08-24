@@ -83,6 +83,8 @@ function render(status: { value: WorkspaceStatus }): ReactElement {
   return WorkspaceHeader({
     activeView: 'design',
     language: 'en',
+    projectHref: '/projects/project-a',
+    projectsHref: '/projects',
     onLanguageChange: () => undefined,
     onOpenDesign: () => undefined,
     onOpenProject: () => undefined,

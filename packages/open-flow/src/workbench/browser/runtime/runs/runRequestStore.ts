@@ -1,12 +1,13 @@
 import type { I18n } from 'val-i18n'
 import type { ReadonlyVal, Val } from 'value-enhancer'
+import type { FlowRunInputEditorStore } from '../../flowRunInputEditorStore.ts'
 import type { WorkbenchClient, Draft, Flow, InputPortDefinition, JsonValue, Run } from '../api.ts'
 import type { ResolvedNode } from '../revisionView.ts'
+import type { Current } from '../stores/latest.ts'
 import type { SetNotice } from '../stores/workbenchNotice.ts'
 import type { RunStore } from './runStore.ts'
 
 import { compute, derive, val } from 'value-enhancer'
-import { FlowRunInputEditorStore } from '../../flowRunInputEditor.tsx'
 import { createI18n } from '../i18n.ts'
 import { revisionView } from '../revisionView.ts'
 import { Latest } from '../stores/latest.ts'
@@ -68,7 +69,8 @@ function nodeTitle(node: ResolvedNode): string {
   return node.id
 }
 
-function inputGroups(draft: Draft, flowId: string, language: ReadonlyVal<string>): readonly RunInputGroup[] {
+async function inputGroups(draft: Draft, flowId: string, language: ReadonlyVal<string>): Promise<readonly RunInputGroup[]> {
+  const { FlowRunInputEditorStore } = await import('../../flowRunInputEditorStore.ts')
   const revision = revisionView(draft)
   const graph = revision.graph({ id: flowId, kind: 'flow' })
   if (graph == null) return []
@@ -137,9 +139,9 @@ export class RunRequestStore {
   }
 
   public async requestDraft(projectId: string, flow: Flow, draft: Draft): Promise<RunRequestOutcome> {
-    this.#requests.invalidate()
     if (flow.draft == null) return 'unavailable'
-    return await this.#request('draft', projectId, flow, draft, flow.draft.revisionId)
+    const current = this.#requests.begin()
+    return await this.#request('draft', projectId, flow, draft, flow.draft.revisionId, current)
   }
 
   public async requestLive(projectId: string, flow: Flow): Promise<RunRequestOutcome> {
@@ -151,7 +153,7 @@ export class RunRequestStore {
     try {
       const revision = await this.#client.getRevision(projectId, revisionId)
       if (!current()) return 'unavailable'
-      return await this.#request('live', projectId, flow, revision, revisionId)
+      return await this.#request('live', projectId, flow, revision, revisionId, current)
     } catch (error) {
       if (current()) this.#setNotice(errorNotice(error, this.#i18n.t))
       return 'unavailable'
@@ -181,14 +183,24 @@ export class RunRequestStore {
     return started
   }
 
-  async #request(source: RunSource, projectId: string, flow: Flow, revision: Draft, revisionId: string): Promise<RunRequestOutcome> {
+  async #request(source: RunSource, projectId: string, flow: Flow, revision: Draft, revisionId: string, current: Current): Promise<RunRequestOutcome> {
     const previous = this.#state.value.inputRequest
-    this.#set({ inputRequest: undefined })
+    this.#set({ inputRequest: undefined, starting: true, submitting: source })
     this.#disposeInputRequest(previous)
-    const groups = inputGroups(revision, flow.flowId, this.#i18n.lang$)
+    let groups: readonly RunInputGroup[]
+    try {
+      groups = await inputGroups(revision, flow.flowId, this.#i18n.lang$)
+    } catch (error) {
+      if (current()) this.#set({ starting: false, submitting: undefined })
+      throw error
+    }
+    if (!current()) {
+      for (const group of groups) group.editor.dispose()
+      return 'unavailable'
+    }
     if (groups.length == 0) return (await this.#start(source, projectId, flow, revisionId)) ? 'started' : 'unavailable'
     const valid = compute((get) => groups.every((group) => get(group.editor.valid$)))
-    this.#set({ inputRequest: { attempted: false, flow, groups, projectId, revisionId, source, valid } })
+    this.#set({ inputRequest: { attempted: false, flow, groups, projectId, revisionId, source, valid }, starting: false, submitting: undefined })
     return 'input'
   }
 

@@ -1,78 +1,23 @@
-import lightTheme from '../../designer/browser/styles/light.module.scss'
 import styles from './flowRunInputEditor.module.scss'
 import type { ReactElement } from 'react'
-import type { ReadonlyVal, Val } from 'value-enhancer'
-import type { HandleName, InputHandleDef } from '../../schema/index.ts'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { I18nProvider } from 'val-i18n-react'
-import { compute, val } from 'value-enhancer'
 import { GetPopupContainerContext } from '../../designer/browser/graph/ReactFlowContainer/useGetPopupContainer.ts'
 import { createI18n } from '../../designer/browser/i18n/i18n-loader.ts'
 import { HandleEditor } from '../../designer/browser/jsonSchema/handleEditor.tsx'
 import { HandleEditorProvider } from '../../designer/browser/jsonSchema/handleEditorContext.ts'
 import { HandleRowStore } from '../../designer/browser/stores/nodeHandle/handleRow.store.ts'
+import { designerThemeClass } from '../../designer/browser/theme/designerThemeClass.ts'
 import { ThemeProvider } from '../../designer/browser/theme/ThemeProvider.tsx'
-import { WorkbenchRunInputs } from './runInputs.ts'
+import { flowRunInputEditorState, FlowRunInputEditorStore } from './flowRunInputEditorStore.ts'
 
-export interface FlowRunInputDefinition {
-  readonly description?: string
-  readonly handle: string
-  readonly jsonSchema: unknown
-  readonly nullable: boolean
-}
-
-interface Internals {
-  readonly definitions: readonly FlowRunInputDefinition[]
-  readonly definitions$: Val<InputHandleDef[]>
-  readonly inputs: WorkbenchRunInputs
-  readonly language: ReadonlyVal<string>
-  readonly panelWidth$: Val<number | undefined>
-}
-
-const internals = new WeakMap<FlowRunInputEditorStore, Internals>()
-
-export class FlowRunInputEditorStore {
-  public readonly valid$: ReadonlyVal<boolean>
-
-  public constructor(definitions: readonly FlowRunInputDefinition[], language: ReadonlyVal<string>) {
-    const definitions$ = val<InputHandleDef[]>(
-      definitions.map((definition) => ({
-        ...(definition.description == null ? {} : { description: definition.description }),
-        handle: definition.handle as HandleName,
-        json_schema: definition.jsonSchema,
-        nullable: definition.nullable,
-      })),
-    )
-    const inputs = new WorkbenchRunInputs(definitions$, language)
-    const values$ = inputs.section.$.handleInputsFrom!
-    this.valid$ = compute((get) => {
-      const present = new Set((get(values$) ?? []).flatMap((input) => (input.value === undefined ? [] : [input.handle])))
-      return definitions.every((definition) => present.has(definition.handle as HandleName)) && !get(inputs.section.hasError$)
-    })
-    internals.set(this, { definitions, definitions$, inputs, language, panelWidth$: val() })
-  }
-
-  public dispose(): void {
-    const state = internals.get(this)!
-    this.valid$.dispose()
-    state.inputs.dispose()
-    state.definitions$.dispose()
-    state.panelWidth$.dispose()
-  }
-
-  public values(): Readonly<Record<string, unknown>> {
-    return internals.get(this)!.inputs.values()
-  }
-
-  public replaceValues(value: unknown): boolean {
-    return internals.get(this)!.inputs.replaceValues(value)
-  }
-}
+export { FlowRunInputEditorStore } from './flowRunInputEditorStore.ts'
+export type { FlowRunInputDefinition } from './flowRunInputEditorStore.ts'
 
 export function FlowRunInputEditor({ store }: { readonly store: FlowRunInputEditorStore }): ReactElement {
-  const state = internals.get(store)!
+  const state = flowRunInputEditorState(store)
   const handles = useVal(state.inputs.section.$.handles)
   const language = useVal(state.language)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
@@ -88,7 +33,7 @@ export function FlowRunInputEditor({ store }: { readonly store: FlowRunInputEdit
   useEffect(() => () => i18n.dispose(), [i18n])
 
   return (
-    <div className={`oo-designer-root ${lightTheme.theme} ${styles.root}`} ref={setRoot}>
+    <div className={`oo-designer-root ${designerThemeClass(false)} ${styles.root}`} ref={setRoot}>
       <GetPopupContainerContext.Provider value={popupContainers}>
         <I18nProvider i18n={i18n}>
           <ThemeProvider dark={false} getPopupContainer={popupContainers.static}>

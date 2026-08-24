@@ -292,7 +292,7 @@ function TaskDefinition({
                   </NativeSelect>
                 </Field>
                 <Button disabled={disabled} onClick={() => void connectors.connect(connectorAction.serviceId)} size="sm" type="button" variant="secondary">
-                  <Icon data-icon="inline-start" name="plus" size={14} /> {t('inspector.account.addConnection')}
+                  <Icon data-icon="inline-start" name="plus" /> {t('inspector.account.addConnection')}
                 </Button>
               </>
             ) : (
@@ -336,7 +336,7 @@ function TaskDefinition({
                 <p>{t(`inspector.account.status.${connectorConnection.status}`)}</p>
               )}
               <Button disabled={disabled} onClick={() => void connectors.connect(connectorAction.serviceId)} size="sm" type="button" variant="secondary">
-                <Icon data-icon="inline-start" name="plus" size={14} /> {t('inspector.account.addConnection')}
+                <Icon data-icon="inline-start" name="plus" /> {t('inspector.account.addConnection')}
               </Button>
             </>
           )}
@@ -746,7 +746,7 @@ function TriggerDefinition({
               </NativeSelect>
             </Field>
             <Button disabled={disabled} onClick={() => void triggers.connect(providerTrigger.definition.provider)} size="sm" type="button" variant="secondary">
-              <Icon data-icon="inline-start" name="plus" size={14} /> {t('inspector.account.addConnection')}
+              <Icon data-icon="inline-start" name="plus" /> {t('inspector.account.addConnection')}
             </Button>
           </>
         )}

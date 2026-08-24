@@ -16,6 +16,27 @@ const traverse = ((traverseModule as unknown as { readonly default?: typeof trav
 const rootPath = path.resolve(import.meta.dirname, '..')
 const manifest = JSON.parse(await readFile(path.join(rootPath, 'package.json'), 'utf8')) as { version: string }
 const tarballPath = path.join(rootPath, 'dist/release', `oomol-lab-open-flow-${manifest.version}.tgz`)
+const sharedUiTokens = [
+  '--ui-accent',
+  '--ui-accent-foreground',
+  '--ui-background',
+  '--ui-border',
+  '--ui-card',
+  '--ui-card-foreground',
+  '--ui-destructive',
+  '--ui-foreground',
+  '--ui-input',
+  '--ui-muted',
+  '--ui-muted-foreground',
+  '--ui-popover',
+  '--ui-popover-foreground',
+  '--ui-primary',
+  '--ui-primary-foreground',
+  '--ui-radius',
+  '--ui-ring',
+  '--ui-secondary',
+  '--ui-secondary-foreground',
+] as const
 
 await execFileAsync(process.execPath, [path.join(rootPath, 'scripts/build.ts'), '--quiet'], { cwd: rootPath })
 const entries = await unpackTar(gunzipSync(await readFile(tarballPath)), { strict: true })
@@ -220,6 +241,17 @@ const workbenchStyleEntry = entries.find((entry) => entry.header.name == 'packag
 assert.ok(workbenchStyleEntry?.data)
 const workbenchStyle = new TextDecoder().decode(workbenchStyleEntry.data)
 assert.match(workbenchStyle, /:where\(\.open-flow-workbench,\.oo-designer-root\) \.hidden\{display:none\}/)
+assert.match(workbenchStyle, /\.sm\\:w-56\{[^}]*width:/)
+assert.ok(workbenchStyle.includes('.i-custom\\:mouse{'))
+assert.ok(workbenchStyle.includes('.bg-popover{background-color:var(--ui-popover)}'))
+assert.ok(workbenchStyle.includes('.bg-card{background-color:var(--ui-card)}'))
+assert.ok(workbenchStyle.includes('data-open\\:animate-in'))
+assert.ok(workbenchStyle.includes('aria-current\\:bg-muted'))
+assert.match(workbenchStyle, /\.justify-start\\!\{[^}]*justify-content:flex-start!important/)
+assert.match(workbenchStyle, /\.mb-\\\[2px\\\]\{[^}]*margin-bottom:2px/)
+for (const token of sharedUiTokens) assert.ok(workbenchStyle.includes(`${token}:`), `Missing ${token} from the published Workbench CSS.`)
+assert.doesNotMatch(workbenchStyle, /--rf-/)
+assert.doesNotMatch(workbenchStyle, /(?:font-size-4|mb-2px|\\!justify-start|bg-dark)/)
 assert.doesNotMatch(workbenchStyle, /(?:^|[{},])\.hidden\{display:none\}/)
 assert.doesNotMatch(workbenchStyle, /data:font\//)
 const referencedFonts = [...workbenchStyle.matchAll(/url\((\.\/assets\/font-[a-f\d]{16}\.(?:woff2|woff|ttf))\)/g)]
@@ -312,7 +344,7 @@ async function verifyConsumer(versions: { readonly react: string; readonly react
         "  returnUrl: 'https://console.example/flows', notify: () => undefined, openExternalPage: async () => false,",
         '  request: async () => Response.json({}), subscribeProject: () => () => undefined,',
         '}',
-        "const workbench = createElement(OpenFlowWorkbench, { host, language: 'en', location, onNavigate: () => undefined,",
+        "const workbench = createElement(OpenFlowWorkbench, { host, hrefFor: () => '/teams/team-a', language: 'en', location, onNavigate: () => undefined,",
         "  preferences: { getItem: () => null, setItem: () => undefined }, sessionKey: 'team-a', theme: 'light' })",
         'const task: Task<{ value: string }, { value: string }> = async (inputs) => inputs',
         'void connector',
