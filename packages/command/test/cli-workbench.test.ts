@@ -1,10 +1,10 @@
-import type { ChangeOperation } from '../../src/project/common/change.ts'
-import type { WorkbenchClient, Draft, DraftFlow, Flow, Project, RevisionMetadata } from '../../src/workbench/browser/runtime/api.ts'
+import type { ChangeOperation } from '@oomol-lab/open-flow/project-change'
+import type { WorkbenchClient, Draft, DraftFlow, Flow, Project, RevisionMetadata } from '../../open-flow/src/workbench/browser/runtime/api.ts'
 
+import { applyProjectChanges } from '@oomol-lab/open-flow/project-change'
 import { describe, expect, it, vi } from 'vitest'
-import { runCli } from '../../src/cli/node/cli.ts'
-import { applyProjectChanges } from '../../src/project/common/change.ts'
-import { WorkbenchStore } from '../../src/workbench/browser/runtime/stores/workbenchStore.ts'
+import { WorkbenchStore } from '../../open-flow/src/workbench/browser/runtime/stores/workbenchStore.ts'
+import { runCli } from '../src/cli/node/cli.ts'
 
 const createdAt = '2026-08-14T00:00:00.000Z'
 

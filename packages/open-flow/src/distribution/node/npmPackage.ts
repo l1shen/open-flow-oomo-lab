@@ -66,6 +66,10 @@ function createManifest(version: string): object {
         types: './dist/common/provider-triggers.d.ts',
         import: './dist/common/provider-triggers.js',
       },
+      './project-authoring': {
+        types: './dist/browser/project-authoring.d.ts',
+        import: './dist/browser/project-authoring.js',
+      },
       './project-change': {
         types: './dist/browser/project-change.d.ts',
         import: './dist/browser/project-change.js',

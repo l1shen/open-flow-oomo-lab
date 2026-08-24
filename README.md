@@ -37,6 +37,10 @@ Connector or LLM provider by default; capabilities that have no configured host 
 
 ## Repository Development
 
+`packages/open-flow` contains the public npm contracts, authoring APIs, and Workbench runtime.
+`packages/command` contains the separately distributed `oo flow` Command Artifact. `apps/server`
+contains the self-hosted deployment.
+
 ```bash
 bun install --frozen-lockfile
 bun run dev

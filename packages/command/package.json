@@ -1,0 +1,31 @@
+{
+  "name": "@oomol-lab/open-flow-command",
+  "version": "0.1.0-alpha.2",
+  "description": "Open Flow command runtime and immutable Command Artifact builder.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "check": "bun run format -- --check && bun run lint && tsc --noEmit",
+    "format": "oxfmt src test scripts vitest.config.ts package.json tsconfig.json",
+    "lint": "oxlint --deny-warnings src test scripts vitest.config.ts",
+    "release": "bun scripts/release.ts",
+    "test": "vitest run --config vitest.config.ts src test",
+    "test:package": "bun scripts/check-command-artifact.ts"
+  },
+  "dependencies": {
+    "@oomol-lab/open-flow": "workspace:*",
+    "@wopjs/cast": "^0.1.16",
+    "modern-tar": "0.7.6",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "oxfmt": "^0.60.0",
+    "oxlint": "^1.75.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.1",
+    "vitest": "^4.1.10"
+  }
+}

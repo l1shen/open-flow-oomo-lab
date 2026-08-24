@@ -35,7 +35,7 @@ const releaseSchema = z
     const segments = new URL(release.archive.url).pathname.split('/')
     if (!containsPathToken(segments, release.openFlowVersion) || !containsPathToken(segments, release.archive.digest)) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Command release URL path must contain the Open Flow version and archive digest as delimited components.',
         path: ['archive', 'url'],
       })

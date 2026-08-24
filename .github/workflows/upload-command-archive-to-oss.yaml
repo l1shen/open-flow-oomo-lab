@@ -88,10 +88,11 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Verify package
+      - name: Verify command
         run: |
-          bun run --filter @oomol-lab/open-flow check
-          bun run test:package
+          bun run --filter @oomol-lab/open-flow-command check
+          bun run --filter @oomol-lab/open-flow-command test
+          bun run test:command-artifact
 
       - name: Build command release
         id: release
@@ -100,21 +101,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          package_version="$(jq -er '.version' packages/open-flow/package.json)"
-          if [ "$package_version" != "$EXPECTED_VERSION" ]; then
-            echo "Open Flow package version $package_version does not match requested version $EXPECTED_VERSION." >&2
+          command_version="$(jq -er '.version' packages/command/package.json)"
+          if [ "$command_version" != "$EXPECTED_VERSION" ]; then
+            echo "Open Flow command version $command_version does not match requested version $EXPECTED_VERSION." >&2
             exit 1
           fi
 
-          bun run --filter @oomol-lab/open-flow release:command --cdn-base-url "$CDN_BASE_URL"
+          bun run --filter @oomol-lab/open-flow-command release --cdn-base-url "$CDN_BASE_URL"
 
-          release_record="packages/open-flow/dist/release/open-flow-command-release.json"
+          release_record="packages/command/dist/release/open-flow-command-release.json"
           archive_url="$(jq -er '.archive.url' "$release_record")"
           archive_digest="$(jq -er '.archive.digest' "$release_record")"
           archive_length="$(jq -er '.archive.length' "$release_record")"
           open_flow_version="$(jq -er '.openFlowVersion' "$release_record")"
           archive_name="${archive_url##*/}"
-          archive_path="packages/open-flow/dist/release/$archive_name"
+          archive_path="packages/command/dist/release/$archive_name"
 
           if [ "$open_flow_version" != "$EXPECTED_VERSION" ]; then
             echo "Command release version $open_flow_version does not match requested version $EXPECTED_VERSION." >&2

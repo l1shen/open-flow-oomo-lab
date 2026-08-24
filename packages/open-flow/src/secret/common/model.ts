@@ -40,8 +40,8 @@ export interface SecretWrite {
 const secretIdSchema = z.string().refine(isSecretId, { message: 'Secret ID must use the canonical secret_<32 lowercase hexadecimal> format.' })
 const secretNameSchema = z.string().superRefine((name, context) => {
   const length = new TextEncoder().encode(name.trim()).byteLength
-  if (length < 1 || length > 256) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Secret name must contain 1 to 256 UTF-8 bytes after trimming.' })
-  if (hasUnpairedSurrogate(name)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Secret name must contain valid Unicode.' })
+  if (length < 1 || length > 256) context.addIssue({ code: 'custom', message: 'Secret name must contain 1 to 256 UTF-8 bytes after trimming.' })
+  if (hasUnpairedSurrogate(name)) context.addIssue({ code: 'custom', message: 'Secret name must contain valid Unicode.' })
 })
 const revisionSchema = z.string().min(1)
 const timestampSchema = z.string().datetime({ offset: true })
@@ -117,7 +117,7 @@ function validateUniqueKeys(fields: readonly SecretFieldDescriptor[], context: z
   const keys = new Set<string>()
   for (const [index, field] of fields.entries()) {
     if (keys.has(field.key)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate secret field key "${field.key}".`, path: ['fields', index, 'key'] })
+      context.addIssue({ code: 'custom', message: `Duplicate secret field key "${field.key}".`, path: ['fields', index, 'key'] })
     } else {
       keys.add(field.key)
     }
@@ -132,13 +132,13 @@ function validateDataFields(fields: readonly SecretField[], context: z.Refinemen
     const valueBytes = encoder.encode(field.value).byteLength
     totalBytes += encoder.encode(field.key).byteLength + valueBytes
     if (hasUnpairedSurrogate(field.value)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Secret field values must contain valid Unicode.', path: ['fields', index, 'value'] })
+      context.addIssue({ code: 'custom', message: 'Secret field values must contain valid Unicode.', path: ['fields', index, 'value'] })
     }
     if (valueBytes > 64 * 1024) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Secret field values must not exceed 64 KiB.', path: ['fields', index, 'value'] })
+      context.addIssue({ code: 'custom', message: 'Secret field values must not exceed 64 KiB.', path: ['fields', index, 'value'] })
     }
   }
-  if (totalBytes > 64 * 1024) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Secret plaintext must not exceed 64 KiB.', path: ['fields'] })
+  if (totalBytes > 64 * 1024) context.addIssue({ code: 'custom', message: 'Secret plaintext must not exceed 64 KiB.', path: ['fields'] })
 }
 
 function hasUnpairedSurrogate(value: string): boolean {

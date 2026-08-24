@@ -35,6 +35,24 @@
         "vitest": "^4.1.10",
       },
     },
+    "packages/command": {
+      "name": "@oomol-lab/open-flow-command",
+      "version": "0.1.0-alpha.2",
+      "dependencies": {
+        "@oomol-lab/open-flow": "workspace:*",
+        "@wopjs/cast": "^0.1.16",
+        "modern-tar": "0.7.6",
+        "zod": "4.4.3",
+      },
+      "devDependencies": {
+        "@types/node": "^24.0.0",
+        "oxfmt": "^0.60.0",
+        "oxlint": "^1.75.0",
+        "typescript": "7.0.2",
+        "vite": "8.2.1",
+        "vitest": "^4.1.10",
+      },
+    },
     "packages/open-flow": {
       "name": "@oomol-lab/open-flow",
       "version": "0.1.0-alpha.2",
@@ -312,6 +330,8 @@
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.6", "https://registry.npmmirror.com/@napi-rs/wasm-runtime/-/wasm-runtime-1.1.6.tgz", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg=="],
 
     "@oomol-lab/open-flow": ["@oomol-lab/open-flow@workspace:packages/open-flow"],
+
+    "@oomol-lab/open-flow-command": ["@oomol-lab/open-flow-command@workspace:packages/command"],
 
     "@oomol-lab/open-flow-server": ["@oomol-lab/open-flow-server@workspace:apps/server"],
 

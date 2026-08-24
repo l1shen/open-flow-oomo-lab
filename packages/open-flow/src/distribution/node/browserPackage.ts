@@ -23,6 +23,7 @@ const cronTriggerEntryPath = 'src/trigger/common/cron.ts'
 const integrationTriggerEntryPath = 'src/trigger/common/integration.ts'
 const pollTriggerEntryPath = 'src/trigger/common/poll.ts'
 const providerTriggersEntryPath = 'src/trigger/providers/definitions.ts'
+const projectAuthoringEntryPath = 'src/project/common/authoring.ts'
 const projectChangeEntryPath = 'src/project/common/change.ts'
 const projectEncodingEntryPath = 'src/project/common/encoding.ts'
 const projectSemanticsEntryPath = 'src/project/common/semantics.ts'
@@ -58,6 +59,7 @@ export async function buildBrowserPackage(options: BuildBrowserPackageOptions): 
   await buildRuntime(options, commonOutputPath, providerTriggersEntryPath, 'provider-triggers', false)
   await buildRuntime(options, commonOutputPath, webhookTriggerEntryPath, 'webhook-trigger', false)
   await buildRuntime(options, browserOutputPath, projectChangeEntryPath, 'project-change', true)
+  await buildRuntime(options, browserOutputPath, projectAuthoringEntryPath, 'project-authoring', false)
   await buildRuntime(options, browserOutputPath, workbenchEntryPath, 'workbench', false)
   await writeDeclarations(options, browserOutputPath, commonOutputPath)
 }
@@ -177,6 +179,7 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
         path.join(options.sourceRoot, pollTriggerEntryPath),
         path.join(options.sourceRoot, providerTriggersEntryPath),
         path.join(options.sourceRoot, webhookTriggerEntryPath),
+        path.join(options.sourceRoot, projectAuthoringEntryPath),
         path.join(options.sourceRoot, projectChangeEntryPath),
         path.join(options.sourceRoot, workbenchEntryPath),
       ],
@@ -190,6 +193,27 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
       "'./project-notifications.js'",
     )
     const projectNotificationsDeclaration = await readFile(path.join(declarationRoot, 'control/common/projectNotifications.d.ts'), 'utf8')
+    const projectAuthoringDeclaration = (await readFile(path.join(declarationRoot, 'project/common/authoring.d.ts'), 'utf8'))
+      .replaceAll("'./edgeChanges.ts'", "'./project-authoring-edge.js'")
+      .replaceAll("'./flowChanges.ts'", "'./project-authoring-flow.js'")
+      .replaceAll("'./moduleChanges.ts'", "'./project-authoring-module.js'")
+      .replaceAll("'./nodeChanges.ts'", "'./project-authoring-node.js'")
+    const projectAuthoringEdgeDeclaration = (await readFile(path.join(declarationRoot, 'project/common/edgeChanges.d.ts'), 'utf8')).replaceAll(
+      "'./change.ts'",
+      "'./project-change.js'",
+    )
+    const projectAuthoringFlowDeclaration = (await readFile(path.join(declarationRoot, 'project/common/flowChanges.d.ts'), 'utf8')).replaceAll(
+      "'./change.ts'",
+      "'./project-change.js'",
+    )
+    const projectAuthoringModuleDeclaration = (await readFile(path.join(declarationRoot, 'project/common/moduleChanges.d.ts'), 'utf8')).replaceAll(
+      "'./change.ts'",
+      "'./project-change.js'",
+    )
+    const projectAuthoringNodeDeclaration = (await readFile(path.join(declarationRoot, 'project/common/nodeChanges.d.ts'), 'utf8')).replaceAll(
+      "'./change.ts'",
+      "'./project-change.js'",
+    )
     const projectChangeDeclaration = await readFile(path.join(declarationRoot, 'project/common/change.d.ts'), 'utf8')
     const connectorActionDeclaration = await readFile(path.join(declarationRoot, 'connector/common/actionSchema.d.ts'), 'utf8')
     const connectorProxyDeclaration = await readFile(path.join(declarationRoot, 'connector/common/proxy.d.ts'), 'utf8')
@@ -231,6 +255,11 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
       "'../browser/project-change.js'",
     )
     await Promise.all([
+      writeFile(path.join(browserOutputPath, 'project-authoring.d.ts'), projectAuthoringDeclaration),
+      writeFile(path.join(browserOutputPath, 'project-authoring-edge.d.ts'), projectAuthoringEdgeDeclaration),
+      writeFile(path.join(browserOutputPath, 'project-authoring-flow.d.ts'), projectAuthoringFlowDeclaration),
+      writeFile(path.join(browserOutputPath, 'project-authoring-module.d.ts'), projectAuthoringModuleDeclaration),
+      writeFile(path.join(browserOutputPath, 'project-authoring-node.d.ts'), projectAuthoringNodeDeclaration),
       writeFile(path.join(browserOutputPath, 'project-change.d.ts'), projectChangeDeclaration),
       writeFile(path.join(commonOutputPath, 'project-encoding.d.ts'), projectEncodingDeclaration),
       writeFile(path.join(commonOutputPath, 'project-semantics.d.ts'), projectSemanticsDeclaration),

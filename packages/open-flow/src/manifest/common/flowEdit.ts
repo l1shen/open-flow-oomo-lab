@@ -45,7 +45,7 @@ export const FlowEditOperationsSchema = z
     for (const [index, operation] of operations.entries()) {
       if (!isJsonValue(operation)) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'Expected a JSON-safe operation.',
           path: [index],
         })

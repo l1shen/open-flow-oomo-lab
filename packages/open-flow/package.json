@@ -30,6 +30,7 @@
     "./integration-trigger": "./src/trigger/common/integration.ts",
     "./poll-trigger": "./src/trigger/common/poll.ts",
     "./provider-triggers": "./src/trigger/providers/definitions.ts",
+    "./project-authoring": "./src/project/common/authoring.ts",
     "./project-change": "./src/project/common/change.ts",
     "./project-encoding": "./src/project/common/encoding.ts",
     "./project-semantics": "./src/project/common/semantics.ts",
@@ -42,19 +43,15 @@
   },
   "scripts": {
     "build": "bun scripts/build.ts",
-    "build:types": "bun scripts/build.ts --types-only",
     "check": "bun run format -- --check && bun run lint && bun run check:types && bun run check:boundaries",
     "check:boundaries": "bun scripts/check-platform-boundaries.ts",
     "check:types": "tsc --noEmit",
     "format": "oxfmt README.md NOTICE src test scripts vitest.config.ts package.json tsconfig.json",
     "lint": "oxlint --deny-warnings src test scripts vitest.config.ts",
-    "release:command": "bun scripts/release.ts",
     "test": "bun run test:vitest",
     "test:coverage": "vitest run --config vitest.config.ts --coverage src/project/common test/project-encoding.test.ts test/project-semantics.test.ts test/provider-triggers.test.ts test/run-events.test.ts test/scheduler.test.ts",
     "test:vitest": "vitest run --config vitest.config.ts src test",
-    "test:command-artifact": "bun scripts/check-command-artifact.ts",
-    "test:package": "bun run test:command-artifact && bun run test:npm-package",
-    "test:npm-package": "bun scripts/check-npm-package.ts"
+    "test:package": "bun scripts/check-npm-package.ts"
   },
   "devDependencies": {
     "@babel/parser": "8.0.4",

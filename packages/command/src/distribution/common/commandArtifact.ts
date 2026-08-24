@@ -43,14 +43,14 @@ const manifestSchema = z
     for (const [index, file] of manifest.files.entries()) {
       if (file.path == commandArtifactManifestFile) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'The command artifact manifest cannot list itself.',
           path: ['files', index, 'path'],
         })
       }
       if (previousPath != null && compareCommandArtifactPaths(previousPath, file.path) >= 0) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'Command artifact files must have unique paths in Unicode code-point order.',
           path: ['files', index, 'path'],
         })
@@ -60,7 +60,7 @@ const manifestSchema = z
 
     if (!manifest.files.some((file) => file.path == commandArtifactEntryFile)) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: `Command artifact is missing required file ${JSON.stringify(commandArtifactEntryFile)}.`,
         path: ['files'],
       })

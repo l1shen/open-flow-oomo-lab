@@ -2,6 +2,7 @@
 
 本文定义 Open Flow 交付给 `oo flow` 宿主的 immutable Command Artifact、入口 host contract 和验证规则。产品边界以
 [产品与架构边界](../architecture.md)为准。Command Artifact 是 CLI 的代码分发载体，不包含 Workbench、Server 或本地 Project 实现。
+其可编辑源码、构建、验证和发布入口只属于 `packages/command`；`packages/open-flow` 只提供 Command 消费的公开产品 API。
 
 ## 版本与发布记录
 

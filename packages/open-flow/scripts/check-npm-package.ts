@@ -17,7 +17,7 @@ const rootPath = path.resolve(import.meta.dirname, '..')
 const manifest = JSON.parse(await readFile(path.join(rootPath, 'package.json'), 'utf8')) as { version: string }
 const tarballPath = path.join(rootPath, 'dist/release', `oomol-lab-open-flow-${manifest.version}.tgz`)
 
-await execFileAsync(process.execPath, [path.join(rootPath, 'scripts/build.ts'), '--types-only', '--quiet'], { cwd: rootPath })
+await execFileAsync(process.execPath, [path.join(rootPath, 'scripts/build.ts'), '--quiet'], { cwd: rootPath })
 const entries = await unpackTar(gunzipSync(await readFile(tarballPath)), { strict: true })
 const entryNames = entries.map((entry) => entry.header.name).toSorted()
 for (const expected of [
@@ -25,6 +25,12 @@ for (const expected of [
   'package/NOTICE',
   'package/README.md',
   'package/dist/browser/licenses.md',
+  'package/dist/browser/project-authoring-edge.d.ts',
+  'package/dist/browser/project-authoring-flow.d.ts',
+  'package/dist/browser/project-authoring-module.d.ts',
+  'package/dist/browser/project-authoring-node.d.ts',
+  'package/dist/browser/project-authoring.d.ts',
+  'package/dist/browser/project-authoring.js',
   'package/dist/browser/project-notifications.d.ts',
   'package/dist/browser/project-change.d.ts',
   'package/dist/browser/project-change.js',
@@ -142,6 +148,10 @@ assert.deepEqual(packedManifest.exports, {
   './provider-triggers': {
     import: './dist/common/provider-triggers.js',
     types: './dist/common/provider-triggers.d.ts',
+  },
+  './project-authoring': {
+    import: './dist/browser/project-authoring.js',
+    types: './dist/browser/project-authoring.d.ts',
   },
   './project-change': {
     import: './dist/browser/project-change.js',
@@ -278,6 +288,7 @@ async function verifyConsumer(versions: { readonly react: string; readonly react
         "import { integrationConformanceCases } from '@oomol-lab/open-flow/integration-trigger'",
         "import { maximumPollEventsPerPage } from '@oomol-lab/open-flow/poll-trigger'",
         "import { triggerDefinitions } from '@oomol-lab/open-flow/provider-triggers'",
+        "import { createFlow } from '@oomol-lab/open-flow/project-authoring'",
         "import type { Task } from '@oomol-lab/open-flow'",
         "import { encodeRevision } from '@oomol-lab/open-flow/project-encoding'",
         "import { prepareFlow } from '@oomol-lab/open-flow/project-semantics'",
@@ -316,6 +327,7 @@ async function verifyConsumer(versions: { readonly react: string; readonly react
         'void validateTriggerSchedule',
         'void maximumPollEventsPerPage',
         'void triggerDefinitions',
+        'void createFlow',
         'void encodeRevision',
         'void prepareFlow',
         'void transition',

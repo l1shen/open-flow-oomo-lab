@@ -17,7 +17,7 @@ export const FlowSchema = /* @__PURE__ */ z
       const key = JSON.stringify([snapshot.type, snapshot.revision])
       if (definitions.has(key)) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: `Duplicate Trigger definition "${snapshot.type}" revision "${snapshot.revision}".`,
           path: ['trigger_definitions', index],
         })
@@ -28,7 +28,7 @@ export const FlowSchema = /* @__PURE__ */ z
     for (const [index, node] of flow.nodes.entries()) {
       if (nodes.has(node.node_id)) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: `Duplicate node ID "${node.node_id}".`,
           path: ['nodes', index, 'node_id'],
         })
@@ -39,7 +39,7 @@ export const FlowSchema = /* @__PURE__ */ z
         const definition = definitions.get(JSON.stringify([node.trigger.type, node.trigger.revision]))?.definition
         if (definition == null) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: `Trigger "${node.node_id}" references missing definition "${node.trigger.type}" revision "${node.trigger.revision}".`,
             path: ['nodes', index, 'trigger'],
           })
@@ -47,40 +47,40 @@ export const FlowSchema = /* @__PURE__ */ z
         }
         if (definition.connector != null && node.trigger.connection == null) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: `Trigger "${node.node_id}" requires a connection for service "${definition.connector.service_id}".`,
             path: ['nodes', index, 'trigger', 'connection'],
           })
         } else if (definition.connector == null && node.trigger.connection != null) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: `Trigger "${node.node_id}" does not use a Connector connection.`,
             path: ['nodes', index, 'trigger', 'connection'],
           })
         }
         if (definition.provisioning.kind == 'poll' && definition.connector == null) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: `Poll Trigger "${node.node_id}" requires a Connector connection.`,
             path: ['nodes', index, 'trigger', 'connection'],
           })
         }
         if (definition.provisioning.kind == 'integration' && definition.connector == null) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: `Integration Trigger "${node.node_id}" requires a Connector connection.`,
             path: ['nodes', index, 'trigger', 'connection'],
           })
         }
         if (definition.provisioning.kind == 'poll' && node.trigger.poll_times == null) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: `Poll Trigger "${node.node_id}" requires exactly one poll time.`,
             path: ['nodes', index, 'trigger', 'poll_times'],
           })
         } else if (definition.provisioning.kind != 'poll' && node.trigger.poll_times != null) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: `${definition.provisioning.kind == 'webhook' ? 'Webhook' : 'Integration'} Trigger "${node.node_id}" cannot define poll times.`,
             path: ['nodes', index, 'trigger', 'poll_times'],
           })
@@ -95,7 +95,7 @@ export const FlowSchema = /* @__PURE__ */ z
           )
         } catch (error) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: error instanceof Error ? error.message : String(error),
             path: ['nodes', index, 'trigger'],
           })
@@ -110,7 +110,7 @@ export const FlowSchema = /* @__PURE__ */ z
           const sourceNode = nodes.get(source.node_id)
           if (sourceNode != null && 'trigger' in sourceNode && source.output_handle != 'payload') {
             context.addIssue({
-              code: z.ZodIssueCode.custom,
+              code: 'custom',
               message: `Trigger "${source.node_id}" only exposes the "payload" output.`,
               path: ['nodes', nodeIndex, 'inputs_from', inputIndex, 'from_node', sourceIndex, 'output_handle'],
             })

@@ -18,6 +18,8 @@
     "test": "bun run --workspaces --if-present test",
     "test:coverage": "bun run --workspaces --if-present test:coverage",
     "test:docker": "bun run --filter @oomol-lab/open-flow-server test:docker",
-    "test:package": "bun run --filter @oomol-lab/open-flow test:package"
+    "test:command-artifact": "bun run --filter @oomol-lab/open-flow-command test:package",
+    "test:npm-package": "bun run --filter @oomol-lab/open-flow test:package",
+    "test:package": "bun run test:npm-package && bun run test:command-artifact"
   }
 }

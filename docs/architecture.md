@@ -48,8 +48,10 @@ RunEvent 明细可以按部署声明的 retention 到期，但唯一 terminal re
 
 本仓库是公共合同、可移植实现、Workbench runtime 和 Server 的唯一可编辑源码事实源。
 
-- `packages/open-flow` 拥有公共类型、严格 decoder、Control API client、black-box conformance、Project/Run/Trigger 的确定性语义、CLI、
-  产品中立 Workbench runtime 和内层 UI。
+- `packages/open-flow` 拥有公共类型、严格 decoder、Control API client、black-box conformance、Project/Run/Trigger 的确定性语义、
+  程序化 authoring API、产品中立 Workbench runtime 和内层 UI。
+- `packages/command` 拥有 CLI 行为、Command Host boundary、Command Artifact 协议、确定性 archive 构建和发布。它只通过
+  `packages/open-flow` 的公开 package entry 消费产品合同；公共 package 不能反向依赖 CLI 或 Command Artifact。
 - `apps/server` 拥有 Server application lifecycle、SQLite、HTTP adapter、本地调度、具体 `isolated-vm` host、同源 Workbench host 和 Docker 交付。
 - Hosted deployment 只拥有自己的基础设施接入、认证、application lifecycle、Capability mediation、Provider 配置和正式 Workbench 宿主。
 
