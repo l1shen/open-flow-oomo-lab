@@ -279,10 +279,59 @@ export function setInputValue(
 }
 
 export function updateCondition(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: ConditionSettings): ProjectChanges | undefined {
-  const node = revision.node(target, nodeId)?.node
-  if (node?.kind != 'condition') return
-  const { defaultOutput: _defaultOutput, ...rest } = node
-  return replaceNode(target, nodeId, { ...rest, ...settings })
+  const graph = revision.graph(target)
+  const current = graph?.nodes[nodeId]
+  if (graph == null || current?.kind != 'condition') return
+  const currentOutputs = Object.fromEntries([
+    ...current.cases.map((item) => [item.output, true] as const),
+    ...(current.defaultOutput == null ? [] : [[current.defaultOutput, true] as const]),
+  ])
+  const nextOutputs = Object.fromEntries([
+    ...settings.cases.map((item) => [item.output, true] as const),
+    ...(settings.defaultOutput == null ? [] : [[settings.defaultOutput, true] as const]),
+  ])
+  const inputRename = current.input.handle == settings.input.handle ? undefined : ([current.input.handle, settings.input.handle] as const)
+  const outputRename = renamedPort(currentOutputs, nextOutputs)
+  const outputNames = new Set(Object.keys(nextOutputs))
+  const changes: ChangeOperation[] = []
+
+  for (const [currentNodeId, node] of Object.entries(graph.nodes)) {
+    if (!('inputs' in node)) continue
+    let changed = currentNodeId == nodeId
+    const inputs: Record<string, InputMapping> = { ...node.inputs }
+
+    if (currentNodeId == nodeId) {
+      if (inputRename != null && Object.hasOwn(inputs, inputRename[0])) {
+        inputs[inputRename[1]] = inputs[inputRename[0]]!
+        delete inputs[inputRename[0]]
+      }
+      for (const name of Object.keys(inputs)) {
+        if (name != settings.input.handle) delete inputs[name]
+      }
+    }
+
+    for (const [name, mapping] of Object.entries(inputs)) {
+      if (mapping.kind != 'sources') continue
+      const sources = mapping.sources.flatMap((source) => {
+        if (source.kind != 'node' || source.nodeId != nodeId) return [source]
+        if (outputRename != null && source.output == outputRename[0]) return [{ ...source, output: outputRename[1] }]
+        return outputNames.has(source.output) ? [source] : []
+      })
+      if (sources.length == mapping.sources.length && sources.every((source, index) => source === mapping.sources[index])) continue
+      changed = true
+      if (sources.length == 0) delete inputs[name]
+      else inputs[name] = { kind: 'sources', sources }
+    }
+
+    if (!changed) continue
+    if (currentNodeId == nodeId) {
+      const { defaultOutput: _defaultOutput, ...rest } = current
+      changes.push({ kind: 'graph.node.replace', node: { ...rest, ...settings, inputs }, nodeId: currentNodeId, target })
+    } else {
+      changes.push({ kind: 'graph.node.replace', node: { ...node, inputs }, nodeId: currentNodeId, target })
+    }
+  }
+  return changes
 }
 
 export function updateValue(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: readonly ValueSettings[]): ProjectChanges | undefined {

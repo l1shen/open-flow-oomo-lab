@@ -37,6 +37,7 @@ const connection = (nodeId: string) => ({
 describe('WorkbenchDesigner', () => {
   it('does not route externally managed Code Tasks through inline Scriptlet setup', async () => {
     const onAddNode = vi.fn(async () => 'created')
+    const onChangeCondition = vi.fn()
     const onOpenBlocks = vi.fn()
     const markup = renderToStaticMarkup(
       <I18nProvider i18n={createI18n('en')}>
@@ -62,6 +63,7 @@ describe('WorkbenchDesigner', () => {
           }}
           onAddNode={onAddNode}
           onChangeComment={() => undefined}
+          onChangeCondition={onChangeCondition}
           onChangeInput={() => undefined}
           onChangeTaskPorts={() => undefined}
           onChangeNodeDescription={() => undefined}
@@ -107,6 +109,17 @@ describe('WorkbenchDesigner', () => {
 
     await captured.props?.onAddNode('workbench:browse-provider-triggers', { x: 10, y: 20 })
     expect(onOpenBlocks).toHaveBeenCalledOnce()
+
+    captured.props?.onChangeCondition?.('condition', {
+      cases: [{ expressions: [{ input: 'value', operator: 'is true' }], output: 'matched', relation: 'all' }],
+      defaultOutput: 'fallback',
+      input: { handle: 'value', jsonSchema: { type: 'boolean' }, nullable: false },
+    })
+    expect(onChangeCondition).toHaveBeenCalledWith('condition', {
+      cases: [{ expressions: [{ input: 'value', operator: 'isTrue' }], output: 'matched', relation: 'all' }],
+      defaultOutput: 'fallback',
+      input: { handle: 'value', jsonSchema: { type: 'boolean' }, nullable: false },
+    })
   })
 
   it('reports both canvas panels as expanded when they are visible', () => {
@@ -120,6 +133,7 @@ describe('WorkbenchDesigner', () => {
           model={{ edges: [], nodes: [], viewport: { x: 0, y: 0, zoom: 1 } }}
           onAddNode={async () => undefined}
           onChangeComment={() => undefined}
+          onChangeCondition={() => undefined}
           onChangeInput={() => undefined}
           onChangeTaskPorts={() => undefined}
           onChangeNodeDescription={() => undefined}
@@ -184,6 +198,7 @@ describe('WorkbenchDesigner', () => {
           }}
           onAddNode={async () => undefined}
           onChangeComment={() => undefined}
+          onChangeCondition={() => undefined}
           onChangeInput={() => undefined}
           onChangeTaskPorts={() => undefined}
           onChangeNodeDescription={() => undefined}

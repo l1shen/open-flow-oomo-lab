@@ -1,5 +1,6 @@
 import type { KeyboardEvent, PointerEvent, ReactElement } from 'react'
 import type {
+  FlowDesignerViewConditionChange,
   FlowDesignerViewInput,
   FlowDesignerViewAddItem,
   FlowDesignerViewEdge,
@@ -8,11 +9,11 @@ import type {
   FlowDesignerViewValue,
   FlowDesignerViewWebhook,
 } from '../../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
-import type { JsonValue } from '../api.ts'
+import type { ConditionOperator, JsonValue } from '../api.ts'
 import type { WorkbenchTheme } from '../contract.ts'
 import type { DesignerEdge, DesignerGraph, DesignerViewport, Point } from '../workspace.ts'
 import type { AddNodeOption } from './addNodeOptions.ts'
-import type { DesignerTarget } from './projectChanges.ts'
+import type { ConditionSettings, DesignerTarget } from './projectChanges.ts'
 import type { WebhookSettings } from './projectChanges.ts'
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
@@ -35,6 +36,7 @@ interface Props {
   readonly onAddNode: (option: AddNodeOption, position: Point, connection?: (nodeId: string) => Omit<DesignerEdge, 'id'>) => Promise<string | undefined>
   readonly onConnect: (edge: Omit<DesignerEdge, 'id'>) => void
   readonly onChangeComment: (nodeId: string, value: { readonly content: string; readonly title: string }) => void
+  readonly onChangeCondition: (nodeId: string, value: ConditionSettings) => void
   readonly onChangeNodeDescription: (nodeId: string, description: string | undefined) => void
   readonly onChangeInput: (nodeId: string, handle: string, value: JsonValue | undefined) => void
   readonly onChangeTaskPorts: (nodeId: string, inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]) => void
@@ -64,6 +66,70 @@ export interface WorkbenchDesignerHandle {
 }
 
 const browseProviderTriggersId = 'workbench:browse-provider-triggers'
+
+function conditionOperator(operator: FlowDesignerViewConditionChange['cases'][number]['expressions'][number]['operator']): ConditionOperator {
+  switch (operator) {
+    case 'ends with':
+      return 'endsWith'
+    case 'has key':
+      return 'hasKey'
+    case 'has value':
+      return 'hasValue'
+    case 'is empty':
+      return 'isEmpty'
+    case 'is false':
+      return 'isFalse'
+    case 'is not empty':
+      return 'isNotEmpty'
+    case 'is not null':
+      return 'isNotNull'
+    case 'is null':
+      return 'isNull'
+    case 'is true':
+      return 'isTrue'
+    case 'not contains':
+      return 'notContains'
+    case 'not has key':
+      return 'notHasKey'
+    case 'not has value':
+      return 'notHasValue'
+    case 'starts with':
+      return 'startsWith'
+    case '!=':
+    case '<':
+    case '<=':
+    case '==':
+    case '>':
+    case '>=':
+    case 'contains':
+      return operator
+  }
+}
+
+function conditionSettings(value: FlowDesignerViewConditionChange): ConditionSettings {
+  return {
+    cases: value.cases.map((item) => ({
+      expressions: item.expressions.map((expression) =>
+        Object.assign(
+          { input: expression.input, operator: conditionOperator(expression.operator) },
+          expression.value === undefined ? {} : { value: expression.value as JsonValue },
+        ),
+      ),
+      output: item.output,
+      relation: item.relation,
+    })),
+    ...(value.defaultOutput == null ? {} : { defaultOutput: value.defaultOutput }),
+    input: Object.assign(
+      {
+        ...(value.input.description == null ? {} : { description: value.input.description }),
+        handle: value.input.handle,
+        jsonSchema: (value.input.jsonSchema ?? {}) as JsonValue,
+        nullable: value.input.nullable ?? false,
+      },
+      value.input.defaultValue === undefined ? {} : { value: value.input.defaultValue as JsonValue },
+    ),
+  }
+}
 
 function addItems(options: readonly AddNodeOption[]): FlowDesignerViewAddItem[] {
   return options.map((option) => ({
@@ -102,6 +168,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
     onAddNode,
     onConnect,
     onChangeComment,
+    onChangeCondition,
     onChangeNodeDescription,
     onChangeInput,
     onChangeTaskPorts,
@@ -259,6 +326,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
         }}
         onConnect={onConnect}
         onChangeComment={onChangeComment}
+        onChangeCondition={(nodeId, value) => onChangeCondition(nodeId, conditionSettings(value))}
         onChangeNodeDescription={onChangeNodeDescription}
         onChangeInput={(nodeId, handle, value) => onChangeInput(nodeId, handle, value as JsonValue | undefined)}
         onChangeTaskPorts={onChangeTaskPorts}

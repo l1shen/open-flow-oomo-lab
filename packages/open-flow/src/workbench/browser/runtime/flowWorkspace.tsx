@@ -243,6 +243,7 @@ function Editor({
         }}
         onConnect={(edge) => void store.workspace.connect(edge)}
         onChangeComment={(nodeId, value) => void store.workspace.saveComment(nodeId, value)}
+        onChangeCondition={(nodeId, value) => void store.workspace.saveCondition(nodeId, value)}
         onChangeNodeDescription={(nodeId, description) => void store.workspace.saveNodeDescription(nodeId, description)}
         onChangeInput={(nodeId, handle, value) => void store.workspace.setInputValue(nodeId, handle, value)}
         onChangeTaskPorts={(nodeId, inputs, outputs) => void store.workspace.saveCodeTaskPorts(nodeId, codeTaskPorts(inputs, outputs))}

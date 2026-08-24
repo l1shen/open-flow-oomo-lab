@@ -105,6 +105,12 @@ export interface FlowDesignerViewConditionCase {
   readonly relation: 'all' | 'any'
 }
 
+export interface FlowDesignerViewConditionChange {
+  readonly cases: readonly FlowDesignerViewConditionCase[]
+  readonly defaultOutput?: string
+  readonly input: FlowDesignerViewInput
+}
+
 export interface FlowDesignerViewNodeRun {
   readonly progress?: number
   readonly status: 'error' | 'idle' | 'running' | 'success' | 'waiting'
@@ -295,6 +301,7 @@ export interface FlowDesignerViewProps {
   ) => Promise<string | undefined> | string | undefined
   readonly onConnect: (edge: Omit<FlowDesignerViewEdge, 'id'>) => void
   readonly onChangeComment?: (nodeId: string, value: { readonly content: string; readonly title: string }) => void
+  readonly onChangeCondition?: (nodeId: string, value: FlowDesignerViewConditionChange) => void
   readonly onChangeNodeDescription?: (nodeId: string, description: string | undefined) => void
   readonly onChangeInput?: (nodeId: string, handle: string, value: unknown) => void
   readonly onChangeTaskPorts?: (nodeId: string, inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]) => void
@@ -331,6 +338,7 @@ interface NodeValues {
   readonly successCount: Val<number | undefined>
   readonly timeout: Val<number | undefined>
   readonly title: Val<string>
+  syncingCondition?: boolean
   syncingPorts?: boolean
   triggerPresentation?: Val<FlowDesignerViewTriggerPresentation | undefined>
   syncingInput?: boolean
@@ -359,6 +367,7 @@ interface ViewCallbacks {
   readonly onAddNode: FlowDesignerViewProps['onAddNode']
   readonly onConnect: FlowDesignerViewProps['onConnect']
   readonly onChangeComment: FlowDesignerViewProps['onChangeComment']
+  readonly onChangeCondition: FlowDesignerViewProps['onChangeCondition']
   readonly onChangeNodeDescription: FlowDesignerViewProps['onChangeNodeDescription']
   readonly onChangeInput: FlowDesignerViewProps['onChangeInput']
   readonly onChangeTaskPorts: FlowDesignerViewProps['onChangeTaskPorts']
@@ -386,6 +395,7 @@ class FlowDesignerViewAdapter {
   #modelViewport: FlowDesignerViewViewport | undefined
   #pendingDisconnects = new Map<string, FlowDesignerViewEdge>()
   #runStatus: Val<FlowRunStatus>
+  #selectedNodeIds = new Set<string>()
 
   constructor(model: FlowDesignerViewModel, editable: boolean, language: string, addItems: readonly FlowDesignerViewAddItem[], callbacks: ViewCallbacks) {
     this.#addItems = addItems
@@ -510,14 +520,19 @@ class FlowDesignerViewAdapter {
     const editableChanged = this.store.$.editable.value != editable
     if (editableChanged) this.store.$$.editable.set(editable)
     if (this.#language.value != language) this.#language.set(language)
-    if (this.#model !== model || editableChanged) {
+    const modelChanged = this.#model !== model || editableChanged
+    if (modelChanged) {
       this.#syncModel(model)
       this.#model = model
     }
     const selected = new Set(selectedNodeIds)
-    for (const [nodeId, entry] of this.#entries) {
-      const value = selected.has(nodeId)
-      if (entry.store.$.selected.value != value) entry.store.$$.selected.set(value)
+    const selectionChanged = selected.size != this.#selectedNodeIds.size || [...selected].some((nodeId) => !this.#selectedNodeIds.has(nodeId))
+    this.#selectedNodeIds = selected
+    if (modelChanged || selectionChanged) {
+      for (const [nodeId, entry] of this.#entries) {
+        const value = selected.has(nodeId)
+        if (entry.store.$.selected.value != value) entry.store.$$.selected.set(value)
+      }
     }
   }
 
@@ -601,6 +616,7 @@ class FlowDesignerViewAdapter {
           contentKey,
           this.store.designerUIStore,
           this.store,
+          this.#callbacks.onChangeCondition,
           this.#callbacks.onChangeNodeDescription,
           this.#callbacks.onChangeInput,
           this.#callbacks.onChangeTaskPorts,
@@ -620,8 +636,12 @@ class FlowDesignerViewAdapter {
       nextPositions.set(node.id, position)
     }
 
-    this.store.$$.nodes.replace(nextStores)
-    this.store.$$.commentNodes!.replace(nextComments)
+    if (nextStores.size != this.store.$.nodes.size || [...nextStores].some(([nodeId, store]) => this.store.$.nodes.get(nodeId) !== store)) {
+      this.store.$$.nodes.replace(nextStores)
+    }
+    if (nextComments.size != this.store.$.commentNodes!.size || [...nextComments].some(([nodeId, store]) => this.store.$.commentNodes!.get(nodeId) !== store)) {
+      this.store.$$.commentNodes!.replace(nextComments)
+    }
     this.#entries = nextEntries
     this.#modelPositions = nextPositions
   }
@@ -719,6 +739,35 @@ function conditionCases(node: FlowDesignerViewConditionNode): ConditionHandleDef
       }),
     ),
   }))
+}
+
+function conditionChange(values: NodeValues): FlowDesignerViewConditionChange {
+  const input = values.inputDefs.value[0]!
+  return {
+    cases: values.conditionCases!.value.map((item) => ({
+      expressions: (item.expressions ?? []).map((expression) =>
+        Object.assign(
+          {
+            input: expression.input_handle,
+            operator: expression.operator as FlowDesignerViewConditionOperator,
+          },
+          Object.hasOwn(expression, 'value') ? { value: expression.value } : {},
+        ),
+      ),
+      output: item.handle,
+      relation: item.logical == 'OR' ? 'any' : 'all',
+    })),
+    ...(values.defaultCondition!.value == null ? {} : { defaultOutput: values.defaultCondition!.value.handle }),
+    input: Object.assign(
+      {
+        description: input.description,
+        handle: input.handle,
+        jsonSchema: input.json_schema,
+        nullable: input.nullable,
+      },
+      Object.hasOwn(input, 'value') ? { defaultValue: input.value } : {},
+    ),
+  }
 }
 
 function valueDefs(node: FlowDesignerViewValueNode): ValueHandleDef[] {
@@ -820,6 +869,7 @@ function createNodeEntry(
   contentKey: string,
   designerUIStore: DesignerUIStore,
   designerStore: FlowDesignerStore,
+  onChangeCondition: FlowDesignerViewProps['onChangeCondition'],
   onChangeNodeDescription: FlowDesignerViewProps['onChangeNodeDescription'],
   onChangeInput: FlowDesignerViewProps['onChangeInput'],
   onChangeTaskPorts: FlowDesignerViewProps['onChangeTaskPorts'],
@@ -901,7 +951,7 @@ function createNodeEntry(
       values.conditionCases = val(conditionCases(node))
       values.defaultCondition = val(node.defaultOutput == null ? undefined : { handle: node.defaultOutput as HandleName })
       const conditionsSection = new ConditionsSectionStore({
-        role: 'guest',
+        role: designerStore.$.editable.value ? 'author' : 'guest',
         lang: designerStore.lang$,
         handleOutputsTo: values.outputsTo,
         inputHandleDefs: values.inputDefs,
@@ -909,12 +959,18 @@ function createNodeEntry(
         defaultConditionHandleDef: values.defaultCondition,
         showSettings,
       })
+      const notifyChange = () => {
+        if (values.syncingCondition || !designerStore.$.editable.value) return
+        onChangeCondition?.(node.id, conditionChange(values))
+      }
       store = new ConditionNodeStore(node.id as NodeId, {
         changeDescription,
         display$: { ...commonDisplay, sections: val([inputSection, conditionsSection, diagnosticSection]) },
         designerUIStore,
         duplicateNode,
       })
+      store.dispose.add(values.conditionCases.reaction(notifyChange, true))
+      store.dispose.add(values.defaultCondition.reaction(notifyChange, true))
       store.dispose.add([values.conditionCases, values.defaultCondition])
       break
     }
@@ -1065,6 +1121,7 @@ function updateNodeEntry(
   connected: readonly HandleName[],
   contentKey: string,
 ): SemanticNodeEntry {
+  if (node.kind == 'condition') entry.values.syncingCondition = true
   entry.values.description.set(node.description)
   entry.values.diagnostics.set((node.diagnostics ?? 0) > 0)
   entry.values.concurrency.set(node.concurrency)
@@ -1089,6 +1146,7 @@ function updateNodeEntry(
   if (node.kind == 'condition') {
     entry.values.conditionCases!.set(conditionCases(node))
     entry.values.defaultCondition!.set(node.defaultOutput == null ? undefined : { handle: node.defaultOutput as HandleName })
+    entry.values.syncingCondition = false
   }
   if (node.kind == 'value') {
     entry.values.syncingValue = true
@@ -1113,6 +1171,7 @@ function callbacksFromProps(props: FlowDesignerViewProps): ViewCallbacks {
   return {
     onAddNode: props.onAddNode,
     onChangeComment: props.onChangeComment,
+    onChangeCondition: props.onChangeCondition,
     onChangeNodeDescription: props.onChangeNodeDescription,
     onChangeInput: props.onChangeInput,
     onChangeTaskPorts: props.onChangeTaskPorts,

@@ -1,4 +1,4 @@
-import type { ReadonlyVal } from 'value-enhancer'
+import type { ComputeGet, ReadonlyVal } from 'value-enhancer'
 import type { ReadonlyReactiveMap } from 'value-enhancer/collections'
 import type { HandleInputFrom, HandleOutputFrom, NodeId } from '../../../../schema/index.ts'
 import type { NodeStore, NodeStoreDisplay$, NodeStoreManifest$ } from '../node/node.store.ts'
@@ -48,12 +48,12 @@ function deriveEdgesFromNode(
       const edgeStores: Record<EdgeId, EdgeStore> = {}
       const inputs_from = get(toNode.display$.inputs_from)
       if (inputs_from) {
-        makeEdges(inputs_from, toNode, edgeStores, lastEdgeStores, nodes, flowNode, bindValidateConnection)
+        makeEdges(inputs_from, toNode, edgeStores, lastEdgeStores, nodes, flowNode, get, bindValidateConnection)
       }
 
       const outputs_from = get(toNode.display$.outputs_from)
       if (outputs_from) {
-        makeEdges(outputs_from, toNode, edgeStores, lastEdgeStores, nodes, flowNode, bindValidateConnection)
+        makeEdges(outputs_from, toNode, edgeStores, lastEdgeStores, nodes, flowNode, get, bindValidateConnection)
       }
 
       if (lastEdgeStores) {
@@ -88,6 +88,7 @@ function makeEdges(
   lastEdgeStores: Record<EdgeId, EdgeStore> | undefined,
   nodes: ReadonlyReactiveMap<NodeId, NodeStore<NodeStoreManifest$, NodeStoreDisplay$>>,
   flowNode: SubflowNodeStore | undefined,
+  get: ComputeGet,
   bindValidateConnection?: (edgeStore: EdgeStore) => void,
 ) {
   for (const f of from) {
@@ -99,6 +100,7 @@ function makeEdges(
     if (f.from_node) {
       for (const source of f.from_node) {
         const connection: ManifestConnection = { from: { type: 'from_node', source }, to }
+        if (!canRenderConnection(connection, toNode, nodes, flowNode, get)) continue
         const rfEdgeId = getRFEdgeId(connection)
         edgeStores[rfEdgeId] = lastEdgeStores?.[rfEdgeId] ?? new EdgeStore(rfEdgeId, { nodes, flowNode, connection })
         bindValidateConnection?.(edgeStores[rfEdgeId])
@@ -110,6 +112,7 @@ function makeEdges(
       if (flowNode) {
         for (const source of f.from_flow) {
           const connection: ManifestConnection = { from: { type: 'from_flow', source }, to }
+          if (!canRenderConnection(connection, toNode, nodes, flowNode, get)) continue
           const rfEdgeId = getRFEdgeId(connection)
           edgeStores[rfEdgeId] = lastEdgeStores?.[rfEdgeId] ?? new EdgeStore(rfEdgeId, { nodes, flowNode, connection })
           bindValidateConnection?.(edgeStores[rfEdgeId])
@@ -117,6 +120,23 @@ function makeEdges(
       }
     }
   }
+}
+
+function canRenderConnection(
+  connection: ManifestConnection,
+  toNode: NodeStore<NodeStoreManifest$, NodeStoreDisplay$>,
+  nodes: ReadonlyReactiveMap<NodeId, NodeStore<NodeStoreManifest$, NodeStoreDisplay$>>,
+  flowNode: SubflowNodeStore | undefined,
+  get: ComputeGet,
+): boolean {
+  const sourceDefs =
+    connection.from.type == 'from_node' ? get(get(nodes.$).get(connection.from.source.node_id)?.display$.outputs_def) : get(flowNode?.display$.inputs_def)
+  const sourceHandle = connection.from.type == 'from_node' ? connection.from.source.output_handle : connection.from.source.input_handle
+  if (!sourceDefs?.some((def) => 'handle' in def && def.handle == sourceHandle)) return false
+
+  const targetDefs = connection.to.type == 'to_node' ? get(toNode.display$.inputs_def) : get(flowNode?.display$.outputs_def)
+  const targetHandle = connection.to.type == 'to_node' ? connection.to.target.input_handle : connection.to.target.output_handle
+  return targetDefs?.some((def) => 'handle' in def && def.handle == targetHandle) == true
 }
 
 function getEdgeUIConnectionTo(node: NodeStore, from: HandleInputFrom | HandleOutputFrom): ManifestConnectionTo | null {

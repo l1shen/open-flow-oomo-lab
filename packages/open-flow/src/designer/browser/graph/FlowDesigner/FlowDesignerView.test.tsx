@@ -2,6 +2,7 @@ import type { HandleName } from '../../../../schema/index.ts'
 import type { FlowDesignerProps } from './FlowDesigner.tsx'
 import type {
   FlowDesignerViewCommentNode,
+  FlowDesignerViewConditionNode,
   FlowDesignerViewModel,
   FlowDesignerViewProps,
   FlowDesignerViewTaskNode,
@@ -9,6 +10,7 @@ import type {
 } from './FlowDesignerView.tsx'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ConditionsSectionStore } from '../../stores/node/nodeSection/conditionsSection.store.ts'
 import { InputSectionStore } from '../../stores/node/nodeSection/inputSection.store.ts'
 import { OutputSectionStore } from '../../stores/node/nodeSection/outputSection.store.ts'
 import { FlowDesignerView } from './FlowDesignerView.tsx'
@@ -92,6 +94,26 @@ const commentNode = (title: string): FlowDesignerViewCommentNode => ({
   kind: 'comment',
   position: { x: 0, y: 100 },
   title,
+})
+
+const conditionNode = (output = 'matched'): FlowDesignerViewConditionNode => ({
+  cases: [
+    {
+      expressions: [{ input: 'value', operator: 'is true' }],
+      output,
+      relation: 'all',
+    },
+  ],
+  defaultOutput: 'fallback',
+  id: 'condition',
+  inputs: [{ handle: 'value', jsonSchema: { type: 'boolean' }, nullable: false }],
+  kind: 'condition',
+  outputs: [
+    { handle: output, jsonSchema: {}, nullable: true },
+    { handle: 'fallback', jsonSchema: {}, nullable: true },
+  ],
+  position: { x: 0, y: 0 },
+  title: 'Condition',
 })
 
 function props(value: FlowDesignerViewModel, overrides: Partial<FlowDesignerViewProps> = {}): FlowDesignerViewProps {
@@ -198,6 +220,37 @@ describe('FlowDesignerView model synchronization', () => {
     store.dispose()
   })
 
+  it('persists edits made through the inline Condition controls', () => {
+    const onChangeCondition = vi.fn()
+    const view = FlowDesignerView(props(model([conditionNode()]), { onChangeCondition })) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    const section = node.findSection<ConditionsSectionStore>(ConditionsSectionStore.TYPE)!
+
+    expect(section.role).toBe('author')
+    expect(section.renameHandle('matched' as HandleName, 'accepted' as HandleName)).toBe(true)
+
+    expect(onChangeCondition).toHaveBeenLastCalledWith('condition', {
+      cases: [
+        {
+          expressions: [{ input: 'value', operator: 'is true' }],
+          output: 'accepted',
+          relation: 'all',
+        },
+      ],
+      defaultOutput: 'fallback',
+      input: { description: undefined, handle: 'value', jsonSchema: { type: 'boolean' }, nullable: false },
+    })
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('does not echo model-owned Condition updates back to the host', () => {
+    const onChangeCondition = vi.fn()
+    const store = update(props(model([conditionNode()]), { onChangeCondition }), props(model([conditionNode('accepted')]), { onChangeCondition }))
+
+    expect(onChangeCondition).not.toHaveBeenCalled()
+    store.dispose()
+  })
+
   it('does not echo model-owned Value and Comment updates back to the host', async () => {
     const onChangeComment = vi.fn()
     const onChangeValue = vi.fn()
@@ -217,6 +270,7 @@ describe('FlowDesignerView model synchronization', () => {
     const value = model([task([])])
     const view = FlowDesignerView(props(value, { selectedNodeIds: ['target'] })) as React.ReactElement<FlowDesignerProps>
     const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    node.$$.selected.set(false)
     const setSelection = vi.spyOn(node.$$.selected, 'set')
     const replaceNodes = vi.spyOn(view.props.flowDesignerStore.$$.nodes, 'replace')
 
@@ -224,6 +278,19 @@ describe('FlowDesignerView model synchronization', () => {
 
     expect(setSelection).not.toHaveBeenCalled()
     expect(replaceNodes).not.toHaveBeenCalled()
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('does not replace Designer maps for a semantically unchanged model object', () => {
+    const value = model([task([])])
+    const view = FlowDesignerView(props(value)) as React.ReactElement<FlowDesignerProps>
+    const replaceNodes = vi.spyOn(view.props.flowDesignerStore.$$.nodes, 'replace')
+    const replaceComments = vi.spyOn(view.props.flowDesignerStore.$$.commentNodes!, 'replace')
+
+    FlowDesignerView(props({ ...value }))
+
+    expect(replaceNodes).not.toHaveBeenCalled()
+    expect(replaceComments).not.toHaveBeenCalled()
     view.props.flowDesignerStore.dispose()
   })
 
@@ -261,6 +328,17 @@ describe('FlowDesignerView model synchronization', () => {
       }),
     ).toBe(false)
     expect(isValidConnection).toHaveBeenCalledWith({ source: 'source', sourceHandle: 'result', target: 'target', targetHandle: 'value' })
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('does not project a connection until both handles exist', () => {
+    const missingOutput = { ...source, outputs: [] }
+    const connected = task([{ handle: 'value', jsonSchema: {}, sources: [{ nodeId: 'source', output: 'result' }] }])
+    const view = FlowDesignerView(props(model([missingOutput, connected]))) as React.ReactElement<FlowDesignerProps>
+
+    expect(view.props.flowDesignerStore.$.renderedRFEdges.value).toEqual([])
+    FlowDesignerView(props(model([source, connected])))
+    expect(view.props.flowDesignerStore.$.renderedRFEdges.value).toHaveLength(1)
     view.props.flowDesignerStore.dispose()
   })
 

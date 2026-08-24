@@ -3,7 +3,17 @@ import type { Draft, ProjectDocument } from './api.ts'
 import { describe, expect, it, vi } from 'vitest'
 import { connect, disconnect } from '../../../project/common/edgeChanges.ts'
 import { updateTrigger, updateTriggerConfig, updateTriggerSchedule } from '../../../project/common/nodeChanges.ts'
-import { addNode, copyNodes, createResource, deleteSelection, pasteNodes, updateNodeDescription, updateTask, updateWebhook } from './designer/projectChanges.ts'
+import {
+  addNode,
+  copyNodes,
+  createResource,
+  deleteSelection,
+  pasteNodes,
+  updateCondition,
+  updateNodeDescription,
+  updateTask,
+  updateWebhook,
+} from './designer/projectChanges.ts'
 import { revisionView } from './revisionView.ts'
 
 const target = { id: 'main', kind: 'flow' as const }
@@ -551,6 +561,71 @@ describe('Project changes', () => {
     expect(changes).toHaveLength(2)
     expect(changes[0]).toMatchObject({ node: { inputs: {}, task: { inputs: {}, outputs: {} } }, nodeId: 'code' })
     expect(changes[1]).toMatchObject({ node: { inputs: {} }, nodeId: 'sink' })
+  })
+
+  it('renames Condition handles without dropping its input value or downstream connections', () => {
+    const current = revision({
+      ...emptyDocument,
+      flows: {
+        main: {
+          ...emptyDocument.flows.main!,
+          graph: {
+            nodes: {
+              condition: {
+                cases: [{ expressions: [{ input: 'value', operator: 'isTrue' }], output: 'matched', relation: 'all' }],
+                concurrency: 1,
+                defaultOutput: 'fallback',
+                input: { handle: 'value', jsonSchema: { type: 'boolean' }, nullable: false },
+                inputs: { value: { kind: 'value', value: true } },
+                kind: 'condition',
+              },
+              sink: {
+                concurrency: 1,
+                inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'condition', output: 'matched' }] } },
+                kind: 'task',
+                taskId: 'sink-task',
+              },
+            },
+          },
+        },
+      },
+      tasks: {
+        'sink-task': { executor: { kind: 'llm', mode: 'chat' }, inputs: {}, name: 'Sink', outputs: {} },
+      },
+    })
+
+    expect(
+      updateCondition(current, target, 'condition', {
+        cases: [{ expressions: [{ input: 'message', operator: 'isTrue' }], output: 'accepted', relation: 'all' }],
+        defaultOutput: 'fallback',
+        input: { handle: 'message', jsonSchema: { type: 'boolean' }, nullable: false },
+      }),
+    ).toEqual([
+      {
+        kind: 'graph.node.replace',
+        node: {
+          cases: [{ expressions: [{ input: 'message', operator: 'isTrue' }], output: 'accepted', relation: 'all' }],
+          concurrency: 1,
+          defaultOutput: 'fallback',
+          input: { handle: 'message', jsonSchema: { type: 'boolean' }, nullable: false },
+          inputs: { message: { kind: 'value', value: true } },
+          kind: 'condition',
+        },
+        nodeId: 'condition',
+        target,
+      },
+      {
+        kind: 'graph.node.replace',
+        node: {
+          concurrency: 1,
+          inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'condition', output: 'accepted' }] } },
+          kind: 'task',
+          taskId: 'sink-task',
+        },
+        nodeId: 'sink',
+        target,
+      },
+    ])
   })
 
   it('creates a reusable Subflow with explicit boundary ports', () => {
