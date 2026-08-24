@@ -1,5 +1,5 @@
 import type { FlowRunOptions, SchedulerEvent, TaskInvocation } from '../src/execution/common/scheduler.ts'
-import type { JsonValue, RevisionContent } from '../src/project/common/change.ts'
+import type { ConditionOperator, JsonValue, RevisionContent } from '../src/project/common/change.ts'
 import type { PreparedFlow } from '../src/project/common/semantics.ts'
 
 import { describe, expect, it } from 'vitest'
@@ -265,6 +265,167 @@ describe('revision graph scheduler', () => {
     })
     expect(events.filter((event) => event.type == 'run.started').map((event) => event.flowId)).toEqual(['main', 'double-flow'])
     expect(events).toContainEqual(expect.objectContaining({ handle: 'high', nodeId: 'branch', type: 'node.output', value: 7 }))
+  })
+
+  it.each([
+    ['==', { nested: [1] }, { nested: [1] }, true],
+    ['==', { nested: [1] }, { nested: [2] }, false],
+    ['!=', { nested: [1] }, { nested: [2] }, true],
+    ['>', 2, 1, true],
+    ['>=', 2, 2, true],
+    ['<', 1, 2, true],
+    ['<=', 2, 2, true],
+    ['contains', 'open-flow', 'flow', true],
+    ['contains', ['open', { value: 1 }], { value: 1 }, true],
+    ['notContains', ['open'], 'closed', true],
+    ['startsWith', 'open-flow', 'open', true],
+    ['endsWith', 'open-flow', 'flow', true],
+    ['hasKey', { present: null }, 'present', true],
+    ['notHasKey', { present: null }, 'missing', true],
+    ['hasValue', { present: { value: 1 } }, { value: 1 }, true],
+    ['notHasValue', { present: 1 }, 2, true],
+    ['isEmpty', {}, undefined, true],
+    ['isNotEmpty', [1], undefined, true],
+    ['isNull', null, undefined, true],
+    ['isNotNull', 0, undefined, true],
+    ['isTrue', true, undefined, true],
+    ['isFalse', false, undefined, true],
+    ['contains', 1, 1, false],
+    ['hasKey', { present: true }, 1, false],
+    ['isNotEmpty', 1, undefined, false],
+  ] satisfies readonly (readonly [ConditionOperator, JsonValue, JsonValue | undefined, boolean])[])(
+    'evaluates Condition operator %s',
+    async (operator, left, right, matches) => {
+      const source = revision(
+        {
+          bindings: {},
+          flows: {
+            main: {
+              graph: {
+                nodes: {
+                  branch: {
+                    cases: [
+                      {
+                        expressions: [{ input: 'value', operator, ...(right === undefined ? {} : { value: right }) }],
+                        output: 'matched',
+                        relation: 'all',
+                      },
+                    ],
+                    concurrency: 1,
+                    defaultOutput: 'fallback',
+                    input: { ...port, handle: 'value' },
+                    inputs: { value: { kind: 'value', value: left } },
+                    kind: 'condition',
+                  },
+                  fallback: {
+                    concurrency: 1,
+                    inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'fallback' }] } },
+                    kind: 'task',
+                    task: task('fallback', ['value'], []),
+                  },
+                  matched: {
+                    concurrency: 1,
+                    inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'matched' }] } },
+                    kind: 'task',
+                    task: task('matched', ['value'], []),
+                  },
+                },
+              },
+              name: 'Main',
+            },
+          },
+          subflows: {},
+          tasks: {},
+        },
+        ['fallback', 'matched'],
+      )
+      const prepared = await prepareFlow(source, 'main', engine)
+      const invoked: string[] = []
+      await runFlow(prepared, {
+        invokeTask: async (invocation) => {
+          invoked.push(invocation.nodeId)
+          return {}
+        },
+        runId: `condition-${operator}`,
+      })
+
+      expect(invoked).toEqual([matches ? 'matched' : 'fallback'])
+    },
+  )
+
+  it('uses all and any relations while selecting only the first matching Condition case', async () => {
+    const source = revision(
+      {
+        bindings: {},
+        flows: {
+          main: {
+            graph: {
+              nodes: {
+                branch: {
+                  cases: [
+                    {
+                      expressions: [
+                        { input: 'value', operator: 'isTrue' },
+                        { input: 'value', operator: 'isFalse' },
+                      ],
+                      output: 'all',
+                      relation: 'all',
+                    },
+                    {
+                      expressions: [
+                        { input: 'value', operator: 'isFalse' },
+                        { input: 'value', operator: 'isTrue' },
+                      ],
+                      output: 'any',
+                      relation: 'any',
+                    },
+                    { expressions: [{ input: 'value', operator: 'isTrue' }], output: 'later', relation: 'all' },
+                  ],
+                  concurrency: 1,
+                  defaultOutput: 'fallback',
+                  input: { ...port, handle: 'value' },
+                  inputs: { value: { kind: 'value', value: true } },
+                  kind: 'condition',
+                },
+                all: {
+                  concurrency: 1,
+                  inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'all' }] } },
+                  kind: 'task',
+                  task: task('all', ['value'], []),
+                },
+                any: {
+                  concurrency: 1,
+                  inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'any' }] } },
+                  kind: 'task',
+                  task: task('any', ['value'], []),
+                },
+                later: {
+                  concurrency: 1,
+                  inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'later' }] } },
+                  kind: 'task',
+                  task: task('later', ['value'], []),
+                },
+              },
+            },
+            name: 'Main',
+          },
+        },
+        subflows: {},
+        tasks: {},
+      },
+      ['all', 'any', 'later'],
+    )
+    const prepared = await prepareFlow(source, 'main', engine)
+    const invoked: string[] = []
+    await runFlow(prepared, {
+      invokeTask: async (invocation) => {
+        invoked.push(invocation.nodeId)
+        return {}
+      },
+      runId: 'condition-relations',
+    })
+
+    expect(invoked).toEqual(['any'])
   })
 
   it('queues multiple sources in delivery order while enforcing node concurrency', async () => {

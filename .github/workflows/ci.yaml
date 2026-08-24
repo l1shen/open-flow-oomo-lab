@@ -119,6 +119,9 @@ jobs:
       - name: Test package source
         run: bun run --filter @oomol-lab/open-flow test
 
+      - name: Verify package core coverage
+        run: bun run --filter @oomol-lab/open-flow test:coverage
+
       - name: Verify package artifacts
         run: bun run test:package
 
@@ -142,8 +145,8 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Test Server
-        run: bun run --filter @oomol-lab/open-flow-server test
+      - name: Test Server and verify core coverage
+        run: bun run --filter @oomol-lab/open-flow-server test:coverage
 
   server_image:
     needs: changes

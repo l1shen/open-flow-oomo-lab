@@ -312,4 +312,22 @@ describe('Server application service', () => {
     expect(service.run(accepted.runId)?.status).toBe('canceled')
     await service.close()
   })
+
+  it.each([
+    ['llm.output-invalid', 'The model output did not match the requested schema.'],
+    ['llm.unavailable', 'The model service is unavailable.'],
+  ] as const)('preserves the deployment LLM failure %s', async (code, message) => {
+    const service = ServerService.open(await databaseFile(), undefined, Date.now, {
+      llm: async () => ({ code, kind: 'failed', message, version: 1 }),
+    })
+    service.start()
+    const accepted = await service.acceptRun({ flowId: 'main', idempotencyKey: code, revision: llmFlow(), revisionId: 'revision-llm' })
+    if (accepted.kind != 'accepted') throw new Error('LLM failure Run acceptance conflicted.')
+    await service.waitForIdle()
+
+    expect(service.events(accepted.runId).find((event) => event.kind == 'node.failed')).toMatchObject({
+      payload: { error: { code, message } },
+    })
+    await service.close()
+  })
 })

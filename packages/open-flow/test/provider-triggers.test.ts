@@ -9,7 +9,8 @@ import type {
 import type { PollContext, PollDefinition } from '../src/trigger/common/poll.ts'
 
 import { describe, expect, it } from 'vitest'
-import { PermanentPollError } from '../src/trigger/common/poll.ts'
+import { IntegrationConnectionError } from '../src/trigger/common/integration.ts'
+import { PermanentPollError, PollConnectionError } from '../src/trigger/common/poll.ts'
 import { triggerDefinitions } from '../src/trigger/providers/definitions.ts'
 
 const byKey = new Map(triggerDefinitions.map((definition) => [definition.snapshot.key, definition]))
@@ -52,12 +53,12 @@ function pollContext(target: ConnectorProxy, config: Readonly<Record<string, Jso
   return { checkpoint, config, connector: target, now: new Date('2026-08-20T12:34:20.000Z') }
 }
 
-function state(): {
+function state(initial: { readonly checkpoint?: JsonValue; readonly subscription?: Readonly<Record<string, JsonValue>> } = {}): {
   readonly subscription: () => Readonly<Record<string, JsonValue>>
   readonly value: IntegrationStateContext
 } {
-  let checkpoint: JsonValue = null
-  let subscription: Readonly<Record<string, JsonValue>> = {}
+  let checkpoint: JsonValue = initial.checkpoint ?? null
+  let subscription: Readonly<Record<string, JsonValue>> = initial.subscription ?? {}
   return {
     subscription: () => subscription,
     value: {
@@ -273,6 +274,35 @@ describe('provider Poll Trigger definitions', () => {
     })
     expect(outlook.calls).toHaveLength(2)
   })
+
+  it('baselines, filters, and classifies Slack messages', async () => {
+    const baseline = connector(() => ({ data: { messages: [{ ts: '1787229200.000001' }], ok: true }, status: 200 }))
+    await expect(poll('slack.on_message_posted').poll(pollContext(baseline.value, { channelId: 'C012ABC' }))).resolves.toEqual({
+      checkpoint: { lastTs: '1787229200.000001' },
+      events: [],
+    })
+
+    const history = connector(() => ({
+      data: {
+        messages: [
+          { bot_id: 'B1', text: 'deploy complete', ts: '1787229202.000001' },
+          { text: 'deploy complete', ts: '1787229201.000001', user: 'U123' },
+        ],
+        ok: true,
+      },
+      status: 200,
+    }))
+    await expect(
+      poll('slack.on_message_posted').poll(pollContext(history.value, { channelId: 'C012ABC', textContains: 'DEPLOY' }, { lastTs: '1787229200.000001' })),
+    ).resolves.toMatchObject({
+      checkpoint: { lastTs: '1787229202.000001' },
+      events: [{ dedupeKey: 'C012ABC:1787229201.000001', payload: { text: 'deploy complete', userId: 'U123' } }],
+      filtered: 1,
+    })
+
+    const unauthorized = connector(() => ({ data: { error: 'invalid_auth', ok: false }, status: 200 }))
+    await expect(poll('slack.on_message_posted').poll(pollContext(unauthorized.value, { channelId: 'C012ABC' }))).rejects.toBeInstanceOf(PollConnectionError)
+  })
 })
 
 describe('provider Integration Trigger definitions', () => {
@@ -404,5 +434,111 @@ describe('provider Integration Trigger definitions', () => {
       'DELETE /webhooks/created-1.json',
     ])
     expect(runtime.subscription()).toEqual({})
+  })
+
+  it('authenticates, filters, and reconciles Telegram updates', async () => {
+    const definition = integration('telegram.on_update')
+    const message = { chat: { id: -100 }, from: { id: 42 }, text: 'hello' }
+    const config = { chatIds: ['-100'], updates: ['message'], userIds: ['42'] }
+
+    expect(await definition.receive(receiveContext(config, { 'x-telegram-bot-api-secret-token': 'wrong' }, { message, update_id: 7 }))).toMatchObject({
+      outcome: 'respond',
+      status: 404,
+    })
+    expect(
+      await definition.receive(receiveContext(config, { 'x-telegram-bot-api-secret-token': 'secret' }, { edited_message: message, update_id: 8 })),
+    ).toMatchObject({ outcome: 'ignored', reason: 'Telegram update type is not subscribed.' })
+    expect(await definition.receive(receiveContext(config, { 'x-telegram-bot-api-secret-token': 'secret' }, { message, update_id: 9 }))).toMatchObject({
+      dedupeKey: '9',
+      outcome: 'event',
+      payload: { deliveryId: '9', event: 'message' },
+    })
+
+    const target = connector((_request, index) =>
+      index == 0 ? { data: { ok: true, result: { url: '' } }, status: 200 } : { data: { ok: true, result: true }, status: 200 },
+    )
+    await expect(definition.reconcile(reconcileContext(target.value, state().value, config))).resolves.toEqual({ outcome: 'ready' })
+    expect(target.calls).toEqual([
+      { endpoint: '/getWebhookInfo', method: 'GET' },
+      {
+        body: {
+          allowed_updates: ['message'],
+          drop_pending_updates: true,
+          secret_token: 'secret',
+          url: 'https://flow.example/v1/integrations/endpoint_11111111111111111111111111111111',
+        },
+        endpoint: '/setWebhook',
+        method: 'POST',
+      },
+    ])
+
+    const unauthorized = connector(() => ({ data: { description: 'Unauthorized', ok: false }, status: 401 }))
+    await expect(definition.reconcile(reconcileContext(unauthorized.value, state().value, config))).rejects.toBeInstanceOf(IntegrationConnectionError)
+  })
+
+  it('creates, receives from, and retires a Google Drive changes channel', async () => {
+    const definition = integration('googledrive.changes_detected')
+    const runtime = state({ subscription: { channels: [] } })
+    const created = connector((_request, index) =>
+      index == 0
+        ? { data: { startPageToken: 'page-1' }, status: 200 }
+        : { data: { expiration: String(Date.parse('2026-08-26T00:00:00.000Z')), resourceId: 'resource-1' }, status: 200 },
+    )
+    await expect(definition.reconcile(reconcileContext(created.value, runtime.value, {}))).resolves.toEqual({ outcome: 'ready' })
+    expect(created.calls.map(({ endpoint, method }) => `${method} ${endpoint}`)).toEqual(['GET /changes/startPageToken', 'POST /changes/watch'])
+
+    const watchBody = created.calls[1]!.body as Readonly<Record<string, JsonValue>>
+    const channelId = watchBody.id as string
+    const token = watchBody.token as string
+    expect(runtime.value.checkpoint).toEqual({ pageToken: 'page-1' })
+    expect(runtime.subscription()).toMatchObject({ channels: [{ id: channelId, resourceId: 'resource-1', state: 'active' }] })
+
+    const changed = connector(() => ({
+      data: {
+        changes: [
+          {
+            changeType: 'file',
+            driveId: 'drive-1',
+            file: { id: 'file-1', name: 'Report' },
+            fileId: 'file-1',
+            removed: false,
+            time: '2026-08-20T12:35:00.000Z',
+          },
+        ],
+        newStartPageToken: 'page-2',
+      },
+      status: 200,
+    }))
+    const headers = {
+      'x-goog-changed': 'content, parents',
+      'x-goog-channel-id': channelId,
+      'x-goog-channel-token': token,
+      'x-goog-message-number': '2',
+      'x-goog-resource-id': 'resource-1',
+      'x-goog-resource-state': 'change',
+      'x-goog-resource-uri': 'https://drive.example/changes',
+    }
+    await expect(definition.receive({ ...receiveContext({}, headers, {}), connector: changed.value, state: runtime.value })).resolves.toMatchObject({
+      checkpoint: { pageToken: 'page-2' },
+      continue: false,
+      dedupeKey: 'my-drive:page-1',
+      outcome: 'event',
+      payload: {
+        events: [
+          {
+            changeId: 'drive-1:file-1:2026-08-20T12:35:00.000Z:file:present',
+            notification: { changedTypes: ['content', 'parents'], messageNumber: '2', resourceState: 'change' },
+          },
+        ],
+      },
+    })
+    await expect(
+      definition.receive({ ...receiveContext({}, { ...headers, 'x-goog-channel-token': 'wrong' }, {}), connector: changed.value, state: runtime.value }),
+    ).resolves.toMatchObject({ outcome: 'respond', status: 404 })
+
+    const retired = connector(() => ({ data: {}, status: 204 }))
+    await expect(definition.reconcile({ ...reconcileContext(retired.value, runtime.value, {}), active: false })).resolves.toEqual({ outcome: 'ready' })
+    expect(retired.calls).toEqual([{ body: { id: channelId, resourceId: 'resource-1' }, endpoint: '/channels/stop', method: 'POST' }])
+    expect(runtime.subscription()).toEqual({ channels: [] })
   })
 })

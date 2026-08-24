@@ -1,10 +1,13 @@
 import type { RuntimeHarness, RuntimeProgram } from '@oomol-lab/open-flow/runtime-contract'
 
 import { runtimeConformanceCases } from '@oomol-lab/open-flow/runtime-contract'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { afterAll, describe, expect, it } from 'vitest'
 import { IsolatedVmError, isolatedVmEngineDigest, isolatedVmLimits, IsolatedVmHost } from '../node/isolated-vm.ts'
 
 const host = new IsolatedVmHost()
+const execFileAsync = promisify(execFile)
 
 const harness: RuntimeHarness = {
   engineDigest: isolatedVmEngineDigest,
@@ -32,6 +35,16 @@ function invoke(source: string, limits = isolatedVmLimits) {
     },
     limits,
   )
+}
+
+async function executorPid(): Promise<number> {
+  const { stdout } = await execFileAsync('ps', ['-A', '-o', 'pid=,ppid=,command='])
+  const processLine = stdout
+    .split('\n')
+    .map((line) => /^(\s*\d+)\s+(\d+)\s+(.+)$/.exec(line))
+    .find((match) => match?.[2] == String(process.pid) && match[3].includes('--executor'))
+  if (processLine == null) throw new Error('Runtime Executor process was not found.')
+  return Number(processLine[1])
 }
 
 describe('isolated-vm runtime conformance', () => {
@@ -71,6 +84,94 @@ describe('isolated-vm runtime conformance', () => {
         program: { ...program('export default () => true'), engineDigest: 'sha256:other' },
       }),
     ).rejects.toEqual(expect.objectContaining<Partial<IsolatedVmError>>({ code: 'invalid-program' }))
+  })
+
+  it('rejects oversized inputs and programs before invoking user code', async () => {
+    await expect(
+      host.invoke(
+        {
+          capability: async () => ({ body: null, status: 200 }),
+          input: 'x'.repeat(256),
+          invocationId: 'oversized-input',
+          program: program('export default () => true'),
+        },
+        { ...isolatedVmLimits, maxInputBytes: 32 },
+      ),
+    ).rejects.toMatchObject({ code: 'limit-exceeded' })
+    await expect(invoke(`export default () => ${JSON.stringify('x'.repeat(256))}`, { ...isolatedVmLimits, maxProgramBytes: 64 })).rejects.toMatchObject({
+      code: 'limit-exceeded',
+    })
+  })
+
+  it('enforces Capability call and response byte limits', async () => {
+    let calls = 0
+    await expect(
+      host.invoke(
+        {
+          capability: async () => {
+            calls += 1
+            return { body: null, status: 200 }
+          },
+          input: null,
+          invocationId: 'capability-count-limit',
+          program: program(`export default async (_input, capability) => {
+  await capability.connector({ call: 1 })
+  return await capability.connector({ call: 2 })
+}`),
+        },
+        { ...isolatedVmLimits, maxCapabilityCalls: 1 },
+      ),
+    ).rejects.toMatchObject({ code: 'task-failed' })
+    expect(calls).toBe(1)
+
+    await expect(
+      host.invoke(
+        {
+          capability: async () => ({ body: 'x'.repeat(256), status: 200 }),
+          input: null,
+          invocationId: 'capability-response-limit',
+          program: program('export default async (_input, capability) => capability.connector({})'),
+        },
+        { ...isolatedVmLimits, maxCapabilityResponseBytes: 64 },
+      ),
+    ).rejects.toMatchObject({ code: 'task-failed' })
+  })
+
+  it('enforces the wall-clock and isolate memory limits', async () => {
+    await expect(invoke('export default async () => await new Promise(() => {})', { ...isolatedVmLimits, wallMs: 20 })).rejects.toMatchObject({
+      code: 'limit-exceeded',
+    })
+    await expect(
+      invoke('export default () => new Array(2_000_000).fill("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")', {
+        ...isolatedVmLimits,
+        cpuMs: 2_000,
+        memoryMb: 8,
+        wallMs: 5_000,
+      }),
+    ).rejects.toMatchObject({ code: 'limit-exceeded' })
+  })
+
+  it.each([
+    { ...program('export default () => true'), entryModuleId: 'missing' },
+    { ...program('export default () => true'), modules: { 'invalid/module': { imports: [], source: 'export default () => true' } } },
+  ])('rejects an invalid Runtime program before execution', async (invalidProgram) => {
+    await expect(
+      host.invoke({ capability: async () => ({ body: null, status: 200 }), input: null, invocationId: 'invalid-program', program: invalidProgram }),
+    ).rejects.toMatchObject({ code: 'invalid-program' })
+  })
+
+  it('rejects an invocation whose signal is already aborted', async () => {
+    const cancellation = new AbortController()
+    cancellation.abort(new Error('Canceled before invocation.'))
+    await expect(
+      host.invoke({
+        capability: async () => ({ body: null, status: 200 }),
+        input: null,
+        invocationId: 'pre-canceled',
+        program: program('export default () => true'),
+        signal: cancellation.signal,
+      }),
+    ).rejects.toThrow('Canceled before invocation.')
   })
 
   it('routes concurrent invocations independently and gives each invocation a fresh isolate', async () => {
@@ -130,5 +231,60 @@ describe('isolated-vm runtime conformance', () => {
     cancellation.abort(new Error('Cancel only the first invocation.'))
     await expect(canceled).rejects.toThrow('Cancel only the first invocation.')
     await expect(completed).resolves.toEqual({ body: 'completed', status: 200 })
+  })
+
+  it('rejects pending work when closed', async () => {
+    const closingHost = new IsolatedVmHost()
+    let capabilityStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      capabilityStarted = resolve
+    })
+    const pending = closingHost.invoke({
+      capability: async ({ signal }) => {
+        capabilityStarted()
+        return await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+      },
+      input: null,
+      invocationId: 'closed-pending',
+      program: program('export default async (_input, capability) => capability.connector({})'),
+    })
+    await started
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'canceled' })
+    await closingHost.close()
+    await rejected
+    await expect(
+      closingHost.invoke({
+        capability: async () => ({ body: null, status: 200 }),
+        input: null,
+        invocationId: 'closed-new',
+        program: program('export default () => true'),
+      }),
+    ).rejects.toMatchObject({ code: 'executor-crashed' })
+  })
+
+  it('fails pending work on Executor loss, does not replay it, and rebuilds for the next invocation', async () => {
+    let capabilityCalls = 0
+    let capabilityStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      capabilityStarted = resolve
+    })
+    const pending = host.invoke({
+      capability: async ({ signal }) => {
+        capabilityCalls += 1
+        capabilityStarted()
+        return await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+      },
+      input: null,
+      invocationId: 'executor-loss',
+      program: program('export default async (_input, capability) => capability.connector({})'),
+    })
+    await started
+    const crashed = expect(pending).rejects.toMatchObject({ code: 'executor-crashed' })
+    process.kill(await executorPid(), 'SIGKILL')
+
+    await crashed
+    expect(capabilityCalls).toBe(1)
+    await expect(invoke('export default () => "rebuilt"')).resolves.toBe('rebuilt')
+    expect(capabilityCalls).toBe(1)
   })
 })

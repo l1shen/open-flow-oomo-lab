@@ -59,7 +59,10 @@ function connectorFlow(timeoutMs?: number): RevisionContent {
   }
 }
 
-function capabilityFlow(declared = true): RevisionContent {
+function capabilityFlow(
+  declared = true,
+  invocation = "capability.connector({ action: 'example.echo', connectionId: 'connection-work', input })",
+): RevisionContent {
   return {
     document: {
       bindings: {},
@@ -92,8 +95,7 @@ function capabilityFlow(declared = true): RevisionContent {
       capability: {
         imports: [],
         name: 'Capability',
-        source:
-          "export default async (input, capability) => (await capability.connector({ action: 'example.echo', connectionId: 'connection-work', input })).body",
+        source: `export default async (input, capability) => (await ${invocation}).body`,
       },
     },
   }
@@ -165,6 +167,34 @@ describe('Server Connector host', () => {
       payload: { error: { code: 'capability.denied', message: 'The Runtime Capability is not declared for this Task.' } },
     })
     expect(execute).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    'null',
+    "{ action: '', connectionId: 'connection-work', input }",
+    "{ action: 'example.echo', input }",
+    "{ action: 'example.echo', connectionId: 'connection-work', input: [] }",
+    "{ action: 'example.echo', connectionId: 'connection-work', extra: true, input }",
+  ])('rejects malformed Connector Capability payload %s', async (payload) => {
+    const execute = vi.fn(async () => ({}))
+    const service = await open(createConnectorHost({ execute }))
+    const runId = await run(service, capabilityFlow(true, `capability.connector(${payload})`))
+
+    expect(service.events(runId).find((event) => event.kind == 'node.failed')).toMatchObject({
+      payload: { error: { code: 'capability.invalid', message: 'The Runtime Capability request is invalid.' } },
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('denies a Runtime Capability kind that was not declared by the Task', async () => {
+    const execute = vi.fn(async () => ({}))
+    const service = await open(createConnectorHost({ execute }))
+    const runId = await run(service, capabilityFlow(true, "capability.egress('https://example.com')"))
+
+    expect(service.events(runId).find((event) => event.kind == 'node.failed')).toMatchObject({
+      payload: { error: { code: 'capability.denied', message: 'The Runtime Capability is not declared for this Task.' } },
+    })
+    expect(execute).not.toHaveBeenCalled()
   })
 
   it('fails closed when no Connector host is injected', async () => {
