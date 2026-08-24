@@ -1,5 +1,5 @@
-import { describe, it } from 'bun:test'
 import assert from 'node:assert/strict'
+import { describe, it } from 'vitest'
 import { parse } from 'yaml'
 import { ExecutorSchema, FlowSchema, SubflowBlockSchema, TaskBlockSchema } from '../src/schema/index.ts'
 

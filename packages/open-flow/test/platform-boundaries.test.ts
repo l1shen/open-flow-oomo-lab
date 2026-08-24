@@ -1,7 +1,7 @@
 import type { PlatformOwner } from '../scripts/check-platform-boundaries.ts'
 
-import { test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { test } from 'vitest'
 import { isForbiddenPlatformImport, isNonPortablePackageImport } from '../scripts/check-platform-boundaries.ts'
 
 const owners: readonly PlatformOwner[] = ['common', 'browser', 'node', 'worker']

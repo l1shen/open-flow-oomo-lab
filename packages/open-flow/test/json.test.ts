@@ -1,5 +1,5 @@
-import { test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { test } from 'vitest'
 import { isJsonObject, isJsonValue } from '../src/base/common/json.ts'
 
 test('accepts the strict JSON value set', () => {

@@ -2,10 +2,10 @@ import type { TarEntry } from 'modern-tar'
 import type { CommandArtifactManifest } from '../src/distribution/common/commandArtifact.ts'
 import type { CommandArchiveFile } from '../src/distribution/node/commandArchive.ts'
 
-import { describe, expect, test } from 'bun:test'
 import { packTar, unpackTar } from 'modern-tar'
 import { createHash } from 'node:crypto'
 import { gunzipSync, gzipSync } from 'node:zlib'
+import { describe, expect, test } from 'vitest'
 import { buildBunVersion } from '../src/cli/common/version.ts'
 import {
   commandArtifactEntryFile,

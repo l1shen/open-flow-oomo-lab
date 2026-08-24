@@ -8,9 +8,9 @@ import type {
   RunTerminalStatus,
 } from '../src/execution/common/runLifecycle.ts'
 
-import { test } from 'bun:test'
 import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
+import { test } from 'vitest'
 import { runLifecycleConformanceCases, transitionRun } from '../src/execution/common/runLifecycle.ts'
 
 class SqliteRunLifecycle implements RunLifecycleHarness {

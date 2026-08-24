@@ -1,5 +1,5 @@
-import { test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { test } from 'vitest'
 import { createYamlSourceValidator } from '../src/manifest/common/sourceValidator.ts'
 import { PackageSchema } from '../src/schema/index.ts'
 

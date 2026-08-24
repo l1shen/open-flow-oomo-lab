@@ -49,10 +49,9 @@
     "format": "oxfmt README.md NOTICE src test scripts vitest.config.ts package.json tsconfig.json",
     "lint": "oxlint --deny-warnings src test scripts vitest.config.ts",
     "release:command": "bun scripts/release.ts",
-    "test": "bun run test:unit && bun run test:vitest",
+    "test": "bun run test:vitest",
     "test:coverage": "vitest run --config vitest.config.ts --coverage src/project/common test/project-encoding.test.ts test/project-semantics.test.ts test/provider-triggers.test.ts test/run-events.test.ts test/scheduler.test.ts",
-    "test:unit": "bun test --timeout 30000 test/*.test.ts",
-    "test:vitest": "vitest run --config vitest.config.ts src test/manifest test/designer test/control",
+    "test:vitest": "vitest run --config vitest.config.ts src test",
     "test:command-artifact": "bun scripts/check-command-artifact.ts",
     "test:package": "bun run test:command-artifact && bun run test:npm-package",
     "test:npm-package": "bun scripts/check-npm-package.ts"

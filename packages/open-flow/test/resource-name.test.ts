@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { resourceNameIssue, resourceNameMaxLength } from '../src/project/common/change.ts'
 
 describe('resource names', () => {

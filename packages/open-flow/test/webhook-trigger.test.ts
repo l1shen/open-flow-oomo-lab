@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import { maximumWebhookBodyBytes, webhookEndpointId, webhookOccurrenceId } from '../src/trigger/common/webhook.ts'
 
 describe('Webhook Trigger protocol', () => {

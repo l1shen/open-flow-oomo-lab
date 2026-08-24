@@ -1,5 +1,5 @@
-import { test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { test } from 'vitest'
 import { FlowSchema } from '../src/schema/index.ts'
 import { builtInTriggers, findBuiltInTrigger, WEBHOOK_REVISION, WEBHOOK_TYPE, webhookTrigger } from '../src/trigger/common/builtins.ts'
 import { normalizeTriggerCatalogSourceItem } from '../src/trigger/common/catalog.ts'

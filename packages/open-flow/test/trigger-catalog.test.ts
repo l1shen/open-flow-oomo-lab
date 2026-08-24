@@ -1,8 +1,8 @@
 import type { TriggerDefinition } from '../src/schema/index.ts'
 import type { TriggerCatalogSource } from '../src/trigger/common/catalog.ts'
 
-import { test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { test } from 'vitest'
 import {
   decodeTriggerCatalogItem,
   encodeTriggerCatalogIdentity,

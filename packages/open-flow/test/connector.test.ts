@@ -1,5 +1,5 @@
-import { test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { test } from 'vitest'
 import { connectorActionIcon, connectorActionNode, connectorActionTitle, connectorNodeId } from '../src/connector/common/actionNode.ts'
 import { connectorActionPorts } from '../src/connector/common/actionSchema.ts'
 import { defaultConnection } from '../src/connector/common/model.ts'

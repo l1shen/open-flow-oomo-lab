@@ -1,5 +1,5 @@
-import { test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { test } from 'vitest'
 import { formatSecretReference, parseSecretReference } from '../src/secret/common/reference.ts'
 
 test('round-trips strict tagged secret references', () => {

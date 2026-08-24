@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import { maximumPollDedupeKeyBytes, pollPageClaimId, providerEventId } from '../src/trigger/common/poll.ts'
 
 describe('Poll Trigger protocol', () => {

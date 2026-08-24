@@ -1,7 +1,7 @@
 import type { HandleName } from '../src/schema/interface.ts'
 
-import { test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { test } from 'vitest'
 import { generateTyping, mergeTypingIntoSourceFile, typescriptOf } from '../src/manifest/common/meta/block/generateTyping.ts'
 
 function handle(name: string): HandleName {
