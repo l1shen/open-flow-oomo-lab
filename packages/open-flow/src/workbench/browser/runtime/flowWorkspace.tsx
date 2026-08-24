@@ -1,6 +1,9 @@
 import type { ReactElement } from 'react'
+import type { FlowDesignerViewInput, FlowDesignerViewOutput } from '../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
+import type { JsonValue } from './api.ts'
 import type { WorkbenchLanguage } from './contract.ts'
 import type { AddNodeOption } from './designer/addNodeOptions.ts'
+import type { CodeTaskPorts } from './designer/projectChanges.ts'
 import type { WorkbenchDesignerHandle } from './designer/workbenchDesigner.tsx'
 
 import { useEffect, useRef, useState } from 'react'
@@ -19,6 +22,34 @@ import { WorkspaceHeader } from './shell/workspaceHeader.tsx'
 import { WorkbenchStore } from './stores/workbenchStore.ts'
 
 type ContextPanelMode = 'blocks' | 'inspector' | undefined
+
+function codeTaskPorts(inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]): CodeTaskPorts {
+  return {
+    inputs: Object.fromEntries(
+      inputs.map((input) => [
+        input.handle,
+        Object.assign(
+          {
+            ...(input.description == null ? {} : { description: input.description }),
+            jsonSchema: (input.jsonSchema ?? {}) as JsonValue,
+            nullable: input.nullable ?? false,
+          },
+          input.defaultValue === undefined ? {} : { value: input.defaultValue as JsonValue },
+        ),
+      ]),
+    ),
+    outputs: Object.fromEntries(
+      outputs.map((output) => [
+        output.handle,
+        {
+          ...(output.description == null ? {} : { description: output.description }),
+          jsonSchema: (output.jsonSchema ?? {}) as JsonValue,
+          nullable: output.nullable ?? false,
+        },
+      ]),
+    ),
+  }
+}
 
 function RunDrawerContainer({
   onClose,
@@ -212,6 +243,7 @@ function Editor({
         onChangeComment={(nodeId, value) => void store.workspace.saveComment(nodeId, value)}
         onChangeNodeDescription={(nodeId, description) => void store.workspace.saveNodeDescription(nodeId, description)}
         onChangeInput={(nodeId, handle, value) => void store.workspace.setInputValue(nodeId, handle, value)}
+        onChangeTaskPorts={(nodeId, inputs, outputs) => void store.workspace.saveCodeTaskPorts(nodeId, codeTaskPorts(inputs, outputs))}
         onChangeTriggerConfig={(triggerId, name, value) => void store.workspace.saveTriggerConfig(triggerId, name, value)}
         onChangeTriggerSchedule={(triggerId, schedule) => void store.workspace.saveTriggerSchedule(triggerId, schedule)}
         onChangeWebhook={(triggerId, webhook) => void store.workspace.saveWebhook(triggerId, webhook)}

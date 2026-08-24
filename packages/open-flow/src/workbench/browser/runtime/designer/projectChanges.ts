@@ -69,6 +69,8 @@ export type TaskSettings =
   | (TaskSettingsBase & { readonly kind: 'connector' })
   | (TaskSettingsBase & { readonly kind: 'llm'; readonly mode: 'chat' | 'json' })
 
+export type CodeTaskPorts = Pick<TaskSettingsBase, 'inputs' | 'outputs'>
+
 export interface SubflowSettings {
   readonly inputs: NonNullable<ReturnType<RevisionView['subflow']>>['inputs']
   readonly name: string
@@ -308,10 +310,7 @@ export function updateTask(revision: RevisionView, target: DesignerTarget, nodeI
   switch (settings.kind) {
     case 'code': {
       if (node.task == null) return
-      return replaceNode(target, nodeId, {
-        ...node,
-        task: { ...node.task, inputs: settings.inputs, name: settings.name, outputs: settings.outputs },
-      })
+      return replaceCodeTaskPorts(revision, target, nodeId, { ...node.task, inputs: settings.inputs, name: settings.name, outputs: settings.outputs })
     }
     case 'llm': {
       if (node.task != null) return
@@ -333,6 +332,12 @@ export function updateTask(revision: RevisionView, target: DesignerTarget, nodeI
       return [{ kind: 'task.replace', task: next, taskId: node.taskId }]
     }
   }
+}
+
+export function updateCodeTaskPorts(revision: RevisionView, target: DesignerTarget, nodeId: string, ports: CodeTaskPorts): ProjectChanges | undefined {
+  const node = revision.graph(target)?.nodes[nodeId]
+  if (node?.kind != 'task' || node.task == null) return
+  return replaceCodeTaskPorts(revision, target, nodeId, { ...node.task, ...ports })
 }
 
 export function updateWebhook(
@@ -373,6 +378,69 @@ function defaultInputs(ports: TaskDefinition['inputs']): Readonly<Record<string,
       Object.hasOwn(port, 'value') ? [[handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [],
     ),
   ) as Readonly<Record<string, InputMapping>>
+}
+
+function renamedPort(
+  previous: Readonly<Record<string, unknown>>,
+  next: Readonly<Record<string, unknown>>,
+): readonly [oldName: string, newName: string] | undefined {
+  const removed = Object.keys(previous).filter((name) => !Object.hasOwn(next, name))
+  const added = Object.keys(next).filter((name) => !Object.hasOwn(previous, name))
+  return removed.length == 1 && added.length == 1 ? [removed[0]!, added[0]!] : undefined
+}
+
+function replaceCodeTaskPorts(
+  revision: RevisionView,
+  target: DesignerTarget,
+  nodeId: string,
+  task: Extract<TaskDefinition, { readonly moduleId: string }>,
+): ProjectChanges | undefined {
+  const graph = revision.graph(target)
+  const current = graph?.nodes[nodeId]
+  if (graph == null || current?.kind != 'task' || current.task == null) return
+  const inputRename = renamedPort(current.task.inputs, task.inputs)
+  const outputRename = renamedPort(current.task.outputs, task.outputs)
+  const outputNames = new Set(Object.keys(task.outputs))
+  const changes: ChangeOperation[] = []
+
+  for (const [currentNodeId, node] of Object.entries(graph.nodes)) {
+    if (!('inputs' in node)) continue
+    let changed = currentNodeId == nodeId
+    const inputs: Record<string, InputMapping> = { ...node.inputs }
+
+    if (currentNodeId == nodeId) {
+      if (inputRename != null && Object.hasOwn(inputs, inputRename[0])) {
+        inputs[inputRename[1]] = inputs[inputRename[0]]!
+        delete inputs[inputRename[0]]
+      }
+      for (const name of Object.keys(inputs)) {
+        if (!Object.hasOwn(task.inputs, name)) delete inputs[name]
+      }
+    }
+
+    for (const [name, mapping] of Object.entries(inputs)) {
+      if (mapping.kind != 'sources') continue
+      const sources = mapping.sources.flatMap((source) => {
+        if (source.kind != 'node' || source.nodeId != nodeId) return [source]
+        if (outputRename != null && source.output == outputRename[0]) return [{ ...source, output: outputRename[1] }]
+        return outputNames.has(source.output) ? [source] : []
+      })
+      if (sources.length == mapping.sources.length && sources.every((source, index) => source === mapping.sources[index])) continue
+      changed = true
+      if (sources.length == 0) delete inputs[name]
+      else inputs[name] = { kind: 'sources', sources }
+    }
+
+    if (!changed) continue
+    const replacement: GraphNode = currentNodeId == nodeId ? { ...current, inputs, task } : { ...node, inputs }
+    changes.push({
+      kind: 'graph.node.replace',
+      node: replacement,
+      nodeId: currentNodeId,
+      target,
+    })
+  }
+  return changes
 }
 
 function replaceNode(target: DesignerTarget, nodeId: string, node: GraphNode): ProjectChanges {

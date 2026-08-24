@@ -596,6 +596,7 @@ function semanticDesignerNode(nodeId: string, resolved: ResolvedNode, ports: Nod
     case 'task':
       return {
         ...common,
+        editablePorts: node.task != null,
         kind: node.kind,
         executorName: executorName(task, connectionRequired, context.t),
         reference: node.task != null ? node.task.moduleId : node.taskId,

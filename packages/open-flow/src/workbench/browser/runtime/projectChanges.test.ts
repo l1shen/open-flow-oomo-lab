@@ -435,6 +435,124 @@ describe('Project changes', () => {
     ])
   })
 
+  it('renames inline Code Task handles without dropping input values or downstream connections', () => {
+    const current = revision({
+      ...emptyDocument,
+      flows: {
+        main: {
+          ...emptyDocument.flows.main!,
+          graph: {
+            nodes: {
+              code: {
+                concurrency: 1,
+                inputs: { prompt: { kind: 'value', value: 'hello' } },
+                kind: 'task',
+                task: {
+                  inputs: { prompt: { jsonSchema: { type: 'string' }, nullable: false } },
+                  moduleId: 'module',
+                  name: 'Code',
+                  outputs: { result: { jsonSchema: { type: 'string' }, nullable: false } },
+                },
+              },
+              sink: {
+                concurrency: 1,
+                inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'code', output: 'result' }] } },
+                kind: 'task',
+                taskId: 'sink-task',
+              },
+            },
+          },
+        },
+      },
+      tasks: {
+        'sink-task': {
+          executor: { kind: 'llm', mode: 'chat' },
+          inputs: { value: { jsonSchema: { type: 'string' }, nullable: false } },
+          name: 'Sink',
+          outputs: {},
+        },
+      },
+    })
+
+    expect(
+      updateTask(current, target, 'code', {
+        inputs: { message: { jsonSchema: { type: 'string' }, nullable: false } },
+        kind: 'code',
+        name: 'Code',
+        outputs: { text: { jsonSchema: { type: 'string' }, nullable: false } },
+      }),
+    ).toEqual([
+      {
+        kind: 'graph.node.replace',
+        node: {
+          concurrency: 1,
+          inputs: { message: { kind: 'value', value: 'hello' } },
+          kind: 'task',
+          task: {
+            inputs: { message: { jsonSchema: { type: 'string' }, nullable: false } },
+            moduleId: 'module',
+            name: 'Code',
+            outputs: { text: { jsonSchema: { type: 'string' }, nullable: false } },
+          },
+        },
+        nodeId: 'code',
+        target,
+      },
+      {
+        kind: 'graph.node.replace',
+        node: {
+          concurrency: 1,
+          inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'code', output: 'text' }] } },
+          kind: 'task',
+          taskId: 'sink-task',
+        },
+        nodeId: 'sink',
+        target,
+      },
+    ])
+  })
+
+  it('removes mappings that reference deleted inline Code Task handles', () => {
+    const current = revision({
+      ...emptyDocument,
+      flows: {
+        main: {
+          ...emptyDocument.flows.main!,
+          graph: {
+            nodes: {
+              code: {
+                concurrency: 1,
+                inputs: { prompt: { kind: 'value', value: 'hello' } },
+                kind: 'task',
+                task: {
+                  inputs: { prompt: { jsonSchema: {}, nullable: false } },
+                  moduleId: 'module',
+                  name: 'Code',
+                  outputs: { result: { jsonSchema: {}, nullable: false } },
+                },
+              },
+              sink: {
+                concurrency: 1,
+                inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'code', output: 'result' }] } },
+                kind: 'task',
+                taskId: 'sink-task',
+              },
+            },
+          },
+        },
+      },
+      tasks: {
+        'sink-task': { executor: { kind: 'llm', mode: 'chat' }, inputs: {}, name: 'Sink', outputs: {} },
+      },
+    })
+
+    const changes = updateTask(current, target, 'code', { inputs: {}, kind: 'code', name: 'Code', outputs: {} })!
+
+    expect(changes).toHaveLength(2)
+    expect(changes[0]).toMatchObject({ node: { inputs: {}, task: { inputs: {}, outputs: {} } }, nodeId: 'code' })
+    expect(changes[1]).toMatchObject({ node: { inputs: {} }, nodeId: 'sink' })
+  })
+
   it('creates a reusable Subflow with explicit boundary ports', () => {
     expect(createResource('subflow', 'normalize', 'Normalize')).toMatchObject([
       {

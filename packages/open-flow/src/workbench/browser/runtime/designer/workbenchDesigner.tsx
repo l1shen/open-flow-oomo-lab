@@ -1,7 +1,9 @@
 import type { KeyboardEvent, PointerEvent, ReactElement } from 'react'
 import type {
+  FlowDesignerViewInput,
   FlowDesignerViewAddItem,
   FlowDesignerViewEdge,
+  FlowDesignerViewOutput,
   FlowDesignerViewTriggerSchedule,
   FlowDesignerViewValue,
   FlowDesignerViewWebhook,
@@ -31,6 +33,7 @@ interface Props {
   readonly onChangeComment: (nodeId: string, value: { readonly content: string; readonly title: string }) => void
   readonly onChangeNodeDescription: (nodeId: string, description: string | undefined) => void
   readonly onChangeInput: (nodeId: string, handle: string, value: JsonValue | undefined) => void
+  readonly onChangeTaskPorts: (nodeId: string, inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]) => void
   readonly onChangeTriggerConfig: (triggerId: string, name: string, value: JsonValue | undefined) => void
   readonly onChangeTriggerSchedule: (triggerId: string, schedule: readonly FlowDesignerViewTriggerSchedule[]) => void
   readonly onChangeWebhook: (triggerId: string, webhook: WebhookSettings) => void
@@ -97,6 +100,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
     onChangeComment,
     onChangeNodeDescription,
     onChangeInput,
+    onChangeTaskPorts,
     onChangeTriggerConfig,
     onChangeTriggerSchedule,
     onChangeWebhook,
@@ -251,6 +255,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
         onChangeComment={onChangeComment}
         onChangeNodeDescription={onChangeNodeDescription}
         onChangeInput={(nodeId, handle, value) => onChangeInput(nodeId, handle, value as JsonValue | undefined)}
+        onChangeTaskPorts={onChangeTaskPorts}
         onChangeTriggerConfig={(triggerId, name, value) => onChangeTriggerConfig(triggerId, name, value as JsonValue | undefined)}
         onChangeTriggerSchedule={onChangeTriggerSchedule}
         onChangeWebhook={(triggerId, webhook: FlowDesignerViewWebhook) => onChangeWebhook(triggerId, webhook as WebhookSettings)}

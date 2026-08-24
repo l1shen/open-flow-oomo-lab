@@ -1,3 +1,4 @@
+import type { HandleName } from '../../../../schema/index.ts'
 import type { FlowDesignerProps } from './FlowDesigner.tsx'
 import type {
   FlowDesignerViewCommentNode,
@@ -8,6 +9,8 @@ import type {
 } from './FlowDesignerView.tsx'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { InputSectionStore } from '../../stores/node/nodeSection/inputSection.store.ts'
+import { OutputSectionStore } from '../../stores/node/nodeSection/outputSection.store.ts'
 import { FlowDesignerView } from './FlowDesignerView.tsx'
 
 const hooks = vi.hoisted(() => ({
@@ -135,6 +138,46 @@ describe('FlowDesignerView model synchronization', () => {
     await Promise.resolve()
 
     expect(onChangeInput).not.toHaveBeenCalled()
+    store.dispose()
+  })
+
+  it('restores editable handle controls for inline code Tasks only', async () => {
+    const onChangeTaskPorts = vi.fn()
+    const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }
+    const view = FlowDesignerView(props(model([editable]), { onChangeTaskPorts })) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    const inputSection = node.findSection<InputSectionStore>(InputSectionStore.TYPE)!
+    const outputSection = node.findSection<OutputSectionStore>(OutputSectionStore.TYPE)!
+
+    expect(inputSection.role).toBe('author')
+    expect(outputSection.role).toBe('author')
+    expect(inputSection.renameHandle('value' as HandleName, 'message' as HandleName)).toBe(true)
+    expect(outputSection.renameHandle('result' as HandleName, 'text' as HandleName)).toBe(true)
+    await Promise.resolve()
+
+    expect(onChangeTaskPorts).toHaveBeenLastCalledWith(
+      'target',
+      [expect.objectContaining({ handle: 'message' })],
+      [expect.objectContaining({ handle: 'text' })],
+    )
+    inputSection.addNewHandle()
+    outputSection.deleteHandle('text' as HandleName)
+    await Promise.resolve()
+    expect(onChangeTaskPorts).toHaveBeenLastCalledWith(
+      'target',
+      [expect.objectContaining({ handle: 'message' }), expect.objectContaining({ handle: 'input' })],
+      [],
+    )
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('restores editable handle controls when a read-only view becomes editable', () => {
+    const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }
+    const store = update(props(model([editable]), { editable: false }), props(model([editable]), { editable: true }))
+    const node = [...store.$.nodes.values()][0]!
+
+    expect(node.findSection<InputSectionStore>(InputSectionStore.TYPE)?.role).toBe('author')
+    expect(node.findSection<OutputSectionStore>(OutputSectionStore.TYPE)?.role).toBe('author')
     store.dispose()
   })
 

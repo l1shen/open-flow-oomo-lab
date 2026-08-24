@@ -49,6 +49,7 @@ describe('WorkbenchDesigner', () => {
           onAddNode={onAddNode}
           onChangeComment={() => undefined}
           onChangeInput={() => undefined}
+          onChangeTaskPorts={() => undefined}
           onChangeNodeDescription={() => undefined}
           onChangeTriggerConfig={() => undefined}
           onChangeTriggerSchedule={() => undefined}
@@ -121,6 +122,7 @@ describe('WorkbenchDesigner', () => {
           onAddNode={async () => undefined}
           onChangeComment={() => undefined}
           onChangeInput={() => undefined}
+          onChangeTaskPorts={() => undefined}
           onChangeNodeDescription={() => undefined}
           onChangeTriggerConfig={() => undefined}
           onChangeTriggerSchedule={() => undefined}

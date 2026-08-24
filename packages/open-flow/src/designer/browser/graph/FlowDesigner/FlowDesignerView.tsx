@@ -34,7 +34,7 @@ import { createRFCommand } from '../../stores/designer/rfCommand.ts'
 import { FLOW_RUN_STATUS } from '../../stores/designer/typings.ts'
 import { CommentNodeStore } from '../../stores/node/commentNode.store.ts'
 import { ConditionNodeStore } from '../../stores/node/conditionNode.store.ts'
-import { NODE_STATUS } from '../../stores/node/constants.ts'
+import { isHandleDef, NODE_STATUS } from '../../stores/node/constants.ts'
 import { ConditionsSectionStore } from '../../stores/node/nodeSection/conditionsSection.store.ts'
 import { InputSectionStore } from '../../stores/node/nodeSection/inputSection.store.ts'
 import { OutputSectionStore } from '../../stores/node/nodeSection/outputSection.store.ts'
@@ -133,6 +133,7 @@ interface FlowDesignerViewNodeBase {
 }
 
 export interface FlowDesignerViewTaskNode extends FlowDesignerViewNodeBase {
+  readonly editablePorts?: boolean
   readonly executorName?: string
   readonly kind: 'task'
   readonly reference: string
@@ -293,6 +294,7 @@ export interface FlowDesignerViewProps {
   readonly onChangeComment?: (nodeId: string, value: { readonly content: string; readonly title: string }) => void
   readonly onChangeNodeDescription?: (nodeId: string, description: string | undefined) => void
   readonly onChangeInput?: (nodeId: string, handle: string, value: unknown) => void
+  readonly onChangeTaskPorts?: (nodeId: string, inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]) => void
   readonly onChangeTriggerConfig?: (triggerId: string, name: string, value: unknown | undefined) => void
   readonly onChangeTriggerSchedule?: (triggerId: string, schedule: readonly FlowDesignerViewTriggerSchedule[]) => void
   readonly onChangeWebhook?: (triggerId: string, webhook: FlowDesignerViewWebhook) => void
@@ -326,6 +328,7 @@ interface NodeValues {
   readonly successCount: Val<number | undefined>
   readonly timeout: Val<number | undefined>
   readonly title: Val<string>
+  syncingPorts?: boolean
   triggerPresentation?: Val<FlowDesignerViewTriggerPresentation | undefined>
   syncingInput?: boolean
   syncingValue?: boolean
@@ -334,6 +337,7 @@ interface NodeValues {
 
 interface SemanticNodeEntry {
   readonly contentKey: string
+  readonly editable: boolean
   readonly kind: Exclude<FlowDesignerViewNode['kind'], 'comment'>
   readonly store: NodeStore
   readonly values: NodeValues
@@ -354,6 +358,7 @@ interface ViewCallbacks {
   readonly onChangeComment: FlowDesignerViewProps['onChangeComment']
   readonly onChangeNodeDescription: FlowDesignerViewProps['onChangeNodeDescription']
   readonly onChangeInput: FlowDesignerViewProps['onChangeInput']
+  readonly onChangeTaskPorts: FlowDesignerViewProps['onChangeTaskPorts']
   readonly onChangeTriggerConfig: FlowDesignerViewProps['onChangeTriggerConfig']
   readonly onChangeTriggerSchedule: FlowDesignerViewProps['onChangeTriggerSchedule']
   readonly onChangeWebhook: FlowDesignerViewProps['onChangeWebhook']
@@ -498,9 +503,10 @@ class FlowDesignerViewAdapter {
   ): void {
     this.#addItems = addItems
     this.#callbacks = callbacks
-    if (this.store.$.editable.value != editable) this.store.$$.editable.set(editable)
+    const editableChanged = this.store.$.editable.value != editable
+    if (editableChanged) this.store.$$.editable.set(editable)
     if (this.#language.value != language) this.#language.set(language)
-    if (this.#model !== model) {
+    if (this.#model !== model || editableChanged) {
       this.#syncModel(model)
       this.#model = model
     }
@@ -573,6 +579,7 @@ class FlowDesignerViewAdapter {
       const contentKey = JSON.stringify([content, outputHandles])
       let entry = this.#entries.get(node.id)
       if (entry?.kind != node.kind) entry = undefined
+      if (entry?.kind != 'comment' && entry?.editable != this.store.$.editable.value) entry = undefined
       if (node.kind == 'comment') {
         if (entry?.kind != 'comment') {
           entry = createCommentNodeEntry(node, contentKey, this.store.designerUIStore, this.store, this.#callbacks.onChangeComment)
@@ -592,6 +599,7 @@ class FlowDesignerViewAdapter {
           this.store,
           this.#callbacks.onChangeNodeDescription,
           this.#callbacks.onChangeInput,
+          this.#callbacks.onChangeTaskPorts,
           this.#callbacks.onChangeTriggerConfig,
           this.#callbacks.onChangeTriggerSchedule,
           this.#callbacks.onChangeWebhook,
@@ -664,6 +672,35 @@ function outputDefs(node: FlowDesignerViewNode): OutputHandleDef[] {
     json_schema: output.jsonSchema,
     nullable: output.nullable,
   }))
+}
+
+function taskInputs(defs: readonly InputHandleDef[]): FlowDesignerViewInput[] {
+  const inputs: FlowDesignerViewInput[] = []
+  for (const input of defs) {
+    if (!isHandleDef(input)) continue
+    inputs.push({
+      ...(Object.hasOwn(input, 'value') ? { defaultValue: input.value } : {}),
+      description: input.description,
+      handle: input.handle,
+      jsonSchema: input.json_schema,
+      nullable: input.nullable,
+    })
+  }
+  return inputs
+}
+
+function taskOutputs(defs: readonly OutputHandleDef[]): FlowDesignerViewOutput[] {
+  const outputs: FlowDesignerViewOutput[] = []
+  for (const output of defs) {
+    if (!isHandleDef(output)) continue
+    outputs.push({
+      description: output.description,
+      handle: output.handle,
+      jsonSchema: output.json_schema,
+      nullable: output.nullable,
+    })
+  }
+  return outputs
 }
 
 function conditionCases(node: FlowDesignerViewConditionNode): ConditionHandleDef[] {
@@ -781,6 +818,7 @@ function createNodeEntry(
   designerStore: FlowDesignerStore,
   onChangeNodeDescription: FlowDesignerViewProps['onChangeNodeDescription'],
   onChangeInput: FlowDesignerViewProps['onChangeInput'],
+  onChangeTaskPorts: FlowDesignerViewProps['onChangeTaskPorts'],
   onChangeTriggerConfig: FlowDesignerViewProps['onChangeTriggerConfig'],
   onChangeTriggerSchedule: FlowDesignerViewProps['onChangeTriggerSchedule'],
   onChangeWebhook: FlowDesignerViewProps['onChangeWebhook'],
@@ -805,8 +843,10 @@ function createNodeEntry(
     title: val(node.title),
   }
   const showSettings = val()
+  let inputRole: 'author' | 'guest' | 'user' = 'guest'
+  if (designerStore.$.editable.value) inputRole = node.kind == 'task' && node.editablePorts ? 'author' : 'user'
   const inputSection = new InputSectionStore({
-    role: 'user',
+    role: inputRole,
     lang: designerStore.lang$,
     handleInputsFrom: values.inputsFrom,
     inputHandleDefs: values.inputDefs,
@@ -897,7 +937,7 @@ function createNodeEntry(
     }
     case 'task': {
       const outputSection = new OutputSectionStore({
-        role: 'guest',
+        role: designerStore.$.editable.value && node.editablePorts ? 'author' : 'guest',
         lang: designerStore.lang$,
         handleOutputsTo: values.outputsTo,
         outputHandleDefs: values.outputDefs,
@@ -915,6 +955,14 @@ function createNodeEntry(
         designerUIStore,
         duplicateNode,
       })
+      if (node.editablePorts) {
+        const changePorts = () => {
+          if (values.syncingPorts || !designerStore.$.editable.value) return
+          onChangeTaskPorts?.(node.id, taskInputs(values.inputDefs.value), taskOutputs(values.outputDefs.value))
+        }
+        store.dispose.add(values.inputDefs.reaction(changePorts, true))
+        store.dispose.add(values.outputDefs.reaction(changePorts, true))
+      }
       break
     }
     case 'trigger': {
@@ -1004,7 +1052,7 @@ function createNodeEntry(
     }
   }
   store.dispose.add(values.outputsTo)
-  return { contentKey, kind: node.kind, store, values }
+  return { contentKey, editable: designerStore.$.editable.value, kind: node.kind, store, values }
 }
 
 function updateNodeEntry(
@@ -1018,11 +1066,13 @@ function updateNodeEntry(
   entry.values.concurrency.set(node.concurrency)
   entry.values.executorName.set(node.kind == 'task' ? node.executorName : undefined)
   entry.values.icon.set(node.icon)
+  entry.values.syncingPorts = true
   entry.values.inputDefs.set(inputDefs(node))
   entry.values.syncingInput = true
   entry.values.inputsFrom.set(inputsFrom(node))
   entry.values.syncingInput = false
   entry.values.outputDefs.set(outputDefs(node))
+  entry.values.syncingPorts = false
   entry.values.outputsTo.set([...connected])
   entry.values.progress.set(node.run?.progress)
   entry.values.reference.set(node.kind == 'task' || node.kind == 'subflow' ? node.reference : undefined)
@@ -1059,6 +1109,7 @@ function callbacksFromProps(props: FlowDesignerViewProps): ViewCallbacks {
     onChangeComment: props.onChangeComment,
     onChangeNodeDescription: props.onChangeNodeDescription,
     onChangeInput: props.onChangeInput,
+    onChangeTaskPorts: props.onChangeTaskPorts,
     onChangeTriggerConfig: props.onChangeTriggerConfig,
     onChangeTriggerSchedule: props.onChangeTriggerSchedule,
     onChangeWebhook: props.onChangeWebhook,

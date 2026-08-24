@@ -6,6 +6,7 @@ import type { AddNodeOption } from '../designer/addNodeOptions.ts'
 import type { DiagnosticItem } from '../designer/diagnostics.ts'
 import type {
   ConditionSettings,
+  CodeTaskPorts,
   DesignerTarget,
   NodeClipboard,
   ProjectChanges,
@@ -43,6 +44,7 @@ import {
   pasteNodes,
   setInputValue as changeInputValue,
   updateCondition,
+  updateCodeTaskPorts,
   updateNodeDescription,
   updateNodeSettings,
   updateSubflow,
@@ -558,6 +560,14 @@ export class WorkspaceStore {
     const target = this.#model.value.target
     if (revision == null || target == null) return false
     const changes = updateTask(revision, target, nodeId, settings)
+    return changes != null && (await this.#changeDraft(changes)) != null
+  }
+
+  public async saveCodeTaskPorts(nodeId: string, ports: CodeTaskPorts): Promise<boolean> {
+    const revision = this.$.revision.value
+    const target = this.#model.value.target
+    if (revision == null || target == null) return false
+    const changes = updateCodeTaskPorts(revision, target, nodeId, ports)
     return changes != null && (await this.#changeDraft(changes)) != null
   }
 

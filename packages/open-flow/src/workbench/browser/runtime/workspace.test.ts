@@ -113,6 +113,7 @@ describe('Designer graph', () => {
       ['webhook', 'Receive webhook', [], ['result']],
       ['filter', 'Condition', ['value'], ['matched']],
     ])
+    expect(nodes[0]).toMatchObject({ editablePorts: true, kind: 'task' })
     expect(nodes[1]?.inputs[0]?.sources).toEqual([{ nodeId: 'webhook', output: 'result' }])
     expect(graph.edges).toEqual([
       {
