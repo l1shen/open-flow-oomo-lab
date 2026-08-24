@@ -173,7 +173,12 @@ describe('Flow Designer service readiness', () => {
   const setups: TestSetup[] = []
 
   beforeEach(() => {
+    vi.stubGlobal('cancelIdleCallback', vi.fn())
     vi.stubGlobal('navigator', { platform: '' })
+    vi.stubGlobal(
+      'requestIdleCallback',
+      vi.fn(() => 1),
+    )
     vi.stubGlobal('window', new EventTarget())
   })
 
