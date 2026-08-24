@@ -75,16 +75,23 @@ describe('Task and Subflow Designer services', () => {
   })
 
   it('constructs source-backed stores and applies graph UI sidecars', async () => {
-    const [packageSource, flowSource, taskSource, subflowSource, subflowUISource] = await Promise.all([
+    const [packageSource, flowSource, taskSource, subflowSource] = await Promise.all([
       fixtureSource('package.oo.yaml'),
       fixtureSource('flows/designer-showcase/flow.oo.yaml'),
       fixtureSource('tasks/greet/task.oo.yaml'),
       fixtureSource('subflows/designer-showcase/subflow.oo.yaml'),
-      fixtureSource('subflows/designer-showcase/.subflow.ui.oo.json'),
     ])
     const taskUISource = JSON.stringify({
       nodes: { greet: { rfNode: { position: { x: 0, y: 0 } } } },
       viewport: { x: 81.96989540460362, y: 159.62778671454694, zoom: 0.7258461734202065 },
+    })
+    const subflowUISource = JSON.stringify({
+      nodes: { 'format-message': { rfNode: { position: { x: 430, y: 120 } } } },
+      pseudoNodes: {
+        input: { rfNode: { position: { x: 0, y: 120 } } },
+        output: { rfNode: { position: { x: 860, y: 120 } } },
+      },
+      viewport: { x: 57, y: 84, zoom: 0.82 },
     })
     const context = new MemoryDesignerHost([
       { path: packagePath, source: packageSource, revision },
