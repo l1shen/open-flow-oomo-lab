@@ -81,7 +81,7 @@ try {
 }
 
 async function buildCommandArchive(): Promise<Uint8Array> {
-  await execFileAsync(process.execPath, [path.join(rootPath, 'scripts/build.ts'), '--quiet'], { cwd: rootPath })
+  await execFileAsync(process.execPath, [path.join(rootPath, 'scripts/build.ts'), '--command-only', '--quiet'], { cwd: rootPath })
   const archives = (await readdir(path.join(rootPath, 'dist/release'))).filter((file) => file.endsWith('.tar.gz'))
   assert.equal(archives.length, 1)
   return await readFile(path.join(rootPath, 'dist/release', archives[0]!))

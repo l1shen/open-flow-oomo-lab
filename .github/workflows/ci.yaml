@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
   push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -12,9 +14,70 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    outputs:
+      package: ${{ steps.scope.outputs.package }}
+      server: ${{ steps.scope.outputs.server }}
+      server_image: ${{ steps.scope.outputs.server_image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve validation scope
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          package=false
+          server=false
+          server_image=false
+
+          if [[ "$BASE_SHA" =~ ^0+$ ]]; then
+            changed_files="$(git ls-tree --name-only -r "$HEAD_SHA")"
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+            changed_files="$(git diff --name-only --diff-filter=ACDMRT "$BASE_SHA...$HEAD_SHA")"
+          else
+            changed_files="$(git diff --name-only --diff-filter=ACDMRT "$BASE_SHA..$HEAD_SHA")"
+          fi
+
+          while IFS= read -r file; do
+            case "$file" in
+              .bun-version | .dockerignore | .github/workflows/* | LICENSE | NOTICE | bun.lock | package.json)
+                package=true
+                server=true
+                server_image=true
+                ;;
+              packages/open-flow/*)
+                package=true
+                server=true
+                server_image=true
+                ;;
+              apps/server/*)
+                server=true
+                server_image=true
+                ;;
+            esac
+          done <<< "$changed_files"
+
+          {
+            echo "package=$package"
+            echo "server=$server"
+            echo "server_image=$server_image"
+          } >> "$GITHUB_OUTPUT"
+
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -33,14 +96,74 @@ jobs:
       - name: Check
         run: bun run check
 
-      - name: Test
-        run: bun run test
+  package:
+    needs: changes
+    if: needs.changes.outputs.package == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
 
-      - name: Build
-        run: bun run build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
 
-      - name: Verify package
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Test package source
+        run: bun run --filter @oomol-lab/open-flow test
+
+      - name: Verify package artifacts
         run: bun run test:package
+
+  server:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Test Server
+        run: bun run --filter @oomol-lab/open-flow-server test
+
+  server_image:
+    needs: changes
+    if: needs.changes.outputs.server_image == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install
+        run: bun install --frozen-lockfile
 
       - name: Verify Server image
         run: bun run test:docker

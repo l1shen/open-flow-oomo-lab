@@ -19,6 +19,7 @@ const npmPackageRoot = path.join(outputPath, 'npm-package/package')
 const releaseRoot = path.join(outputPath, 'release')
 const quiet = process.argv.includes('--quiet')
 const typesOnly = process.argv.includes('--types-only')
+const commandOnly = process.argv.includes('--command-only')
 const execFileAsync = promisify(execFile)
 const packageRequire = createRequire(import.meta.url)
 const packageManifest = await readManifest(path.join(rootPath, 'package.json'))
@@ -35,7 +36,7 @@ interface BundledPackageLicense {
 await validateVersions()
 await rm(outputPath, { force: true, recursive: true })
 await mkdir(releaseRoot, { recursive: true })
-await Promise.all([buildNpmPackage(), ...(typesOnly ? [] : [buildCommandArtifact()])])
+await Promise.all([...(commandOnly ? [] : [buildNpmPackage()]), ...(typesOnly ? [] : [buildCommandArtifact()])])
 
 async function buildCommandArtifact(): Promise<void> {
   await mkdir(commandRoot, { recursive: true })

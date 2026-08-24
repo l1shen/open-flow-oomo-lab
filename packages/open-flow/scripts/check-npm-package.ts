@@ -228,12 +228,12 @@ for (const entry of workbenchJavaScript) {
   assertNoReactRequire(new TextDecoder().decode(entry.data!), entry.header.name)
 }
 
-for (const versions of [
-  { react: '18.3.1', reactDomTypes: '18.3.1', reactTypes: '18.3.12' },
-  { react: '19.2.0', reactDomTypes: '19.2.3', reactTypes: '19.2.2' },
-]) {
-  await verifyConsumer(versions)
-}
+await Promise.all(
+  [
+    { react: '18.3.1', reactDomTypes: '18.3.1', reactTypes: '18.3.12' },
+    { react: '19.2.0', reactDomTypes: '19.2.3', reactTypes: '19.2.2' },
+  ].map(verifyConsumer),
+)
 
 for (const sourcePath of ['src/designer/browser/scriptletTemplates/typescript.txt']) {
   const source = await readFile(path.join(rootPath, sourcePath), 'utf8')
