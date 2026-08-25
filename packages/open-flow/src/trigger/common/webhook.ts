@@ -166,6 +166,44 @@ export const webhookConformanceCases: readonly WebhookConformanceCase[] = [
     },
   },
   {
+    fixture: {
+      inputsDef: noInputs,
+      options: {
+        responseData: '<script>globalThis.compromised = true</script>',
+        responseHeaders: {
+          'access-control-allow-credentials': 'true',
+          'content-security-policy': "default-src * 'unsafe-inline'",
+          'content-type': 'text/html',
+          'location': 'https://attacker.example',
+          'set-cookie': 'open_flow_operator_session=forged',
+          'x-accel-redirect': '/auth/session',
+        },
+      },
+    },
+    name: 'prevents Project responses from becoming executable or controlling deployment headers',
+    async verify(harness) {
+      await response(
+        await call(harness),
+        {
+          body: '<script>globalThis.compromised = true</script>',
+          headers: {
+            'access-control-allow-credentials': null,
+            'content-security-policy': "default-src 'none'; frame-ancestors 'none'; sandbox",
+            'content-type': 'text/plain;charset=UTF-8',
+            'location': null,
+            'referrer-policy': 'no-referrer',
+            'set-cookie': null,
+            'x-accel-redirect': null,
+            'x-content-type-options': 'nosniff',
+            'x-frame-options': 'DENY',
+          },
+          status: 200,
+        },
+        'Safe configured response',
+      )
+    },
+  },
+  {
     fixture: { inputsDef: messageInputs },
     name: 'rejects invalid JSON, invalid payloads, invalid idempotency keys, and oversized bodies',
     async verify(harness) {

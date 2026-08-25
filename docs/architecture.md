@@ -107,6 +107,9 @@ package；subscription、checkpoint、调度持久化、endpoint routing 和 adm
 一次有效 Trigger occurrence 只能准入普通 Flow Run，之后复用相同的 Run、执行、事件、取消和 terminal 语义。Trigger lifecycle 不能扩张成第二套
 执行系统；重投 occurrence 必须通过稳定 identity 和权威 store 约束为最多一个 Run。
 
+Callback response 不能在承载 Workbench 或 Control API 的 origin 上成为 Project 控制的可执行内容，也不能修改 cookie、跳转、CORS 或其他部署级
+安全响应头。部署必须把 Project 配置的 callback response 限制为不可执行内容；若需要完整的自定义 HTTP responder，必须使用与管理面隔离的 origin。
+
 ## 5. 文档所有权
 
 - 修改产品事实、跨模块 owner、安全边界或运行时不变量时更新本文。

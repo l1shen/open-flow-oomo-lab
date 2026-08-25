@@ -137,6 +137,25 @@ it('correlates an unknown HTTP failure without logging headers or request bodies
   expect(captured.output()).not.toContain('request-body-secret')
 })
 
+it('does not log callback endpoint identities', async () => {
+  const captured = capture()
+  const service = ServerService.open(await databaseFile())
+  services.push(service)
+  const app = createServerApp(service, { logger: captured.logger })
+  const endpointId = 'endpoint_0123456789abcdef0123456789abcdef'
+
+  expect((await app.request(`http://server.local/v1/webhooks/${endpointId}`)).status).toBe(404)
+  expect((await app.request(`http://server.local/v1/integrations/${endpointId}`)).status).toBe(404)
+
+  expect(captured.entries()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ category: 'http.request.completed', path: '/v1/webhooks/:endpointId' }),
+      expect.objectContaining({ category: 'http.request.completed', path: '/v1/integrations/:endpointId' }),
+    ]),
+  )
+  expect(captured.output()).not.toContain(endpointId)
+})
+
 it('logs Run lifecycle metadata without copying user errors or Run payloads', async () => {
   const captured = capture()
   const service = ServerService.open(await databaseFile(), undefined, Date.now, {}, undefined, captured.logger)

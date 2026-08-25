@@ -32,7 +32,7 @@ export async function handleIntegration(service: ServerService, endpointId: stri
   } catch (error) {
     if (error instanceof BodyTooLarge) return plain(413)
     if (error instanceof RequestInvalid) return plain(400)
-    logger.error({ category: 'integration.request.failed', endpointId, requestId, ...errorKind(error) }, 'Integration request failed.')
+    logger.error({ category: 'integration.request.failed', requestId, ...errorKind(error) }, 'Integration request failed.')
     return plain(503)
   }
 }

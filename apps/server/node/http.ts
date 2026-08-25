@@ -19,6 +19,20 @@ import { ServerService } from './service.ts'
 
 const defaultWebhookMethods = ['POST'] as const
 const nullBodyStatuses = new Set([204, 205, 304])
+const forbiddenWebhookResponseHeaders = new Set([
+  'connection',
+  'content-encoding',
+  'content-length',
+  'content-security-policy',
+  'location',
+  'refresh',
+  'set-cookie',
+  'strict-transport-security',
+  'transfer-encoding',
+  'x-accel-redirect',
+  'x-reproxy-url',
+  'x-sendfile',
+])
 const reservedPaths = ['/assets', ...serverPaths] as const
 const encoder = new TextEncoder()
 
@@ -51,7 +65,7 @@ export function createServerApp(service: ServerService, options: ServerAppOption
       category: 'http.request.completed',
       durationMs: Math.round(performance.now() - startedAt),
       method: context.req.method,
-      path: context.req.path,
+      path: logPath(context.req.path),
       requestId,
       status: context.res.status,
     }
@@ -116,7 +130,7 @@ export function createServerApp(service: ServerService, options: ServerAppOption
         category: 'http.request.failed',
         err: error,
         method: context.req.method,
-        path: context.req.path,
+        path: logPath(context.req.path),
         requestId: context.get('requestId'),
       },
       'HTTP request failed.',
@@ -144,6 +158,12 @@ function projectNotifications(service: ServerService, projectId: string, signal:
 
 function safeRequestId(value: string | undefined): string | undefined {
   return value != null && /^[A-Za-z0-9._:-]{1,128}$/.test(value) ? value : undefined
+}
+
+function logPath(path: string): string {
+  if (path.startsWith('/v1/webhooks/')) return '/v1/webhooks/:endpointId'
+  if (path.startsWith('/v1/integrations/')) return '/v1/integrations/:endpointId'
+  return path
 }
 
 function reserved(path: string): boolean {
@@ -190,7 +210,7 @@ async function webhook(service: ServerService, request: Request, logger: Logger,
     if (error instanceof WebhookRequestInvalid || (error instanceof AcceptanceError && error.code == 'trigger-payload-invalid')) {
       return plain(400, undefined, origin)
     }
-    logger.error({ category: 'webhook.request.failed', endpointId, requestId, ...errorKind(error) }, 'Webhook request failed.')
+    logger.error({ category: 'webhook.request.failed', requestId, ...errorKind(error) }, 'Webhook request failed.')
     return plain(503, undefined, origin)
   }
 }
@@ -218,8 +238,14 @@ function preflight(request: Request, methods: readonly string[], origin: string 
 function webhookSuccess(method: string, trigger: Extract<TriggerNode, { readonly kind: 'webhook' }>, origin: string | undefined): Response {
   const status = trigger.options?.responseStatusCode ?? 200
   const headers = new Headers(trigger.options?.responseHeaders)
-  headers.delete('content-length')
+  for (const name of forbiddenWebhookResponseHeaders) headers.delete(name)
+  for (const name of headers.keys()) if (name.startsWith('access-control-')) headers.delete(name)
   headers.set('cache-control', 'no-store')
+  headers.set('content-security-policy', "default-src 'none'; frame-ancestors 'none'; sandbox")
+  headers.set('content-type', 'text/plain;charset=UTF-8')
+  headers.set('referrer-policy', 'no-referrer')
+  headers.set('x-content-type-options', 'nosniff')
+  headers.set('x-frame-options', 'DENY')
   withOrigin(headers, origin)
   const body = trigger.options?.noResponseBody || method == 'HEAD' || nullBodyStatuses.has(status) ? null : (trigger.options?.responseData ?? null)
   return text(status, body, headers)
