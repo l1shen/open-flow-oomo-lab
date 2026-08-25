@@ -79,6 +79,9 @@ Run admission 通过 Draft Revision path 或当前 Live Publication identity 固
 `runId` 是部署 scope 内的唯一资源 identity，可直接反查固定 Project；Project path 只用于按 Project 列表，不再参与单个 Run 的寻址。用户代码开始执行后
 不能通过重试创建第二次执行；无法确认的恢复结果必须显式结束为不确定失败。取消与完成竞争时，权威 Run store 中只能有一个 terminal。
 
+Run 在用户代码开始前因固定 Revision、Engine 或 prepare 不可用而失败时，部署必须把该 Run 单独结束为确定失败并继续处理后续工作；单个 poison Run
+不能停止全局调度或在重启后重复阻塞队列。readiness 必须反映部署后台处理是否仍可工作，不能只检查外部依赖。
+
 用户代码只在隔离 realm 中获得目标 closure、固定 platform module 和当前 Task invocation 明确声明的窄 Capability。Capability host 必须校验当前
 Project、Run、Task、invocation、binding 和 Run 状态；Task 或 Run 结束后旧 Capability 必须 fail closed。
 

@@ -1085,6 +1085,10 @@ export class Store {
     })
   }
 
+  failStarting(runId: string, result: unknown): boolean {
+    return this.#transaction(() => this.#finishRun(runId, 'failed', result, "status = 'starting'", this.#clock()))
+  }
+
   events(runId: string): readonly RunEvent[] {
     return (
       this.#database.prepare('SELECT cursor, kind, payload, value FROM events WHERE run_id = ? ORDER BY cursor').all(runId) as {

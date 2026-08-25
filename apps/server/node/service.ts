@@ -4,6 +4,7 @@ import type { PollDefinition } from '@oomol-lab/open-flow/poll-trigger'
 import type { ConnectorCapability, JsonValue, RevisionContent, TriggerNode } from '@oomol-lab/open-flow/project-change'
 import type { PreparedFlow } from '@oomol-lab/open-flow/project-semantics'
 import type { ProviderTriggerDefinition } from '@oomol-lab/open-flow/provider-triggers'
+import type { ProjectedRunEvent } from '@oomol-lab/open-flow/run-events'
 import type { RunAcceptance } from '@oomol-lab/open-flow/run-lifecycle'
 import type { InvokeLlmTask, RuntimeCapabilityCall, RuntimeCapabilityResponse } from '@oomol-lab/open-flow/runtime-contract'
 import type { TaskInvocation } from '@oomol-lab/open-flow/scheduler'
@@ -475,7 +476,7 @@ export class ServerService {
   }
 
   async ready(): Promise<boolean> {
-    return this.#connector == null || (await this.#connector.ready())
+    return this.#started && this.#failure == null && this.#integration.ready() && (this.#connector == null || (await this.#connector.ready()))
   }
 
   run(runId: string): RunRecord | undefined {
@@ -618,15 +619,29 @@ export class ServerService {
   }
 
   async #dispatch(run: StoredRun): Promise<void> {
-    if (run.engineDigest != isolatedVmEngineDigest) throw new Error('Fixed Run Engine implementation is not available.')
-    if ((await digestBytes(encoder.encode(run.content))) != run.revisionDigest) {
-      throw new Error('Fixed Project Revision digest does not match stored content.')
+    let prepared: Awaited<ReturnType<typeof prepareFlow>>
+    let projectEvent: ReturnType<typeof createEventProjector>
+    let started: ProjectedRunEvent | undefined
+    try {
+      if (run.engineDigest != isolatedVmEngineDigest) throw new Error('Fixed Run Engine implementation is not available.')
+      if ((await digestBytes(encoder.encode(run.content))) != run.revisionDigest) {
+        throw new Error('Fixed Project Revision digest does not match stored content.')
+      }
+      const revision = JSON.parse(run.content) as RevisionContent
+      prepared = await prepareFlow(revision, run.flowId, run.engineContract)
+      if (prepared.kind != 'prepared') throw new Error(`Fixed Project Revision can no longer be prepared: ${prepared.kind}.`)
+      projectEvent = createEventProjector(run.runId, nodeFailureCodes)
+      started = await projectEvent({ flowId: run.flowId, runId: run.runId, type: 'run.started' })
+    } catch (error) {
+      if (
+        this.#store.failStarting(run.runId, {
+          error: { code: 'execution.unavailable', message: 'The fixed Run could not be started by this deployment.' },
+        })
+      ) {
+        this.#logger.error({ category: 'run.start_failed', flowId: run.flowId, runId: run.runId, ...errorKind(error) }, 'Run could not be started.')
+      }
+      return
     }
-    const revision = JSON.parse(run.content) as RevisionContent
-    const result = await prepareFlow(revision, run.flowId, run.engineContract)
-    if (result.kind != 'prepared') throw new Error(`Fixed Project Revision can no longer be prepared: ${result.kind}.`)
-    const projectEvent = createEventProjector(run.runId, nodeFailureCodes)
-    const started = await projectEvent({ flowId: run.flowId, runId: run.runId, type: 'run.started' })
     if (started == null || !this.#store.start(run.runId, started)) return
     const startedAt = performance.now()
     this.#logger.info({ category: 'run.started', flowId: run.flowId, runId: run.runId }, 'Run started.')
@@ -634,7 +649,7 @@ export class ServerService {
     const cancellation = new AbortController()
     this.#active.set(run.runId, { cancellation, projectId: run.projectId })
     try {
-      const output = await runFlow(result.flow, {
+      const output = await runFlow(prepared.flow, {
         createId: randomUUID,
         emit: async (event) => {
           if (event.type == 'run.started' && event.runId == run.runId) return
@@ -642,7 +657,7 @@ export class ServerService {
           if (projected != null) this.#store.append(run.runId, projected)
         },
         inputs: run.inputs,
-        invokeTask: (invocation) => this.#invokeTask(result.flow, invocation),
+        invokeTask: (invocation) => this.#invokeTask(prepared.flow, invocation),
         projectFailure: (error) => {
           if (error instanceof ConnectorTaskError) return { code: error.code, message: error.message }
           if (error instanceof TaskHostError) return { code: error.code, message: error.message }

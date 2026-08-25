@@ -93,8 +93,8 @@ credential、path、query 或 fragment 的 HTTP(S) origin，后者只能通过 s
 
 ## 5. 健康检查与停止
 
-镜像的 Docker `HEALTHCHECK` 请求 `GET /healthz`，只表示 Server 进程能够响应。部署入口应另外使用 `GET /readyz` 判断是否接收新流量；配置外部
-Connector 后，Connector 不可用会让 readiness 返回 503，但 liveness 仍保持 200。
+镜像的 Docker `HEALTHCHECK` 请求 `GET /healthz`，只表示 Server 进程能够响应。部署入口应另外使用 `GET /readyz` 判断是否接收新流量；Server 尚未
+启动、Run/Trigger/Maintenance 后台处理已停止或配置的外部 Connector 不可用时，readiness 返回 503，但 liveness 仍保持 200。
 
 检查状态：
 

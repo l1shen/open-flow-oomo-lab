@@ -3,6 +3,7 @@ import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ServerService } from '../node/service.ts'
 import { acceptRun } from './runFixture.ts'
@@ -211,6 +212,44 @@ describe('Server application service', () => {
     expect(service.events(accepted.runId).filter((event) => event.kind == 'run.started')).toHaveLength(2)
     expect(service.events(accepted.runId).filter((event) => event.kind == 'run.completed')).toHaveLength(1)
     await service.close()
+  })
+
+  it('fails an unstartable Run without poisoning later work or readiness', async () => {
+    const file = await databaseFile()
+    let service = ServerService.open(file)
+    const poisoned = await acceptRun(service, {
+      flowId: 'main',
+      idempotencyKey: 'poisoned',
+      revision: fullFlow(),
+      revisionId: 'revision-a',
+    })
+    const healthy = await acceptRun(service, {
+      flowId: 'main',
+      idempotencyKey: 'healthy',
+      revision: fullFlow(),
+      revisionId: 'revision-a',
+    })
+    if (poisoned.kind != 'accepted' || healthy.kind != 'accepted') throw new Error('Run acceptance conflicted.')
+    await expect(service.ready()).resolves.toBe(false)
+    await service.close()
+
+    const database = new DatabaseSync(file)
+    database.prepare('UPDATE runs SET engine_digest = ? WHERE run_id = ?').run('sha256:unavailable', poisoned.runId)
+    database.close()
+
+    service = ServerService.open(file)
+    service.start()
+    await expect(service.ready()).resolves.toBe(true)
+    await service.waitForIdle()
+
+    expect(service.run(poisoned.runId)).toMatchObject({
+      result: { error: { code: 'execution.unavailable', message: 'The fixed Run could not be started by this deployment.' } },
+      status: 'failed',
+    })
+    expect(service.events(poisoned.runId).map((event) => event.kind)).toEqual(['run.queued', 'run.failed'])
+    expect(service.run(healthy.runId)?.status).toBe('completed')
+    await service.close()
+    await expect(service.ready()).resolves.toBe(false)
   })
 
   it('lets cancellation win once and terminates the active Executor', async () => {

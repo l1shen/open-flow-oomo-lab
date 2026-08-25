@@ -114,6 +114,10 @@ export class IntegrationRuntime {
     }, delay)
   }
 
+  ready(): boolean {
+    return this.#started && this.#failure == null
+  }
+
   bindings(revision: RevisionContent, prepared: PreparedFlow, publishedAt: number) {
     const nodes = Object.entries(prepared.flow.graph.nodes)
       .filter((entry): entry is [string, Extract<TriggerNode, { readonly kind: 'integration' }>] => entry[1].kind == 'integration')
