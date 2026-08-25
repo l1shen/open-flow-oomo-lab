@@ -107,7 +107,7 @@ let selectedProject = ${readOnly ? JSON.stringify('project-1') : 'undefined'}
 let flow = ${readOnly ? JSON.stringify(flow()) : 'undefined'}
 const requests = []
 const host = {
-  async request(path, init = {}) {
+  async cloudRequest(path, init = {}) {
     requests.push({ path, init })
     if (path === '/v1/projects?limit=100') {
       return Response.json({ projects: [project], version: 1 })
