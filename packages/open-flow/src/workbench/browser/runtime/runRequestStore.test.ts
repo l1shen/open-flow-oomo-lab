@@ -182,7 +182,7 @@ describe('RunRequestStore', () => {
     expect(store.$.inputRequest.value?.groups[0]?.editor.replaceValues({ message: 'From Live' })).toBe(true)
 
     await expect(store.confirmInputs()).resolves.toBe(true)
-    expect(createLiveRun).toHaveBeenCalledWith('project-1', 'main', {
+    expect(createLiveRun).toHaveBeenCalledWith('publication-live', {
       idempotencyKey: 'live-run-operation',
       inputs: { task: { message: 'From Live' } },
     })

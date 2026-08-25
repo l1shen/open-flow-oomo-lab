@@ -210,7 +210,7 @@ export class RunStore {
     this.#setNotice(undefined)
     this.#set({ cancelingRunId: run.runId })
     try {
-      const cancellation = await this.#client.cancelRun(run.projectId, run.runId)
+      const cancellation = await this.#client.cancelRun(run.runId)
       if (!current()) return
       const state = this.#state.value
       const selected = state.run?.runId == run.runId
@@ -271,8 +271,8 @@ export class RunStore {
     try {
       const after = this.#state.value.eventCursor
       const [runResponse, eventsResponse] = await Promise.allSettled([
-        this.#client.getRun(run.projectId, run.runId),
-        this.#client.getRunEvents(run.projectId, run.runId, { after, limit: eventPageLimit }),
+        this.#client.getRun(run.runId),
+        this.#client.getRunEvents(run.runId, { after, limit: eventPageLimit }),
       ])
       if (runResponse.status == 'rejected') throw runResponse.reason
       if (!current() || this.#state.value.run?.runId != run.runId) return
@@ -319,7 +319,7 @@ export class RunStore {
 
   async #loadResult(run: Run, current: Current): Promise<void> {
     if (!isRunTerminal(run.status) || this.#state.value.result?.runId == run.runId) return
-    const result = await this.#client.getRunResult(run.projectId, run.runId)
+    const result = await this.#client.getRunResult(run.runId)
     if (current() && this.#state.value.run?.runId == run.runId) this.#set({ result })
   }
 

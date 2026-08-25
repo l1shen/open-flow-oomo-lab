@@ -198,13 +198,12 @@ function rollbackRequest(
 
 function liveRunRequest(
   harness: ControlApiConformanceHarness,
-  projectId: string,
-  flowId: string,
+  targetPublicationId: string,
   idempotencyKey: string,
   inputs: RecordValue = {},
 ): Promise<Response> {
-  return request(harness, `/v1/projects/${encodeURIComponent(projectId)}/flows/${encodeURIComponent(flowId)}/runs`, {
-    body: JSON.stringify({ inputs, version: 1 }),
+  return request(harness, '/v1/runs', {
+    body: JSON.stringify({ inputs, publicationId: targetPublicationId, version: 1 }),
     headers: { 'idempotency-key': idempotencyKey },
     method: 'POST',
   })
@@ -391,7 +390,7 @@ export const controlApiConformanceCases: readonly ControlApiConformanceCase[] = 
       equal(run.status, 'queued', 'Draft Run status')
       equal(await json(await runRequest(), 200, 'Replay Draft Run'), run, 'Replayed Draft Run')
 
-      const observationPath = `/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}`
+      const observationPath = `/v1/runs/${encodeURIComponent(runId)}`
       equal(await json(await request(harness, observationPath), 200, 'Read Draft Run'), run, 'Read Draft Run')
       const listed = await json(await request(harness, `/v1/projects/${encodeURIComponent(projectId)}/runs`), 200, 'List Draft Runs')
       equal(listed.projectId, projectId, 'Run list projectId')
@@ -408,14 +407,14 @@ export const controlApiConformanceCases: readonly ControlApiConformanceCase[] = 
       await assertError(await request(harness, `${observationPath}/result`), 409, 'run.not-terminal', 'Read pending Run result')
 
       const other = await createProject(harness, 'Other project', 'other-run-project')
-      await assertError(
-        await request(
-          harness,
-          `/v1/projects/${encodeURIComponent(requiredString(other.projectId, 'Other Project projectId'))}/runs/${encodeURIComponent(runId)}`,
+      const otherProjectId = requiredString(other.projectId, 'Other Project projectId')
+      equal(
+        list(
+          (await json(await request(harness, `/v1/projects/${encodeURIComponent(otherProjectId)}/runs`), 200, 'List other Project Runs')).runs,
+          'Other Project Runs',
         ),
-        404,
-        'run.not-found',
-        'Read Run through another Project',
+        [],
+        'Run remains scoped to its fixed Project list',
       )
 
       const cancel = () =>
@@ -461,7 +460,7 @@ export const publicationControlApiConformanceCases: readonly ControlApiConforman
       equal(unpublished.revision, 0, 'Unpublished Live revision')
       equal(unpublished.status, 'not-published', 'Unpublished Live status')
       equal(unpublished.hasUnpublishedChanges, true, 'Unpublished Live Draft state')
-      await assertError(await liveRunRequest(harness, projectId, 'main', 'missing-live-run'), 404, 'live.not-found', 'Run unpublished Live')
+      await assertError(await liveRunRequest(harness, 'publication_missing', 'missing-live-run'), 404, 'publication.not-found', 'Run missing Publication')
 
       const publish = () => publishRequest(harness, projectId, revisionId, 'main', null, 'publication-first')
       const first = await json(await publish(), 201, 'Publish Flow')
@@ -590,7 +589,7 @@ export const publicationControlApiConformanceCases: readonly ControlApiConforman
       equal(secondPage.publications, [first], 'Second Publication page')
       equal(secondPage.nextCursor, undefined, 'Final Publication cursor')
 
-      const createRun = () => liveRunRequest(harness, projectId, 'main', 'rollback-live-run')
+      const createRun = () => liveRunRequest(harness, restoredPublicationId, 'rollback-live-run')
       const run = await json(await createRun(), 202, 'Create rolled back Live Run')
       const runId = requiredString(run.runId, 'Rolled back Live Run runId')
       equal(run.projectId, projectId, 'Live Run projectId')
@@ -601,7 +600,7 @@ export const publicationControlApiConformanceCases: readonly ControlApiConforman
       equal(run.status, 'queued', 'Live Run status')
       equal(await json(await createRun(), 200, 'Replay Live Run'), run, 'Replayed Live Run')
       await assertError(
-        await liveRunRequest(harness, projectId, 'main', 'rollback-live-run', { changed: {} }),
+        await liveRunRequest(harness, restoredPublicationId, 'rollback-live-run', { changed: {} }),
         409,
         'run.conflict',
         'Conflicting Live Run replay',
@@ -612,11 +611,7 @@ export const publicationControlApiConformanceCases: readonly ControlApiConforman
         201,
         'Move Live after Run admission',
       )
-      equal(
-        await json(await request(harness, `/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}`), 200, 'Read fixed Live Run'),
-        run,
-        'Live Run after Live moved',
-      )
+      equal(await json(await request(harness, `/v1/runs/${encodeURIComponent(runId)}`), 200, 'Read fixed Live Run'), run, 'Live Run after Live moved')
     },
   },
   {
@@ -644,7 +639,12 @@ export const publicationControlApiConformanceCases: readonly ControlApiConforman
       const deletedHistory = await json(await request(harness, `${deletedPath}/publications?includeTotal=true`), 200, 'List deleted Flow history')
       equal(deletedHistory.publications, [deletedPublication], 'Deleted Flow Publication history')
       equal(deletedHistory.total, 1, 'Deleted Flow Publication total')
-      await assertError(await liveRunRequest(harness, deletedProjectId, 'main', 'deleted-flow-run'), 404, 'live.not-found', 'Run deleted Flow Live')
+      await assertError(
+        await liveRunRequest(harness, publicationId(deletedPublication, 'Deleted Flow Publication'), 'deleted-flow-run'),
+        412,
+        'live.conflict',
+        'Run deleted Flow Publication',
+      )
 
       const retiredProject = await createProject(harness, 'Retired Live project', 'retired-live-project')
       const retiredProjectId = requiredString(retiredProject.projectId, 'Retired Live Project projectId')
@@ -666,7 +666,7 @@ export const publicationControlApiConformanceCases: readonly ControlApiConforman
       const retiredHistory = await json(await request(harness, `${retiredPath}/publications?includeTotal=true`), 200, 'List retired Publication history')
       equal(retiredHistory.publications, [retiredPublication], 'Retired Publication history')
       equal(retiredHistory.total, 1, 'Retired Publication total')
-      await assertError(await liveRunRequest(harness, retiredProjectId, 'main', 'retired-live-run'), 409, 'project.busy', 'Run retired Live')
+      await assertError(await liveRunRequest(harness, retiredPublicationId, 'retired-live-run'), 409, 'project.busy', 'Run retired Live')
       await assertError(
         await publishRequest(harness, retiredProjectId, retiredRevisionId, 'main', null, 'retired-live-republish'),
         409,

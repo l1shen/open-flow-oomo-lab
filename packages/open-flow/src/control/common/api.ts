@@ -1184,10 +1184,10 @@ export class ControlClient {
     return created.source == 'draft' ? created : invalidResponse()
   }
 
-  async createLiveRun(projectId: string, flowId: string, options: RunOptions = {}): Promise<LiveRun> {
+  async createLiveRun(publicationId: string, options: RunOptions = {}): Promise<LiveRun> {
     const created = runDetails(
-      await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/runs`, {
-        body: JSON.stringify({ inputs: options.inputs ?? {}, version: 1 }),
+      await this.request('/v1/runs', {
+        body: JSON.stringify({ inputs: options.inputs ?? {}, publicationId, version: 1 }),
         headers: { 'idempotency-key': options.idempotencyKey ?? operationKey('run') },
         method: 'POST',
       }),
@@ -1227,8 +1227,8 @@ export class ControlClient {
     )
   }
 
-  async getRun(projectId: string, runId: string): Promise<RunDetails> {
-    return runDetails(await this.request(`/v1/projects/${segment(projectId)}/runs/${segment(runId)}`))
+  async getRun(runId: string): Promise<RunDetails> {
+    return runDetails(await this.request(`/v1/runs/${segment(runId)}`))
   }
 
   async listRuns(
@@ -1244,21 +1244,21 @@ export class ControlClient {
     return runPage(await this.request(`/v1/projects/${segment(projectId)}/runs${query}`))
   }
 
-  async getRunEvents(projectId: string, runId: string, options: { readonly after?: number; readonly limit?: number } = {}): Promise<RunEvents> {
+  async getRunEvents(runId: string, options: { readonly after?: number; readonly limit?: number } = {}): Promise<RunEvents> {
     const parameters = new URLSearchParams()
     if (options.after != null) parameters.set('after', String(options.after))
     if (options.limit != null) parameters.set('limit', String(options.limit))
     const query = parameters.size == 0 ? '' : `?${parameters}`
-    return runEvents(await this.request(`/v1/projects/${segment(projectId)}/runs/${segment(runId)}/events${query}`))
+    return runEvents(await this.request(`/v1/runs/${segment(runId)}/events${query}`))
   }
 
-  async getRunResult(projectId: string, runId: string): Promise<RunResult> {
-    return runResult(await this.request(`/v1/projects/${segment(projectId)}/runs/${segment(runId)}/result`))
+  async getRunResult(runId: string): Promise<RunResult> {
+    return runResult(await this.request(`/v1/runs/${segment(runId)}/result`))
   }
 
-  async cancelRun(projectId: string, runId: string): Promise<RunCancellation> {
+  async cancelRun(runId: string): Promise<RunCancellation> {
     return runCancellation(
-      await this.request(`/v1/projects/${segment(projectId)}/runs/${segment(runId)}/cancel`, {
+      await this.request(`/v1/runs/${segment(runId)}/cancel`, {
         body: JSON.stringify({ version: 1 }),
         method: 'POST',
       }),

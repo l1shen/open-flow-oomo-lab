@@ -27,7 +27,7 @@ it('applies the current schema without foreign keys', async () => {
 
   const database = new DatabaseSync(file)
   try {
-    expect(schemaVersion(database)).toBe(8)
+    expect(schemaVersion(database)).toBe(9)
     const tables = database.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as {
       readonly name: string
     }[]
@@ -119,7 +119,7 @@ it('upgrades a version 2 database without changing existing rows', async () => {
   }
 })
 
-it('upgrades a version 3 database without changing existing Run rows', async () => {
+it('removes projectless Runs when upgrading a version 3 database', async () => {
   const file = await databaseFile()
   const database = new DatabaseSync(file)
   database.exec(await readFile(new URL('../migrations/0001_initial.sql', import.meta.url), 'utf8'))
@@ -142,10 +142,8 @@ it('upgrades a version 3 database without changing existing Run rows', async () 
 
   const upgraded = new DatabaseSync(file)
   try {
-    expect(upgraded.prepare('SELECT run_id AS runId, project_id AS projectId, created_at AS createdAt FROM runs').all()).toEqual([
-      { createdAt: 0, projectId: null, runId: 'run-v3' },
-    ])
-    expect(upgraded.prepare('SELECT run_id AS runId, created_at AS createdAt FROM events').all()).toEqual([{ createdAt: 0, runId: 'run-v3' }])
+    expect(upgraded.prepare('SELECT run_id AS runId FROM runs').all()).toEqual([])
+    expect(upgraded.prepare('SELECT run_id AS runId FROM events').all()).toEqual([])
   } finally {
     upgraded.close()
   }
@@ -326,7 +324,7 @@ it('backfills the Control identity of existing Trigger Runs when upgrading versi
   }
 })
 
-it('adds retirement and RunEvent retention state when upgrading version 7', async () => {
+it('adds retirement state and removes a projectless Run when upgrading version 7', async () => {
   const file = await databaseFile()
   const database = new DatabaseSync(file)
   for (const migration of [
@@ -365,7 +363,7 @@ it('adds retirement and RunEvent retention state when upgrading version 7', asyn
 
   const upgraded = new DatabaseSync(file)
   try {
-    expect(schemaVersion(upgraded)).toBe(8)
+    expect(schemaVersion(upgraded)).toBe(9)
     expect(
       upgraded
         .prepare(
@@ -374,7 +372,7 @@ it('adds retirement and RunEvent retention state when upgrading version 7', asyn
         )
         .get(),
     ).toEqual({ deletionAttemptedAt: null, deletionRequestedAt: null })
-    expect(upgraded.prepare("SELECT events_expires_at AS eventsExpiresAt FROM runs WHERE run_id = 'run-v7'").get()).toEqual({ eventsExpiresAt: null })
+    expect(upgraded.prepare("SELECT events_expires_at AS eventsExpiresAt FROM runs WHERE run_id = 'run-v7'").get()).toBeUndefined()
     expect(
       upgraded.prepare("SELECT name FROM sqlite_schema WHERE type = 'index' AND name IN ('projects_retirement', 'runs_events_expiry') ORDER BY name").all(),
     ).toEqual([{ name: 'projects_retirement' }, { name: 'runs_events_expiry' }])

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConnectorTaskError } from '../node/connector.ts'
 import { ServerService } from '../node/service.ts'
 import { createConnectorHost } from './connectorHost.ts'
+import { acceptRun } from './runFixture.ts'
 
 const directories: string[] = []
 const services: ServerService[] = []
@@ -109,7 +110,7 @@ async function open(connector?: Parameters<typeof ServerService.open>[1], connec
 }
 
 async function run(service: ServerService, revision: RevisionContent): Promise<string> {
-  const accepted = await service.acceptRun({ flowId: 'main', idempotencyKey: crypto.randomUUID(), revision, revisionId: crypto.randomUUID() })
+  const accepted = await acceptRun(service, { flowId: 'main', idempotencyKey: crypto.randomUUID(), revision, revisionId: crypto.randomUUID() })
   if (accepted.kind != 'accepted') throw new Error('Connector Run acceptance conflicted.')
   await service.waitForIdle()
   return accepted.runId

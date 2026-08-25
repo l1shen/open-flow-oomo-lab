@@ -1,9 +1,7 @@
-import type { JsonValue, RevisionContent, TriggerNode } from '@oomol-lab/open-flow/project-change'
-import type { Context, Next } from 'hono'
+import type { JsonValue, TriggerNode } from '@oomol-lab/open-flow/project-change'
 import type { Logger } from 'pino'
 import type { ResolveControlActor } from './control.ts'
 import type { OperatorSession } from './operator.ts'
-import type { AcceptRunInput } from './service.ts'
 
 import { serveStatic } from '@hono/node-server/serve-static'
 import { controlErrorCode } from '@oomol-lab/open-flow/control-api'
@@ -19,7 +17,6 @@ import { createOperatorApp } from './operator.ts'
 import { serverPaths } from './server-paths.ts'
 import { ServerService } from './service.ts'
 
-const maxRequestBytes = 5 * 1024 * 1024
 const defaultWebhookMethods = ['POST'] as const
 const nullBodyStatuses = new Set([204, 205, 304])
 const reservedPaths = ['/assets', ...serverPaths] as const
@@ -85,36 +82,6 @@ export function createServerApp(service: ServerService, options: ServerAppOption
     const ready = await service.ready()
     return json(ready ? 200 : 503, { status: ready ? 'ready' : 'not-ready' })
   })
-  const authenticateRun = async (context: Context, next: Next): Promise<void> => {
-    const actor = await resolveActor?.(context.req.raw)
-    if (actor == null || actor.length == 0) throw new ControlError(controlErrorCode.authenticationRequired, 'Authentication is required.')
-    await next()
-  }
-  app.use('/v1/runs', authenticateRun)
-  app.use('/v1/runs/*', authenticateRun)
-  app.post('/v1/runs', async (context) => {
-    const accepted = await service.acceptRun(decodeAcceptRun(await readJson(context.req.raw)))
-    return json(accepted.kind == 'accepted' && accepted.created ? 202 : 200, accepted)
-  })
-  app.all('/v1/runs/:runId', (context) => {
-    const run = service.run(context.req.param('runId'))
-    if (run == null) return runNotFound()
-    if (context.req.method == 'GET') return json(200, run)
-    return routeNotFound()
-  })
-  app.all('/v1/runs/:runId/events', (context) => {
-    const runId = context.req.param('runId')
-    if (service.run(runId) == null) return runNotFound()
-    if (context.req.method == 'GET') return json(200, { events: service.events(runId) })
-    return routeNotFound()
-  })
-  app.all('/v1/runs/:runId/cancel', (context) => {
-    const runId = context.req.param('runId')
-    if (service.run(runId) == null) return runNotFound()
-    if (context.req.method == 'POST') return json(service.cancel(runId) ? 202 : 200, service.run(runId)!)
-    return routeNotFound()
-  })
-
   if (options.publicDirectory != null) {
     app.use(
       '/assets/*',
@@ -143,9 +110,6 @@ export function createServerApp(service: ServerService, options: ServerAppOption
     if (error instanceof AcceptanceError) {
       const status = error.code == 'revision-conflict' ? 409 : 422
       return json(status, { error: { code: error.code, message: error.message } })
-    }
-    if (error instanceof RequestError) {
-      return json(400, { error: { code: serverErrorCode.requestInvalid, message: error.message } })
     }
     logger.error(
       {
@@ -190,7 +154,6 @@ function acceptsHtml(accept: string | undefined): boolean {
   return accept == null || accept.split(',').some((value) => ['*/*', 'text/*', 'text/html'].includes(value.split(';', 1)[0]!.trim()))
 }
 
-class RequestError extends Error {}
 class WebhookBodyTooLarge extends Error {}
 class WebhookRequestInvalid extends Error {}
 
@@ -304,40 +267,6 @@ function text(status: number, body: string | null, headers: Headers): Response {
   return new Response(body, { headers, status })
 }
 
-function decodeAcceptRun(value: unknown): AcceptRunInput {
-  const input = object(value, 'Run request')
-  const keys = Object.keys(input)
-  if (keys.some((key) => !['flowId', 'idempotencyKey', 'inputs', 'revision', 'revisionId'].includes(key))) {
-    throw new RequestError('Run request contains an unknown field.')
-  }
-  const revision = object(input.revision, 'Run request revision')
-  if (revision.modelVersion !== 1) throw new RequestError('Run request revision modelVersion is invalid.')
-  object(revision.document, 'Run request revision document')
-  object(revision.modules, 'Run request modules')
-  const inputs = input.inputs === undefined ? undefined : object(input.inputs, 'Run request inputs')
-  return {
-    flowId: string(input.flowId, 'Run request flowId'),
-    idempotencyKey: string(input.idempotencyKey, 'Run request idempotencyKey'),
-    ...(inputs === undefined ? {} : { inputs: inputs as NonNullable<AcceptRunInput['inputs']> }),
-    revision: revision as unknown as RevisionContent,
-    revisionId: string(input.revisionId, 'Run request revisionId'),
-  }
-}
-
-function object(value: unknown, description: string): Record<string, unknown> {
-  if (value == null || typeof value != 'object' || Array.isArray(value)) throw new RequestError(`${description} must be an object.`)
-  return value as Record<string, unknown>
-}
-
-async function readJson(request: Request): Promise<unknown> {
-  const source = new TextDecoder().decode(await readBody(request, maxRequestBytes, () => new RequestError('Request body is too large.')))
-  try {
-    return JSON.parse(source) as unknown
-  } catch {
-    throw new RequestError('Request body must be valid JSON.')
-  }
-}
-
 async function readBody(request: Request, limit: number, tooLarge: () => Error): Promise<Uint8Array> {
   if (request.body == null) return new Uint8Array()
   const chunks: Uint8Array[] = []
@@ -366,13 +295,4 @@ function json(status: number, body: unknown): Response {
 
 function routeNotFound(): Response {
   return json(404, { error: { code: controlErrorCode.routeNotFound, message: 'Route was not found.' } })
-}
-
-function runNotFound(): Response {
-  return json(404, { error: { code: controlErrorCode.runNotFound, message: 'Run was not found.' } })
-}
-
-function string(value: unknown, description: string): string {
-  if (typeof value != 'string' || value.length == 0) throw new RequestError(`${description} must be a non-empty string.`)
-  return value
 }

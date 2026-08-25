@@ -471,30 +471,6 @@ export class Store {
     })
   }
 
-  accept(input: {
-    readonly content: string
-    readonly flowId: string
-    readonly idempotencyKey: string
-    readonly inputs: RunInputs
-    readonly requestDigest: string
-    readonly revisionDigest: string
-    readonly revisionId: string
-  }): RunAcceptance {
-    return this.#transaction(() => {
-      const existing = this.#database
-        .prepare('SELECT run_id AS runId, request_digest AS requestDigest, status FROM runs WHERE idempotency_key = ?')
-        .get(input.idempotencyKey) as { readonly requestDigest: string; readonly runId: string; readonly status: RunStatus } | undefined
-      if (existing != null) {
-        if (existing.requestDigest != input.requestDigest) return { kind: 'conflict' }
-        return { created: false, kind: 'accepted', runId: existing.runId, status: existing.status }
-      }
-
-      this.#ensureRevision(input)
-      const runId = this.#insertRun(input)
-      return { created: true, kind: 'accepted', runId, status: 'queued' }
-    })
-  }
-
   acceptControlRun(input: {
     readonly closureDigest: string
     readonly flowId: string
@@ -529,7 +505,6 @@ export class Store {
 
       const runId = this.#insertRun({
         ...input,
-        queuedEvent: true,
         source: 'draft',
       })
       return { created: true, kind: 'accepted', runId, status: 'queued' }
@@ -547,7 +522,7 @@ export class Store {
     readonly requestDigest: string
     readonly revisionDigest: string
     readonly revisionId: string
-  }): RunAcceptance | { readonly kind: 'busy' | 'live-not-found' | 'not-found' } {
+  }): RunAcceptance | { readonly kind: 'busy' | 'live-conflict' | 'not-found' } {
     return this.#transaction(() => {
       const existing = this.#database
         .prepare('SELECT run_id AS runId, request_digest AS requestDigest, source, status FROM runs WHERE idempotency_key = ?')
@@ -563,7 +538,7 @@ export class Store {
       if (project == null) return { kind: 'not-found' }
       if (project.status != 'active') return { kind: 'busy' }
       const target = this.live(input.projectId, input.flowId)
-      if (target == null || target.publication.publicationId != input.expectedPublicationId) return { kind: 'live-not-found' }
+      if (target == null || target.publication.publicationId != input.expectedPublicationId) return { kind: 'live-conflict' }
       const publication = target.publication
       if (
         publication.revisionId != input.revisionId ||
@@ -571,30 +546,16 @@ export class Store {
         publication.closureDigest != input.closureDigest ||
         publication.modelVersion != input.modelVersion
       ) {
-        return { kind: 'live-not-found' }
+        return { kind: 'live-conflict' }
       }
 
       const runId = this.#insertRun({
         ...input,
         publicationId: publication.publicationId,
-        queuedEvent: true,
         source: 'live',
       })
       return { created: true, kind: 'accepted', runId, status: 'queued' }
     })
-  }
-
-  acceptWebhookOccurrence(input: {
-    readonly content: string
-    readonly flowId: string
-    readonly occurrenceId: string
-    readonly payload: JsonValue
-    readonly requestDigest: string
-    readonly revisionDigest: string
-    readonly revisionId: string
-    readonly triggerNodeId: string
-  }): RunAcceptance {
-    return this.#transaction(() => this.#acceptTriggerOccurrence(input))
   }
 
   publication(projectId: string, flowId: string, publicationId: string): StoredPublication | undefined {
@@ -605,6 +566,16 @@ export class Store {
          WHERE publications.project_id = ? AND publications.flow_id = ? AND publications.publication_id = ?`,
       )
       .get(projectId, flowId, publicationId) as StoredPublication | undefined
+  }
+
+  publicationById(publicationId: string): StoredPublication | undefined {
+    return this.#database
+      .prepare(
+        `SELECT ${publicationColumns}
+         FROM publications
+         WHERE publications.publication_id = ?`,
+      )
+      .get(publicationId) as StoredPublication | undefined
   }
 
   live(projectId: string, flowId: string): StoredLive | undefined {
@@ -1163,8 +1134,8 @@ export class Store {
       .get(idempotencyKey) as StoredRunRequest | undefined
   }
 
-  controlRun(projectId: string, runId: string): StoredControlRun | undefined {
-    return this.#controlRuns('runs.project_id = ? AND runs.run_id = ?', [projectId, runId], 'LIMIT 1')[0]
+  controlRun(runId: string): StoredControlRun | undefined {
+    return this.#controlRuns('runs.run_id = ?', [runId], 'LIMIT 1')[0]
   }
 
   listControlRuns(
@@ -1221,14 +1192,14 @@ export class Store {
     })
   }
 
-  cancelControlRun(projectId: string, runId: string): { readonly accepted: boolean; readonly run: StoredControlRun } | undefined {
+  cancelControlRun(runId: string): { readonly accepted: boolean; readonly run: StoredControlRun } | undefined {
     return this.#transaction(() => {
-      const current = this.#database.prepare('SELECT status FROM runs WHERE project_id = ? AND run_id = ?').get(projectId, runId) as
+      const current = this.#database.prepare('SELECT status FROM runs WHERE run_id = ? AND project_id IS NOT NULL AND source IS NOT NULL').get(runId) as
         | { readonly status: RunStatus }
         | undefined
       if (current == null) return
       if (current.status == 'canceled' || current.status == 'completed' || current.status == 'failed' || current.status == 'indeterminate') {
-        return { accepted: false, run: this.controlRun(projectId, runId)! }
+        return { accepted: false, run: this.controlRun(runId)! }
       }
       this.#finishRun(
         runId,
@@ -1237,7 +1208,7 @@ export class Store {
         "status IN ('queued', 'starting', 'running')",
         this.#clock(),
       )
-      return { accepted: true, run: this.controlRun(projectId, runId)! }
+      return { accepted: true, run: this.controlRun(runId)! }
     })
   }
 
@@ -1369,7 +1340,6 @@ export class Store {
       ...input,
       idempotencyKey: `trigger:${randomUUID()}`,
       inputs: {},
-      queuedEvent: input.source == 'trigger',
     })
     this.#database
       .prepare('INSERT INTO trigger_occurrences (occurrence_id, run_id, trigger_node_id, payload) VALUES (?, ?, ?, ?)')
@@ -1390,18 +1360,17 @@ export class Store {
   }
 
   #insertRun(input: {
-    readonly closureDigest?: string
+    readonly closureDigest: string
     readonly flowId: string
     readonly idempotencyKey: string
     readonly inputs: RunInputs
-    readonly modelVersion?: number
+    readonly modelVersion: number
     readonly publicationId?: string
-    readonly projectId?: string
-    readonly queuedEvent?: boolean
+    readonly projectId: string
     readonly requestDigest: string
     readonly revisionDigest: string
     readonly revisionId: string
-    readonly source?: 'draft' | 'live' | 'trigger'
+    readonly source: 'draft' | 'live' | 'trigger'
   }): string {
     const runId = randomUUID()
     this.#database
@@ -1422,20 +1391,18 @@ export class Store {
         currentEngineContract,
         isolatedVmEngineDigest,
         JSON.stringify(input.inputs),
-        input.projectId ?? null,
-        input.source ?? null,
-        input.closureDigest ?? null,
-        input.modelVersion ?? null,
+        input.projectId,
+        input.source,
+        input.closureDigest,
+        input.modelVersion,
         this.#clock(),
         input.publicationId ?? null,
       )
     this.#database.prepare('INSERT INTO work (run_id) VALUES (?)').run(runId)
-    if (input.queuedEvent == true) {
-      const payload = {}
-      this.#insertEvent(runId, 'run.queued', payload)
-      const bytes = encoder.encode(JSON.stringify({ kind: 'run.queued', payload })).byteLength
-      this.#database.prepare('UPDATE runs SET event_count = 1, event_bytes = ? WHERE run_id = ?').run(bytes, runId)
-    }
+    const payload = {}
+    this.#insertEvent(runId, 'run.queued', payload)
+    const bytes = encoder.encode(JSON.stringify({ kind: 'run.queued', payload })).byteLength
+    this.#database.prepare('UPDATE runs SET event_count = 1, event_bytes = ? WHERE run_id = ?').run(bytes, runId)
     return runId
   }
 

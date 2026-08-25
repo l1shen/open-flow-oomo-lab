@@ -216,14 +216,15 @@ export class RunRequestStore {
     const current = this.#runs.prepareStart()
     this.#setNotice(undefined)
     this.#set({ starting: true, submitting: source })
-    const signature = JSON.stringify({ flowId: flow.flowId, inputs, projectId, revisionId, source })
+    const target = source == 'draft' ? { flowId: flow.flowId, projectId, revisionId } : { publicationId: flow.live!.publication.publicationId }
+    const signature = JSON.stringify({ inputs, source, ...target })
     const attempt = this.#attempt?.signature == signature ? this.#attempt : { key: this.#identity(), signature }
     this.#attempt = attempt
     try {
       const run =
         source == 'draft'
           ? await this.#client.createDraftRun(projectId, revisionId, flow.flowId, { idempotencyKey: attempt.key, inputs })
-          : await this.#client.createLiveRun(projectId, flow.flowId, { idempotencyKey: attempt.key, inputs })
+          : await this.#client.createLiveRun(flow.live!.publication.publicationId, { idempotencyKey: attempt.key, inputs })
       if (!alive() || !current()) return false
       this.#attempt = undefined
       return this.#runs.follow(run, current)

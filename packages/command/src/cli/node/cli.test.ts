@@ -412,9 +412,9 @@ describe('CLI', () => {
       requests.push({ init, path })
       if (path == '/v1/projects/project-1') return Response.json(project())
       if (path == '/v1/projects/project-1/flows') return Response.json({ flows: [publishedFlow()], projectId: 'project-1', version: 1 })
-      if (path == '/v1/projects/project-1/runs/run-draft') return Response.json(run('draft', 'completed'))
+      if (path == '/v1/runs/run-draft') return Response.json(run('draft', 'completed'))
       if (path.includes('/revisions/') && path.endsWith('/runs')) return Response.json(run('draft'), { status: 202 })
-      if (path.endsWith('/flows/flow-1/runs')) return Response.json(run('live'), { status: 202 })
+      if (path == '/v1/runs') return Response.json(run('live'), { status: 202 })
       throw new Error(path)
     })
     const host = { request: request, getProject: async () => undefined, setProject: async () => {} }
@@ -425,7 +425,7 @@ describe('CLI', () => {
     await expect(runCli(['run', 'Main', '--source=live', '--input', '-', '--project', 'project-1', '--json'], host, live.value)).resolves.toBe(0)
 
     const posts = requests.filter(({ path }) => path.endsWith('/runs') && !path.includes('/projects/project-1/runs/'))
-    expect(posts.map(({ path }) => path)).toEqual(['/v1/projects/project-1/revisions/revision-1/flows/flow-1/runs', '/v1/projects/project-1/flows/flow-1/runs'])
+    expect(posts.map(({ path }) => path)).toEqual(['/v1/projects/project-1/revisions/revision-1/flows/flow-1/runs', '/v1/runs'])
     expect(posts.map(({ init }) => JSON.parse(String(init?.body)).inputs)).toEqual([{ start: { value: 1 } }, { start: { value: 2 } }])
     expect(posts.map(({ init }) => new Headers(init?.headers).get('idempotency-key'))).toEqual([expect.stringMatching(/^run-/), expect.stringMatching(/^run-/)])
     expect(JSON.parse(draft.stdout())).toMatchObject({ kind: 'run.create', run: { revisionId: 'revision-1', source: 'draft', status: 'completed' } })
@@ -533,8 +533,8 @@ describe('CLI', () => {
 
     expect(requests).toContain('/v1/projects/project-1/runs?cursor=cursor-1&flowId=flow-1&limit=1&status=completed')
     expect(requests.filter((path) => path.includes('/events?'))).toEqual([
-      '/v1/projects/project-1/runs/run-draft/events?after=0&limit=1',
-      '/v1/projects/project-1/runs/run-draft/events?after=1&limit=1',
+      '/v1/runs/run-draft/events?after=0&limit=1',
+      '/v1/runs/run-draft/events?after=1&limit=1',
     ])
     expect(JSON.parse(list.stdout())).toMatchObject({ kind: 'run.list', nextCursor: 'cursor-2' })
     expect(JSON.parse(events.stdout())).toMatchObject({ done: true, events: [{ sequence: 1 }, { sequence: 2 }], historyComplete: true, kind: 'run.events' })

@@ -107,7 +107,7 @@ it('returns node outputs through the public RunEvent shape', async () => {
     await service.waitForIdle()
 
     const app = createServerApp(service, { resolveControlActor: () => 'operator' })
-    const response = await app.request(`/v1/projects/${created.project.projectId}/runs/${accepted.run.runId}/events`)
+    const response = await app.request(`/v1/runs/${accepted.run.runId}/events`)
     expect(response.status).toBe(200)
     const body = (await response.json()) as {
       readonly events: readonly { readonly kind: string; readonly payload: Readonly<Record<string, unknown>>; readonly value?: unknown }[]
@@ -176,7 +176,7 @@ it('projects Cron Trigger Runs through the public Control API', async () => {
     })
 
     const runId = page.runs[0]!.runId
-    await expect(client.getRun(created.project.projectId, runId)).resolves.toMatchObject({
+    await expect(client.getRun(runId)).resolves.toMatchObject({
       closureDigest: published.publication.closureDigest,
       modelVersion: 1,
       occurrenceId: expect.any(String),
@@ -184,7 +184,7 @@ it('projects Cron Trigger Runs through the public Control API', async () => {
       source: 'trigger',
       triggerNodeId: 'scheduled',
     })
-    await expect(client.getRunEvents(created.project.projectId, runId)).resolves.toMatchObject({
+    await expect(client.getRunEvents(runId)).resolves.toMatchObject({
       done: true,
       events: expect.arrayContaining([expect.objectContaining({ kind: 'run.queued' }), expect.objectContaining({ kind: 'run.completed' })]),
     })
@@ -252,8 +252,8 @@ it('persists authoring state and commits only one concurrent Draft change', asyn
     })
     expect(publishedResponse.status).toBe(201)
     const published = (await publishedResponse.json()) as { readonly publicationId: string }
-    const liveRunResponse = await app.request(`/v1/projects/${created.projectId}/flows/${flowId}/runs`, {
-      body: JSON.stringify({ inputs: {}, version: 1 }),
+    const liveRunResponse = await app.request('/v1/runs', {
+      body: JSON.stringify({ inputs: {}, publicationId: published.publicationId, version: 1 }),
       headers: { 'content-type': 'application/json', 'idempotency-key': 'persistent-live-run' },
       method: 'POST',
     })
@@ -276,7 +276,7 @@ it('persists authoring state and commits only one concurrent Draft change', asyn
     expect(await restoredLive.json()).toMatchObject({ publication: { publicationId: published.publicationId }, revision: 1, status: 'runnable' })
     const restoredHistory = await app.request(`/v1/projects/${created.projectId}/flows/${flowId}/publications?includeTotal=true`)
     expect(await restoredHistory.json()).toMatchObject({ publications: [{ publicationId: published.publicationId }], total: 1 })
-    const restoredRun = await app.request(`/v1/projects/${created.projectId}/runs/${liveRun.runId}`)
+    const restoredRun = await app.request(`/v1/runs/${liveRun.runId}`)
     expect(await restoredRun.json()).toMatchObject({ publicationId: published.publicationId, runId: liveRun.runId, source: 'live' })
   } finally {
     await service.close()

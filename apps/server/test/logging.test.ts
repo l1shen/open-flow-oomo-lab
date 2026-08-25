@@ -8,6 +8,7 @@ import { afterEach, expect, it } from 'vitest'
 import { createServerApp } from '../node/http.ts'
 import { createLogger } from '../node/logger.ts'
 import { ServerService } from '../node/service.ts'
+import { acceptRun } from './runFixture.ts'
 
 const directories: string[] = []
 const services: ServerService[] = []
@@ -142,7 +143,7 @@ it('logs Run lifecycle metadata without copying user errors or Run payloads', as
   services.push(service)
   service.start()
 
-  const accepted = await service.acceptRun({
+  const accepted = await acceptRun(service, {
     flowId: 'main',
     idempotencyKey: 'logging-failure',
     revision: failingFlow(),

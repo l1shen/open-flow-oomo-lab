@@ -1,11 +1,13 @@
-import type { JsonValue, RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
 
+import { webhookEndpointId } from '@oomol-lab/open-flow/webhook-trigger'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createServerApp } from '../node/http.ts'
 import { ServerService } from '../node/service.ts'
+import { storeRevision } from './runFixture.ts'
 
 const directories: string[] = []
 const services: ServerService[] = []
@@ -65,15 +67,14 @@ function webhookFlow(): RevisionContent {
   }
 }
 
-function occurrence(payload: JsonValue = { message: 'hello' }) {
-  return {
-    flowId: 'main',
-    occurrenceId: 'delivery-1',
-    payload,
-    revision: webhookFlow(),
-    revisionId: 'revision-webhook',
-    triggerNodeId: 'incoming',
-  }
+async function publishedWebhook(service: ServerService) {
+  const stored = await storeRevision(service, webhookFlow(), 'revision-webhook')
+  await service.control.publishFlow('test', stored.projectId, stored.revisionId, 'main', 'open-flow-engine/v1', null, 'publication-webhook')
+  const binding = service.control.getFlowTriggerBinding(stored.projectId, 'main', 'incoming', 'http://server.local')
+  const endpointId = binding.endpointUrl == null ? undefined : webhookEndpointId(new URL(binding.endpointUrl))
+  const target = endpointId == null ? undefined : service.webhookTarget(endpointId)
+  if (target == null) throw new Error('Published Webhook target is missing.')
+  return target
 }
 
 describe('Server Webhook Trigger admission', () => {
@@ -83,7 +84,7 @@ describe('Server Webhook Trigger admission', () => {
     const app = createServerApp(service)
 
     const response = await app.request('http://server.local/v1/trigger-occurrences/webhook', {
-      body: JSON.stringify(occurrence()),
+      body: JSON.stringify({ message: 'hello' }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     })
@@ -94,8 +95,13 @@ describe('Server Webhook Trigger admission', () => {
   it('executes one ordinary Run and deduplicates concurrent occurrence delivery', async () => {
     const service = ServerService.open(await databaseFile())
     services.push(service)
+    const target = await publishedWebhook(service)
 
-    const [first, second] = await Promise.all([service.acceptWebhookOccurrence(occurrence()), service.acceptWebhookOccurrence(occurrence())])
+    const [first, second] = await Promise.all([
+      service.acceptWebhookTarget(target, 'delivery-1', { message: 'hello' }),
+      service.acceptWebhookTarget(target, 'delivery-1', { message: 'hello' }),
+    ])
+    if (first == null || second == null) throw new Error('Concurrent matching occurrences lost their current target.')
     if (first.kind != 'accepted' || second.kind != 'accepted') throw new Error('Concurrent matching occurrences unexpectedly conflicted.')
     const acceptedRuns = [first, second]
     expect(new Set(acceptedRuns.map((accepted) => accepted.runId)).size).toBe(1)
@@ -110,16 +116,22 @@ describe('Server Webhook Trigger admission', () => {
     })
     expect(service.events(accepted.runId).some((event) => event.payload.nodeId == 'incoming')).toBe(false)
 
-    await expect(service.acceptWebhookOccurrence(occurrence())).resolves.toMatchObject({ created: false, runId: accepted.runId, status: 'completed' })
+    await expect(service.acceptWebhookTarget(target, 'delivery-1', { message: 'hello' })).resolves.toMatchObject({
+      created: false,
+      runId: accepted.runId,
+      status: 'completed',
+    })
 
-    await expect(service.acceptWebhookOccurrence(occurrence({ message: 'different' }))).resolves.toEqual({ kind: 'conflict' })
+    await expect(service.acceptWebhookTarget(target, 'delivery-1', { message: 'different' })).resolves.toEqual({ kind: 'conflict' })
   })
 
   it('recovers a queued occurrence into the same Run after reopening SQLite', async () => {
     const file = await databaseFile()
     let service = ServerService.open(file)
     services.push(service)
-    const accepted = await service.acceptWebhookOccurrence(occurrence())
+    const target = await publishedWebhook(service)
+    const accepted = await service.acceptWebhookTarget(target, 'delivery-1', { message: 'hello' })
+    if (accepted == null) throw new Error('Initial Webhook target disappeared.')
     if (accepted.kind != 'accepted') throw new Error('Initial Webhook occurrence unexpectedly conflicted.')
     expect(service.run(accepted.runId)?.status).toBe('queued')
     await service.close()
@@ -130,7 +142,7 @@ describe('Server Webhook Trigger admission', () => {
     await service.waitForIdle()
     expect(service.run(accepted.runId)?.status).toBe('completed')
     expect(service.events(accepted.runId).filter((event) => event.kind == 'run.completed')).toHaveLength(1)
-    await expect(service.acceptWebhookOccurrence(occurrence())).resolves.toMatchObject({
+    await expect(service.acceptWebhookTarget(target, 'delivery-1', { message: 'hello' })).resolves.toMatchObject({
       created: false,
       runId: accepted.runId,
       status: 'completed',
@@ -140,8 +152,9 @@ describe('Server Webhook Trigger admission', () => {
   it('rejects a mismatched payload or non-Webhook Trigger before acceptance', async () => {
     const service = ServerService.open(await databaseFile())
     services.push(service)
+    const target = await publishedWebhook(service)
 
-    await expect(service.acceptWebhookOccurrence(occurrence({ message: 42 }))).rejects.toMatchObject({ code: 'trigger-payload-invalid' })
-    await expect(service.acceptWebhookOccurrence({ ...occurrence(), triggerNodeId: 'capture' })).rejects.toMatchObject({ code: 'trigger-invalid' })
+    await expect(service.acceptWebhookTarget(target, 'delivery-1', { message: 42 })).rejects.toMatchObject({ code: 'trigger-payload-invalid' })
+    await expect(service.acceptWebhookTarget({ ...target, triggerNodeId: 'capture' }, 'delivery-1', { message: 'hello' })).resolves.toBeUndefined()
   })
 })

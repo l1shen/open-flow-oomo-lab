@@ -10,6 +10,7 @@ const migrationFiles = [
   '0006_trigger_control_api.sql',
   '0007_trigger_run_control_api.sql',
   '0008_retirement_retention.sql',
+  '0009_global_run_identity.sql',
 ] as const
 const migrationsDirectory = new URL('../migrations/', import.meta.url)
 

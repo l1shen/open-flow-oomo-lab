@@ -76,8 +76,8 @@ export async function createRunCommand(
   let created: RunDetails =
     args.source == 'draft'
       ? await client.createDraftRun(project.projectId, flow.draft!.revisionId, flow.flowId, { inputs })
-      : await client.createLiveRun(project.projectId, flow.flowId, { inputs })
-  if (args.wait) created = await waitForRun(client, project.projectId, created, runtime)
+      : await client.createLiveRun(flow.live!.publication.publicationId, { inputs })
+  if (args.wait) created = await waitForRun(client, created, runtime)
   write(runtime, args.json, { kind: 'run.create', run: created, version: 1 }, runText(created))
 }
 
@@ -104,7 +104,7 @@ export async function runsCommand(
     }
     case 'show': {
       requireCount(references, 1, 'oo flow runs show <run> [--json]')
-      const run = await client.getRun(project.projectId, references[0]!)
+      const run = await client.getRun(references[0]!)
       write(runtime, args.json, { kind: 'run.show', run, version: 1 }, runText(run))
       return
     }
@@ -114,7 +114,7 @@ export async function runsCommand(
       const events: RunEvent[] = []
       let page: RunEvents
       do {
-        page = await client.getRunEvents(project.projectId, references[0]!, { after, limit: args.limit ?? runPageLimit })
+        page = await client.getRunEvents(references[0]!, { after, limit: args.limit ?? runPageLimit })
         events.push(...page.events)
         after = page.nextAfter
         if (args.follow && !page.done && page.events.length == 0) await runtime.wait(1_000)
@@ -124,13 +124,13 @@ export async function runsCommand(
     }
     case 'result': {
       requireCount(references, 1, 'oo flow runs result <run> [--json]')
-      const result = await client.getRunResult(project.projectId, references[0]!)
+      const result = await client.getRunResult(references[0]!)
       write(runtime, args.json, { kind: 'run.result', result, version: 1 }, JSON.stringify(result))
       return
     }
     case 'cancel': {
       requireCount(references, 1, 'oo flow runs cancel <run> [--json]')
-      const cancellation = await client.cancelRun(project.projectId, references[0]!)
+      const cancellation = await client.cancelRun(references[0]!)
       write(
         runtime,
         args.json,

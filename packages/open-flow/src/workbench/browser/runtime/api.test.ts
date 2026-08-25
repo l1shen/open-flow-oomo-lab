@@ -223,15 +223,15 @@ describe('WorkbenchClient', () => {
     const inputs = { trigger: { message: 'hello' } }
 
     await client.createDraftRun('project-1', 'revision-1', 'flow/a', { idempotencyKey: 'draft-run-operation', inputs })
-    await client.createLiveRun('project-1', 'flow/a', { idempotencyKey: 'live-run-operation', inputs })
-    await client.createLiveRun('project-1', 'flow/a', { idempotencyKey: 'live-run-operation', inputs })
+    await client.createLiveRun('publication/live', { idempotencyKey: 'live-run-operation', inputs })
+    await client.createLiveRun('publication/live', { idempotencyKey: 'live-run-operation', inputs })
     await client.publishFlow('project-1', 'revision-1', 'flow/a', null, { idempotencyKey: 'publish-operation' })
     await client.rollbackFlow('project-1', 'flow/a', 'publication/source', 'publication-live', { idempotencyKey: 'rollback-operation' })
 
     expect(requests.map((request) => String(request.input))).toEqual([
       '/v1/projects/project-1/revisions/revision-1/flows/flow%2Fa/runs',
-      '/v1/projects/project-1/flows/flow%2Fa/runs',
-      '/v1/projects/project-1/flows/flow%2Fa/runs',
+      '/v1/runs',
+      '/v1/runs',
       '/v1/projects/project-1/revisions/revision-1/flows/flow%2Fa/publications',
       '/v1/projects/project-1/flows/flow%2Fa/publications/publication%2Fsource/rollback',
     ])
@@ -243,7 +243,7 @@ describe('WorkbenchClient', () => {
       'rollback-operation',
     ])
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ engineContract: 'open-flow-engine/v1', inputs, version: 1 })
-    expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({ inputs, version: 1 })
+    expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({ inputs, publicationId: 'publication/live', version: 1 })
     expect(JSON.parse(String(requests[3]?.init?.body))).toEqual({
       engineContract: 'open-flow-engine/v1',
       expectedLivePublicationId: null,
@@ -261,12 +261,12 @@ describe('WorkbenchClient', () => {
     })
     const client = new WorkbenchClient(fetcher)
 
-    expect(await client.getRunEvents('project/a', 'run/a', { after: 21, limit: 100 })).toMatchObject({ nextAfter: 42 })
-    expect(await client.cancelRun('project/a', 'run/a')).toMatchObject({ cancelAccepted: true, status: 'canceled' })
+    expect(await client.getRunEvents('run/a', { after: 21, limit: 100 })).toMatchObject({ nextAfter: 42 })
+    expect(await client.cancelRun('run/a')).toMatchObject({ cancelAccepted: true, status: 'canceled' })
 
-    expect(requests[0]?.input).toBe('/v1/projects/project%2Fa/runs/run%2Fa/events?after=21&limit=100')
+    expect(requests[0]?.input).toBe('/v1/runs/run%2Fa/events?after=21&limit=100')
     expect(requests[0]?.init?.method).toBeUndefined()
-    expect(requests[1]?.input).toBe('/v1/projects/project%2Fa/runs/run%2Fa/cancel')
+    expect(requests[1]?.input).toBe('/v1/runs/run%2Fa/cancel')
     expect(requests[1]?.init?.method).toBe('POST')
     expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({ version: 1 })
     expect(new Headers(requests[1]?.init?.headers).has('idempotency-key')).toBe(false)

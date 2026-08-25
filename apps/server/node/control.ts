@@ -35,6 +35,8 @@ export function createControlApp(service: ControlService, resolveActor?: Resolve
   app.use('/trigger-keys/*', authenticate)
   app.use('/projects', authenticate)
   app.use('/projects/*', authenticate)
+  app.use('/runs', authenticate)
+  app.use('/runs/*', authenticate)
 
   app.get('/trigger-keys', (context) => {
     query(context.req.raw, [], controlErrorCode.projectInvalid)
@@ -328,14 +330,13 @@ export function createControlApp(service: ControlService, resolveActor?: Resolve
     return response(accepted.created ? 202 : 200, accepted.run)
   })
 
-  app.post('/projects/:projectId/flows/:flowId/runs', async (context) => {
+  app.post('/runs', async (context) => {
     query(context.req.raw, [], controlErrorCode.runInvalid)
     const body = await requestObject(context.req.raw, controlErrorCode.runInvalid)
-    exact(body, ['inputs', 'version'], controlErrorCode.runInvalid)
+    exact(body, ['inputs', 'publicationId', 'version'], controlErrorCode.runInvalid)
     version(body.version, controlErrorCode.runInvalid)
     const accepted = await service.createLiveRun(
-      context.req.param('projectId'),
-      context.req.param('flowId'),
+      text(body.publicationId, controlErrorCode.runInvalid),
       record(body.inputs, controlErrorCode.runInvalid) as RunInputs,
       idempotencyKey(context.req.raw, controlErrorCode.runInvalid),
     )
@@ -358,29 +359,29 @@ export function createControlApp(service: ControlService, resolveActor?: Resolve
     return response(200, { ...page, ...(next == null ? {} : { nextCursor: encodeCursor('runs', next) }) })
   })
 
-  app.get('/projects/:projectId/runs/:runId', (context) => {
+  app.get('/runs/:runId', (context) => {
     query(context.req.raw, [], controlErrorCode.runInvalid)
-    return response(200, service.getRun(context.req.param('projectId'), context.req.param('runId')))
+    return response(200, service.getRun(context.req.param('runId')))
   })
 
-  app.get('/projects/:projectId/runs/:runId/events', (context) => {
+  app.get('/runs/:runId/events', (context) => {
     const parameters = query(context.req.raw, ['after', 'limit'], controlErrorCode.runInvalid)
     const after = nonnegativeInteger(parameters.get('after'), 0, controlErrorCode.runInvalid)
     const limit = pageSize(parameters, controlErrorCode.runInvalid)
-    return response(200, service.getRunEvents(context.req.param('projectId'), context.req.param('runId'), after, limit))
+    return response(200, service.getRunEvents(context.req.param('runId'), after, limit))
   })
 
-  app.get('/projects/:projectId/runs/:runId/result', (context) => {
+  app.get('/runs/:runId/result', (context) => {
     query(context.req.raw, [], controlErrorCode.runInvalid)
-    return response(200, service.getRunResult(context.req.param('projectId'), context.req.param('runId')))
+    return response(200, service.getRunResult(context.req.param('runId')))
   })
 
-  app.post('/projects/:projectId/runs/:runId/cancel', async (context) => {
+  app.post('/runs/:runId/cancel', async (context) => {
     query(context.req.raw, [], controlErrorCode.runInvalid)
     const body = await requestObject(context.req.raw, controlErrorCode.runInvalid)
     exact(body, ['version'], controlErrorCode.runInvalid)
     version(body.version, controlErrorCode.runInvalid)
-    return response(200, service.cancelRun(context.req.param('projectId'), context.req.param('runId')))
+    return response(200, service.cancelRun(context.req.param('runId')))
   })
 
   return app

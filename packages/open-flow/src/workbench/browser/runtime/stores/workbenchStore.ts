@@ -289,7 +289,7 @@ export class WorkbenchStore {
     }
     const current = this.#externalRuns.begin()
     try {
-      const run = await client.getRun(event.projectId, event.runId)
+      const run = await client.getRun(event.runId)
       const latestTarget = this.workspace.$.target.value
       if (
         !current() ||

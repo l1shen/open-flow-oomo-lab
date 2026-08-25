@@ -170,17 +170,13 @@ interface TriggerOccurrence {
   readonly triggerNodeId: string
 }
 
-export type TriggerOccurrenceInput = TriggerOccurrence &
-  (
-    | { readonly source?: never }
-    | {
-        readonly closureDigest: string
-        readonly modelVersion: number
-        readonly projectId: string
-        readonly publicationId: string
-        readonly source: 'trigger'
-      }
-  )
+export type TriggerOccurrenceInput = TriggerOccurrence & {
+  readonly closureDigest: string
+  readonly modelVersion: number
+  readonly projectId: string
+  readonly publicationId: string
+  readonly source: 'trigger'
+}
 
 const triggerActivityRetentionMs = 30 * 24 * 60 * 60 * 1000
 

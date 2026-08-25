@@ -6,7 +6,7 @@ import type { PreparedFlow } from '@oomol-lab/open-flow/project-semantics'
 import type { ProviderTriggerDefinition } from '@oomol-lab/open-flow/provider-triggers'
 import type { RunAcceptance } from '@oomol-lab/open-flow/run-lifecycle'
 import type { InvokeLlmTask, RuntimeCapabilityCall, RuntimeCapabilityResponse } from '@oomol-lab/open-flow/runtime-contract'
-import type { FlowRunOptions, TaskInvocation } from '@oomol-lab/open-flow/scheduler'
+import type { TaskInvocation } from '@oomol-lab/open-flow/scheduler'
 import type { Logger } from 'pino'
 import type { ConnectorHost } from './connector.ts'
 import type { IntegrationOptions, IntegrationResponse, IntegrationRuntimeState, IntegrationTarget } from './integration-runtime.ts'
@@ -24,7 +24,7 @@ import {
   PollConnectionError,
 } from '@oomol-lab/open-flow/poll-trigger'
 import { canonicalJsonBytes, digestBytes, encodeRevision } from '@oomol-lab/open-flow/project-encoding'
-import { createRuntimeProgram, matchesSchema, prepareFlow, triggerPayloadSchema, validateFlowInputs } from '@oomol-lab/open-flow/project-semantics'
+import { createRuntimeProgram, matchesSchema, prepareFlow, triggerPayloadSchema } from '@oomol-lab/open-flow/project-semantics'
 import { triggerDefinitions as providerTriggerDefinitions } from '@oomol-lab/open-flow/provider-triggers'
 import { createEventProjector } from '@oomol-lab/open-flow/run-events'
 import { currentEngineContract } from '@oomol-lab/open-flow/runtime-contract'
@@ -38,25 +38,6 @@ import { IsolatedVmError, isolatedVmEngineDigest, IsolatedVmHost } from './isola
 import { errorKind, silentLogger } from './logger.ts'
 import { migrateDatabase } from './migrate.ts'
 import { Store } from './store.ts'
-
-type RunInputs = NonNullable<FlowRunOptions['inputs']>
-
-export interface AcceptRunInput {
-  readonly flowId: string
-  readonly idempotencyKey: string
-  readonly inputs?: RunInputs
-  readonly revision: RevisionContent
-  readonly revisionId: string
-}
-
-interface AcceptWebhookOccurrenceInput {
-  readonly flowId: string
-  readonly occurrenceId: string
-  readonly payload: JsonValue
-  readonly revision: RevisionContent
-  readonly revisionId: string
-  readonly triggerNodeId: string
-}
 
 interface PublishFlowInput {
   readonly control?:
@@ -237,59 +218,6 @@ export class ServerService {
     }
     migrateDatabase(databaseFile)
     return new ServerService(new Store(databaseFile, clock, runtime.runEventRetentionMs), connector, clock, runtime, consoleOrigin, logger, triggerDefinitions)
-  }
-
-  async acceptRun(input: AcceptRunInput): Promise<RunAcceptance> {
-    const fixed = await validatedFlow(input.revision, input.flowId)
-    const inputs = input.inputs ?? {}
-    if (validateFlowInputs(input.revision, input.flowId, inputs) != 'valid') {
-      throw new AcceptanceError('flow-inputs-invalid', 'Flow inputs are invalid for the fixed Project Revision.')
-    }
-    const requestDigest = await digestBytes(canonicalJsonBytes({ flowId: input.flowId, inputs, revisionDigest: fixed.revisionDigest }))
-    const accepted = this.#store.accept({
-      content: fixed.content,
-      flowId: input.flowId,
-      idempotencyKey: input.idempotencyKey,
-      inputs,
-      requestDigest,
-      revisionDigest: fixed.revisionDigest,
-      revisionId: input.revisionId,
-    })
-    this.#wake()
-    return accepted
-  }
-
-  async acceptWebhookOccurrence(input: AcceptWebhookOccurrenceInput): Promise<RunAcceptance> {
-    const fixed = await validatedFlow(input.revision, input.flowId)
-    const trigger = fixed.prepared.flow.graph.nodes[input.triggerNodeId]
-    if (trigger?.kind != 'webhook') {
-      throw new AcceptanceError('trigger-invalid', 'Trigger node is not a Webhook Trigger in the fixed Project Revision.')
-    }
-    if (!matchesSchema(input.payload, triggerPayloadSchema(trigger))) {
-      throw new AcceptanceError('trigger-payload-invalid', 'Webhook payload does not match the fixed Trigger schema.')
-    }
-    const requestDigest = await digestBytes(
-      canonicalJsonBytes({
-        flowId: input.flowId,
-        kind: 'webhook',
-        occurrenceId: input.occurrenceId,
-        payload: input.payload,
-        revisionDigest: fixed.revisionDigest,
-        triggerNodeId: input.triggerNodeId,
-      }),
-    )
-    const accepted = this.#store.acceptWebhookOccurrence({
-      content: fixed.content,
-      flowId: input.flowId,
-      occurrenceId: input.occurrenceId,
-      payload: input.payload,
-      requestDigest,
-      revisionDigest: fixed.revisionDigest,
-      revisionId: input.revisionId,
-      triggerNodeId: input.triggerNodeId,
-    })
-    this.#wake()
-    return accepted
   }
 
   async #testPollTrigger(

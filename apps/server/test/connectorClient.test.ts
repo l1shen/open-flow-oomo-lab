@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ConnectorClient } from '../node/connector.ts'
 import { createLogger } from '../node/logger.ts'
 import { ServerService } from '../node/service.ts'
+import { acceptRun } from './runFixture.ts'
 
 const directories: string[] = []
 const servers: Server[] = []
@@ -138,7 +139,7 @@ function captureLogger(): { readonly logger: Logger; readonly output: () => stri
 }
 
 async function run(service: ServerService, revision = connectorFlow()) {
-  const accepted = await service.acceptRun({ flowId: 'main', idempotencyKey: crypto.randomUUID(), revision, revisionId: crypto.randomUUID() })
+  const accepted = await acceptRun(service, { flowId: 'main', idempotencyKey: crypto.randomUUID(), revision, revisionId: crypto.randomUUID() })
   if (accepted.kind != 'accepted') throw new Error('Connector Run acceptance conflicted.')
   await service.waitForIdle()
   return accepted.runId

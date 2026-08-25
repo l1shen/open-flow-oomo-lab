@@ -1,0 +1,10 @@
+DELETE FROM webhook_admissions WHERE run_id IN (SELECT run_id FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL);
+DELETE FROM cron_admissions WHERE run_id IN (SELECT run_id FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL);
+DELETE FROM poll_admissions WHERE run_id IN (SELECT run_id FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL);
+DELETE FROM integration_admissions WHERE run_id IN (SELECT run_id FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL);
+DELETE FROM poll_claims WHERE run_id IN (SELECT run_id FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL);
+DELETE FROM poll_event_dedupe WHERE run_id IN (SELECT run_id FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL);
+DELETE FROM trigger_occurrences WHERE run_id IN (SELECT run_id FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL);
+DELETE FROM events WHERE run_id IN (SELECT run_id FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL);
+DELETE FROM work WHERE run_id IN (SELECT run_id FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL);
+DELETE FROM runs WHERE project_id IS NULL OR source IS NULL OR closure_digest IS NULL OR model_version IS NULL;

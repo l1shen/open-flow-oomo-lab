@@ -38,7 +38,7 @@ try {
   assert.equal(index.status, 200)
   assert.match(await index.text(), /<title>Open Flow Server<\/title>/)
 
-  const project = await requestJson<{ readonly projectId: string }>(
+  const project = await requestJson<{ readonly draftRevisionId: string; readonly projectId: string }>(
     firstOrigin,
     '/v1/projects',
     {
@@ -48,17 +48,40 @@ try {
     },
     201,
   )
+  const revision = codeFlow()
+  const changed = await requestJson<{ readonly revision: { readonly revisionId: string } }>(
+    firstOrigin,
+    `/v1/projects/${project.projectId}/draft/changes`,
+    {
+      body: JSON.stringify({
+        expectedRevisionId: project.draftRevisionId,
+        operations: [
+          { kind: 'module.create', module: revision.modules.code, moduleId: 'code' },
+          { flow: revision.document.flows.main, flowId: 'main', kind: 'flow.create' },
+        ],
+        version: 1,
+      }),
+      headers: { 'content-type': 'application/json', 'cookie': firstCookie },
+      method: 'POST',
+    },
+    200,
+  )
+  const publication = await requestJson<{ readonly publicationId: string }>(
+    firstOrigin,
+    `/v1/projects/${project.projectId}/revisions/${changed.revision.revisionId}/flows/main/publications`,
+    {
+      body: JSON.stringify({ engineContract: 'open-flow-engine/v1', expectedLivePublicationId: null, version: 1 }),
+      headers: { 'content-type': 'application/json', 'cookie': firstCookie, 'idempotency-key': `publication-${suffix}` },
+      method: 'POST',
+    },
+    201,
+  )
   const accepted = await requestJson<{ readonly runId: string }>(
     firstOrigin,
     '/v1/runs',
     {
-      body: JSON.stringify({
-        flowId: 'main',
-        idempotencyKey: `run-${suffix}`,
-        revision: codeFlow(),
-        revisionId: `revision-${suffix}`,
-      }),
-      headers: { 'content-type': 'application/json', 'cookie': firstCookie },
+      body: JSON.stringify({ inputs: {}, publicationId: publication.publicationId, version: 1 }),
+      headers: { 'content-type': 'application/json', 'cookie': firstCookie, 'idempotency-key': `run-${suffix}` },
       method: 'POST',
     },
     202,
@@ -70,7 +93,7 @@ try {
   }>(firstOrigin, `/v1/runs/${accepted.runId}/events`, { headers: { cookie: firstCookie } }, 200)
   const output = events.events.find((event) => event.kind == 'node.output')
   assert.equal(output?.payload.handle, 'result')
-  assert.equal(output?.value, 42)
+  assert.deepEqual(output?.payload.output, { kind: 'inline', value: 42 })
 
   await stopContainer(firstContainer)
   await docker(['rm', firstContainer])

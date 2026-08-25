@@ -421,11 +421,18 @@ Live Run create request：
 ```ts
 {
   inputs: Readonly<Record<string, Readonly<Record<string, JsonValue>>>>
+  publicationId: string
   version: 1
 }
 ```
 
-Live Run 首次接受返回 `202`，幂等重放返回 `200`。服务在 admission transaction 中固定当前 Live Publication、Revision、closure、model version、Engine Contract 与当前 eligible Engine implementation；调用方不能提交这些字段。Run detail 的 `source` 是 `live`，并增加 `publicationId`。后续 Draft change、Publish 或 Rollback 不改变已接受 Run 的固定目标。
+Live Run 首次接受返回 `202`，幂等重放返回 `200`。`publicationId` 是部署 scope 内唯一的 Publication identity；服务由它解析 Project 与 Flow，并要求该
+Publication 仍是 active Project 的当前 Live pointer。不存在的 Publication 返回 `publication.not-found`，已经不是当前 Live 的历史 Publication 返回
+`live.conflict`。服务在 admission transaction 中固定 Publication、Revision、closure、model version、Engine Contract 与当前 eligible Engine
+implementation；调用方不能提交这些字段。Run detail 的 `source` 是 `live`。后续 Draft change、Publish 或 Rollback 不改变已接受 Run 的固定目标。
+
+Draft、Live 与 Trigger admission 接受后，`runId` 是部署 scope 内唯一的 Run identity。单个 Run 的 detail、events、result 与 cancel 只由 `runId` 寻址；
+response 中的 `projectId` 提供反向 Project identity。Project-scoped Run route 只保留列表。
 
 ## 3. P0 routes
 
@@ -445,22 +452,22 @@ Live Run 首次接受返回 `202`，幂等重放返回 `200`。服务在 admissi
 | `POST`   | `/v1/projects/:projectId/revisions/:revisionId/flows/:flowId/check` |      200 | 固定 Revision validation                              |
 | `POST`   | `/v1/projects/:projectId/revisions/:revisionId/flows/:flowId/runs`  |  202/200 | 固定 Draft Run admission                              |
 | `GET`    | `/v1/projects/:projectId/runs`                                      |      200 | 支持 `cursor`、`limit`、`flowId`、`status`            |
-| `GET`    | `/v1/projects/:projectId/runs/:runId`                               |      200 | Run detail                                            |
-| `GET`    | `/v1/projects/:projectId/runs/:runId/events`                        |      200 | 支持 `after`、`limit`                                 |
-| `GET`    | `/v1/projects/:projectId/runs/:runId/result`                        |      200 | terminal result                                       |
-| `POST`   | `/v1/projects/:projectId/runs/:runId/cancel`                        |      200 | body `{ version: 1 }`                                 |
+| `GET`    | `/v1/runs/:runId`                                                   |      200 | Run detail                                            |
+| `GET`    | `/v1/runs/:runId/events`                                            |      200 | 支持 `after`、`limit`                                 |
+| `GET`    | `/v1/runs/:runId/result`                                            |      200 | terminal result                                       |
+| `POST`   | `/v1/runs/:runId/cancel`                                            |      200 | body `{ version: 1 }`                                 |
 
 ## 4. P1 Publication / Live routes
 
 P1 依赖 P0 Project、Draft、Flow projection 与 Run observation routes，并增加：
 
-| Method | Path                                                                         | 成功状态 | 说明                                        |
-| ------ | ---------------------------------------------------------------------------- | -------: | ------------------------------------------- |
-| `GET`  | `/v1/projects/:projectId/flows/:flowId/live`                                 |      200 | 读取当前 Live 或 `not-published` projection |
-| `GET`  | `/v1/projects/:projectId/flows/:flowId/publications`                         |      200 | 支持 `cursor`、`limit`、`includeTotal`      |
-| `POST` | `/v1/projects/:projectId/revisions/:revisionId/flows/:flowId/publications`   |  201/200 | Publish 当前固定 Draft Revision；要求幂等键 |
-| `POST` | `/v1/projects/:projectId/flows/:flowId/publications/:publicationId/rollback` |  201/200 | 从历史 Publication 创建 Rollback            |
-| `POST` | `/v1/projects/:projectId/flows/:flowId/runs`                                 |  202/200 | 从当前 Live 接受 Run；要求幂等键            |
+| Method | Path                                                                         | 成功状态 | 说明                                                  |
+| ------ | ---------------------------------------------------------------------------- | -------: | ----------------------------------------------------- |
+| `GET`  | `/v1/projects/:projectId/flows/:flowId/live`                                 |      200 | 读取当前 Live 或 `not-published` projection           |
+| `GET`  | `/v1/projects/:projectId/flows/:flowId/publications`                         |      200 | 支持 `cursor`、`limit`、`includeTotal`                |
+| `POST` | `/v1/projects/:projectId/revisions/:revisionId/flows/:flowId/publications`   |  201/200 | Publish 当前固定 Draft Revision；要求幂等键           |
+| `POST` | `/v1/projects/:projectId/flows/:flowId/publications/:publicationId/rollback` |  201/200 | 从历史 Publication 创建 Rollback                      |
+| `POST` | `/v1/runs`                                                                   |  202/200 | 从 body `publicationId` 接受当前 Live Run；要求幂等键 |
 
 Draft 删除 Flow 时，实现必须在提交新 Draft head 的同一原子边界中移除对应 Live 并退役 Trigger binding。Project delete 进入 `retiring` 时必须移除该 Project 的全部 Live 并退役 Trigger binding。immutable Publication 历史继续可读；新的 Publish、Rollback、Live Run 均不能越过 retirement fence。
 
@@ -643,7 +650,7 @@ Workbench先把 Connector Task加入 Draft，再从编辑上下文打开 externa
 | `engine.unavailable`            |    503 | 当前没有 eligible Engine implementation        |
 | `run.conflict`                  |    409 | Run idempotency key 与请求冲突                 |
 | `run.invalid`                   |    400 | inputs 不是合法 JSON value 或不符合 Flow input |
-| `run.not-found`                 |    404 | Run 不属于 path 中的 Project 或不可见          |
+| `run.not-found`                 |    404 | `runId` 不存在或不可见                         |
 | `run.not-terminal`              |    409 | Run 尚未提交 terminal result                   |
 | `run.events-expired`            |    410 | 指定的详细事件 history 已到期                  |
 | `route.not-found`               |    404 | route 不属于 Control API                       |
@@ -656,7 +663,7 @@ P1 增加：
 | `live.conflict`         |    412 | expected Live Publication 与当前 pointer 不一致                      |
 | `live.not-found`        |    404 | active Project 中的 Flow 没有可运行 Live，或 Live 已因 Flow 删除退役 |
 | `publication.conflict`  |    409 | Publication idempotency key 与 logical operation 冲突                |
-| `publication.not-found` |    404 | Rollback source 不属于 path 中的 Project 与 Flow                     |
+| `publication.not-found` |    404 | Publication 不存在、不可见，或 Rollback source 不属于 path scope     |
 | `trigger-key.invalid`   |    409 | 固定 Trigger definition snapshot 与当前可用 definition 不一致        |
 
 Publish、Rollback 与 Live Run 也复用 `project.*`、`flow.*`、`engine.*` 和 `run.*` errors。部署实现可以增加内部错误映射，但不能把私有数据库、Workflow、SQLite、Trigger reconciler 或 Cloudflare identity 暴露成公共 resource。
@@ -688,12 +695,12 @@ P3 routes也复用 `project.invalid` 与 `project.not-found`。实现不能把�
 2. Draft CAS、immutable Revision、snapshot/changes sync 与 Flow projection；
 3. Presentation 独立 CAS；
 4. 固定 ProjectRevision Flow validation 与 missing Flow fencing；
-5. Draft Run acceptance/replay/scope/list/events/pending result/cancel/terminal/repeated cancel。
+5. Draft Run acceptance/replay/global identity/Project list/events/pending result/cancel/terminal/repeated cancel。
 
 `publicationControlApiConformanceCases` 固定 P1 的三组外部行为：
 
 1. 未发布 Live、Publish idempotency/CAS、Live/Flow projection 与 immutable history；
-2. 多次 Publish、Rollback、history pagination，以及 Live Run 固定准入时的 Publication/Revision；
+2. 多次 Publish、Rollback、history pagination，以及从全局 Publication identity 固定 Live Run 的 Project/Revision；
 3. Draft Flow 删除和 Project retirement 对 Live/Trigger admission 的 fencing，同时保留 Publication history。
 
 `triggerControlApiConformanceCases` 固定 P2 的两组外部行为：

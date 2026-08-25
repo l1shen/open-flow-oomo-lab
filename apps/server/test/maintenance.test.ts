@@ -36,21 +36,21 @@ it('expires detailed Run events while preserving the terminal Run and result', a
     )
     await service.waitForIdle()
 
-    expect(service.control.getRun(created.project.projectId, accepted.run.runId)).toMatchObject({
+    expect(service.control.getRun(accepted.run.runId)).toMatchObject({
       eventsExpiresAt: '2026-08-22T00:00:01.000Z',
       status: 'completed',
     })
-    expect(service.control.getRunEvents(created.project.projectId, accepted.run.runId, 0, 100).events.length).toBeGreaterThan(0)
+    expect(service.control.getRunEvents(accepted.run.runId, 0, 100).events.length).toBeGreaterThan(0)
 
     now += 1_000
     const app = createServerApp(service, { resolveControlActor: () => 'operator' })
-    const expired = await app.request(`/v1/projects/${created.project.projectId}/runs/${accepted.run.runId}/events`)
+    const expired = await app.request(`/v1/runs/${accepted.run.runId}/events`)
     expect(expired.status).toBe(410)
     expect(await expired.json()).toMatchObject({ error: { code: 'run.events-expired' } })
 
     await service.tickMaintenance()
-    expect(service.control.getRun(created.project.projectId, accepted.run.runId)).toMatchObject({ status: 'completed' })
-    expect(service.control.getRunResult(created.project.projectId, accepted.run.runId)).toMatchObject({ status: 'completed' })
+    expect(service.control.getRun(accepted.run.runId)).toMatchObject({ status: 'completed' })
+    expect(service.control.getRunResult(accepted.run.runId)).toMatchObject({ status: 'completed' })
     const database = new DatabaseSync(file)
     try {
       expect(database.prepare('SELECT COUNT(*) AS count FROM events WHERE run_id = ?').get(accepted.run.runId)).toEqual({ count: 0 })

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ServerService } from '../node/service.ts'
+import { acceptRun } from './runFixture.ts'
 
 const directories: string[] = []
 const port = { jsonSchema: {}, nullable: false } as const
@@ -150,7 +151,7 @@ describe('Server application service', () => {
   it('executes a fixed full Flow through Scheduler and isolated-vm and persists public events', async () => {
     const service = ServerService.open(await databaseFile())
     service.start()
-    const accepted = await service.acceptRun({
+    const accepted = await acceptRun(service, {
       flowId: 'main',
       idempotencyKey: 'full-flow',
       revision: fullFlow(),
@@ -169,7 +170,7 @@ describe('Server application service', () => {
     })
     const events = service.events(accepted.runId)
     const kinds = events.map((event) => event.kind)
-    expect(kinds[0]).toBe('run.started')
+    expect(kinds[0]).toBe('run.queued')
     expect(kinds.at(-1)).toBe('run.completed')
     expect(kinds.filter((kind) => kind == 'run.started')).toHaveLength(2)
     expect(kinds.filter((kind) => kind == 'node.started')).toHaveLength(4)
@@ -179,12 +180,12 @@ describe('Server application service', () => {
     expect(events.map((event) => event.cursor)).toEqual(events.map((_, index) => index + 1))
     expect(JSON.stringify(events.filter((event) => event.kind != 'run.completed'))).not.toContain('jobId')
 
-    await expect(service.acceptRun({ flowId: 'main', idempotencyKey: 'full-flow', revision: fullFlow(), revisionId: 'revision-a' })).resolves.toMatchObject({
+    await expect(acceptRun(service, { flowId: 'main', idempotencyKey: 'full-flow', revision: fullFlow(), revisionId: 'revision-a' })).resolves.toMatchObject({
       created: false,
       runId: accepted.runId,
       status: 'completed',
     })
-    await expect(service.acceptRun({ flowId: 'main', idempotencyKey: 'full-flow', revision: fullFlow(4), revisionId: 'revision-b' })).resolves.toEqual({
+    await expect(acceptRun(service, { flowId: 'main', idempotencyKey: 'full-flow', revision: fullFlow(4), revisionId: 'revision-b' })).resolves.toEqual({
       kind: 'conflict',
     })
     await service.close()
@@ -193,7 +194,7 @@ describe('Server application service', () => {
   it('reopens queued work before the start barrier and completes the same Run once', async () => {
     const file = await databaseFile()
     let service = ServerService.open(file)
-    const accepted = await service.acceptRun({
+    const accepted = await acceptRun(service, {
       flowId: 'main',
       idempotencyKey: 'before-barrier',
       revision: fullFlow(),
@@ -215,7 +216,7 @@ describe('Server application service', () => {
   it('lets cancellation win once and terminates the active Executor', async () => {
     const service = ServerService.open(await databaseFile())
     service.start()
-    const accepted = await service.acceptRun({
+    const accepted = await acceptRun(service, {
       flowId: 'main',
       idempotencyKey: 'cancel',
       revision: hangingFlow(),
@@ -242,7 +243,7 @@ describe('Server application service', () => {
       },
     })
     configured.start()
-    const completed = await configured.acceptRun({ flowId: 'main', idempotencyKey: 'llm-completed', revision: llmFlow(), revisionId: 'revision-llm' })
+    const completed = await acceptRun(configured, { flowId: 'main', idempotencyKey: 'llm-completed', revision: llmFlow(), revisionId: 'revision-llm' })
     if (completed.kind != 'accepted') throw new Error('LLM Run acceptance conflicted.')
     await configured.waitForIdle()
 
@@ -255,7 +256,7 @@ describe('Server application service', () => {
 
     const unavailable = ServerService.open(await databaseFile())
     unavailable.start()
-    const failed = await unavailable.acceptRun({ flowId: 'main', idempotencyKey: 'llm-unavailable', revision: llmFlow(), revisionId: 'revision-llm' })
+    const failed = await acceptRun(unavailable, { flowId: 'main', idempotencyKey: 'llm-unavailable', revision: llmFlow(), revisionId: 'revision-llm' })
     if (failed.kind != 'accepted') throw new Error('LLM Run acceptance conflicted.')
     await unavailable.waitForIdle()
 
@@ -270,7 +271,7 @@ describe('Server application service', () => {
       },
     })
     transport.start()
-    const rejected = await transport.acceptRun({ flowId: 'main', idempotencyKey: 'llm-rejected', revision: llmFlow(), revisionId: 'revision-llm' })
+    const rejected = await acceptRun(transport, { flowId: 'main', idempotencyKey: 'llm-rejected', revision: llmFlow(), revisionId: 'revision-llm' })
     if (rejected.kind != 'accepted') throw new Error('LLM Run acceptance conflicted.')
     await transport.waitForIdle()
     expect(transport.events(rejected.runId).find((event) => event.kind == 'node.failed')).toMatchObject({
@@ -302,7 +303,7 @@ describe('Server application service', () => {
       },
     })
     service.start()
-    const accepted = await service.acceptRun({ flowId: 'main', idempotencyKey: 'llm-canceled', revision: llmFlow(), revisionId: 'revision-llm' })
+    const accepted = await acceptRun(service, { flowId: 'main', idempotencyKey: 'llm-canceled', revision: llmFlow(), revisionId: 'revision-llm' })
     if (accepted.kind != 'accepted') throw new Error('LLM Run acceptance conflicted.')
     await invoked
     expect(service.cancel(accepted.runId)).toBe(true)
@@ -321,7 +322,7 @@ describe('Server application service', () => {
       llm: async () => ({ code, kind: 'failed', message, version: 1 }),
     })
     service.start()
-    const accepted = await service.acceptRun({ flowId: 'main', idempotencyKey: code, revision: llmFlow(), revisionId: 'revision-llm' })
+    const accepted = await acceptRun(service, { flowId: 'main', idempotencyKey: code, revision: llmFlow(), revisionId: 'revision-llm' })
     if (accepted.kind != 'accepted') throw new Error('LLM failure Run acceptance conflicted.')
     await service.waitForIdle()
 

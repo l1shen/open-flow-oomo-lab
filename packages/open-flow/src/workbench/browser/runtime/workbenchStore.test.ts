@@ -2003,7 +2003,7 @@ describe('WorkbenchStore', () => {
 
     expect(store.runs.$.run.value).toEqual(externalRun)
     expect(store.runs.$.runs.value).toEqual([externalRun])
-    expect(getRun).toHaveBeenCalledWith(project.projectId, externalRun.runId)
+    expect(getRun).toHaveBeenCalledWith(externalRun.runId)
     store.dispose()
   })
 

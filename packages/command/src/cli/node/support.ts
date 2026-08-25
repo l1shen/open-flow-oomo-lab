@@ -1039,11 +1039,11 @@ export async function publicationById(client: ControlClient, projectId: string, 
   throw new CliError('publication.not-found', `Publication ${JSON.stringify(publicationId)} was not found.`)
 }
 
-export async function waitForRun(client: ControlClient, projectId: string, created: RunDetails, runtime: Runtime): Promise<RunDetails> {
+export async function waitForRun(client: ControlClient, created: RunDetails, runtime: Runtime): Promise<RunDetails> {
   let current = created
   while (!terminalRunStatuses.has(current.status)) {
     await runtime.wait(1_000)
-    current = await client.getRun(projectId, current.runId)
+    current = await client.getRun(current.runId)
   }
   return current
 }

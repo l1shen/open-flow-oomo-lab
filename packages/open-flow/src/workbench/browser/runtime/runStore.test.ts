@@ -80,7 +80,7 @@ describe('RunStore', () => {
       {
         cancelRun: vi.fn(),
         getRun,
-        getRunEvents: vi.fn(async (_projectId: string, candidateRunId: string) => ({
+        getRunEvents: vi.fn(async (candidateRunId: string) => ({
           done: true,
           events: [],
           historyComplete: true,
@@ -210,7 +210,7 @@ describe('RunStore', () => {
     await canceling
 
     expect(cancelRun).toHaveBeenCalledOnce()
-    expect(cancelRun).toHaveBeenCalledWith(run.projectId, run.runId)
+    expect(cancelRun).toHaveBeenCalledWith(run.runId)
     expect(store.$.cancelingRunId.value).toBeUndefined()
     expect(store.$.run.value).toEqual(terminal)
     expect(store.$.runs.value[0]).toEqual(terminal)
@@ -270,8 +270,8 @@ describe('RunStore', () => {
     await store.load(finished.projectId, finished.flowId)
     await vi.waitFor(() => expect(store.$.events.value).toHaveLength(2))
 
-    expect(getRunEvents).toHaveBeenNthCalledWith(1, finished.projectId, finished.runId, { after: 0, limit: 100 })
-    expect(getRunEvents).toHaveBeenNthCalledWith(2, finished.projectId, finished.runId, { after: 1, limit: 100 })
+    expect(getRunEvents).toHaveBeenNthCalledWith(1, finished.runId, { after: 0, limit: 100 })
+    expect(getRunEvents).toHaveBeenNthCalledWith(2, finished.runId, { after: 1, limit: 100 })
     expect(store.$.events.value.map((event) => event.sequence)).toEqual([1, 2])
     expect(store.$.eventsExpiresAt.value).toBe(finished.eventsExpiresAt)
     expect(store.$.historyComplete.value).toBe(true)
@@ -323,12 +323,12 @@ describe('RunStore', () => {
       .fn()
       .mockResolvedValueOnce({ nextCursor: 'next', projectId: 'project-1', runs: [first], version: 1 })
       .mockResolvedValueOnce({ projectId: 'project-1', runs: [second], version: 1 })
-    const getRun = vi.fn(async (_projectId: string, runId: string) => (runId == first.runId ? first : second))
+    const getRun = vi.fn(async (runId: string) => (runId == first.runId ? first : second))
     const store = new RunStore(
       {
         cancelRun: vi.fn(),
         getRun,
-        getRunEvents: vi.fn(async (_projectId: string, runId: string) => ({
+        getRunEvents: vi.fn(async (runId: string) => ({
           done: true,
           events: [{ createdAt: first.createdAt, kind: 'run.completed' as const, payload: {}, sequence: 1 }],
           historyComplete: true,
@@ -336,7 +336,7 @@ describe('RunStore', () => {
           runId,
           version: 1 as const,
         })),
-        getRunResult: vi.fn(async (_projectId: string, runId: string) => ({
+        getRunResult: vi.fn(async (runId: string) => ({
           finishedAt: runId == first.runId ? first.finishedAt! : second.finishedAt!,
           result: { runId },
           runId,
@@ -360,7 +360,7 @@ describe('RunStore', () => {
 
     store.select('run-2')
     await vi.waitFor(() => expect(store.$.result.value?.runId).toBe('run-2'))
-    expect(getRun).toHaveBeenLastCalledWith('project-1', 'run-2')
+    expect(getRun).toHaveBeenLastCalledWith('run-2')
     store.dispose()
   })
 

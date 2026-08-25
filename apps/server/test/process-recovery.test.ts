@@ -136,10 +136,32 @@ it('recovers a process crash after the start barrier as one indeterminate termin
   directories.push(directory)
   let app = await start(directory)
   const cookie = await operatorCookie(app.origin)
-  const accepted = await json<{ readonly runId: string }>(
-    await fetch(`${app.origin}/v1/runs`, {
-      body: JSON.stringify({ flowId: 'main', idempotencyKey: 'crash', revision: hangingFlow(), revisionId: 'revision-crash' }),
+  const revision = hangingFlow()
+  const project = await json<{ readonly draftRevisionId: string; readonly projectId: string }>(
+    await fetch(`${app.origin}/v1/projects`, {
+      body: JSON.stringify({ name: 'Crash recovery', version: 1 }),
+      headers: { 'content-type': 'application/json', cookie, 'idempotency-key': 'crash-project' },
+      method: 'POST',
+    }),
+  )
+  const changed = await json<{ readonly revision: { readonly revisionId: string } }>(
+    await fetch(`${app.origin}/v1/projects/${project.projectId}/draft/changes`, {
+      body: JSON.stringify({
+        expectedRevisionId: project.draftRevisionId,
+        operations: [
+          { kind: 'module.create', module: revision.modules.main, moduleId: 'main' },
+          { flow: revision.document.flows.main, flowId: 'main', kind: 'flow.create' },
+        ],
+        version: 1,
+      }),
       headers: { 'content-type': 'application/json', cookie },
+      method: 'POST',
+    }),
+  )
+  const accepted = await json<{ readonly runId: string }>(
+    await fetch(`${app.origin}/v1/projects/${project.projectId}/revisions/${changed.revision.revisionId}/flows/main/runs`, {
+      body: JSON.stringify({ engineContract: 'open-flow-engine/v1', inputs: {}, version: 1 }),
+      headers: { 'content-type': 'application/json', cookie, 'idempotency-key': 'crash' },
       method: 'POST',
     }),
   )
@@ -153,7 +175,7 @@ it('recovers a process crash after the start barrier as one indeterminate termin
   )
   expect(run.status).toBe('indeterminate')
   expect(events.events.filter((event) => ['run.canceled', 'run.completed', 'run.failed', 'run.indeterminate'].includes(event.kind))).toEqual([
-    { cursor: expect.any(Number), kind: 'run.indeterminate', payload: expect.any(Object) },
+    expect.objectContaining({ kind: 'run.indeterminate', payload: expect.any(Object), sequence: expect.any(Number) }),
   ])
   await stop(app.child)
 })

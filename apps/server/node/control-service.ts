@@ -665,7 +665,7 @@ export class ControlService {
         throw new ControlError(controlErrorCode.runConflict, 'The idempotency key refers to another Run request.')
       }
       if (existing.status == 'queued' || existing.status == 'starting') this.wake()
-      return { created: false, run: runDetails(this.requireRun(projectId, existing.runId)) }
+      return { created: false, run: runDetails(this.requireRun(existing.runId)) }
     }
     if (engineContract != currentEngineContract) throw new ControlError(controlErrorCode.engineUnsupported, 'The Engine Contract is not supported.')
     const stored = this.store.revision(projectId, revisionId)
@@ -706,33 +706,32 @@ export class ControlService {
           this.projectChanged({ flowId, kind: 'run.created', projectId, runId: accepted.runId, version: 1 })
           this.wake()
         }
-        return { created: accepted.created, run: runDetails(this.requireRun(projectId, accepted.runId)) }
+        return { created: accepted.created, run: runDetails(this.requireRun(accepted.runId)) }
       }
     }
   }
 
-  async createLiveRun(
-    projectId: string,
-    flowId: string,
-    inputs: RunInputs,
-    idempotencyKey: string,
-  ): Promise<{ readonly created: boolean; readonly run: RunDetails }> {
-    const requestDigest = await digestBytes(canonicalJsonBytes({ flowId, inputs, kind: 'live', projectId }))
+  async createLiveRun(publicationId: string, inputs: RunInputs, idempotencyKey: string): Promise<{ readonly created: boolean; readonly run: RunDetails }> {
+    const requestDigest = await digestBytes(canonicalJsonBytes({ inputs, kind: 'live', publicationId }))
     const existing = this.store.runRequest(idempotencyKey)
     if (existing != null) {
-      if (existing.requestDigest != requestDigest || existing.projectId != projectId || existing.source != 'live') {
+      if (existing.requestDigest != requestDigest || existing.source != 'live') {
         throw new ControlError(controlErrorCode.runConflict, 'The idempotency key refers to another Run request.')
       }
       if (existing.status == 'queued' || existing.status == 'starting') this.wake()
-      return { created: false, run: runDetails(this.requireRun(projectId, existing.runId)) }
+      return { created: false, run: runDetails(this.requireRun(existing.runId)) }
     }
 
+    const livePublication = this.store.publicationById(publicationId)
+    if (livePublication == null) throw new ControlError(controlErrorCode.publicationNotFound, 'The Publication was not found.')
+    const { flowId, projectId } = livePublication
     const currentProject = this.store.project(projectId)
     if (currentProject == null) notFound()
     if (currentProject.status != 'active') throw new ControlError(controlErrorCode.projectBusy, 'The Project is retiring.')
     const live = this.store.live(projectId, flowId)
-    if (live == null) throw new ControlError(controlErrorCode.liveNotFound, 'The Flow has no runnable Live Publication.')
-    const livePublication = live.publication
+    if (live?.publication.publicationId != publicationId) {
+      throw new ControlError(controlErrorCode.liveConflict, 'The Publication is no longer the current Live target.')
+    }
     if (findEngineContract(livePublication.engineContract) == null) {
       throw new ControlError(controlErrorCode.engineUnsupported, 'The Engine Contract is not supported.')
     }
@@ -774,8 +773,8 @@ export class ControlService {
         throw new ControlError(controlErrorCode.projectBusy, 'The Project is retiring.')
       case 'conflict':
         throw new ControlError(controlErrorCode.runConflict, 'The idempotency key refers to another Run request.')
-      case 'live-not-found':
-        throw new ControlError(controlErrorCode.liveNotFound, 'The Live Publication changed before Run admission.')
+      case 'live-conflict':
+        throw new ControlError(controlErrorCode.liveConflict, 'The Publication is no longer the current Live target.')
       case 'not-found':
         return notFound()
       case 'accepted': {
@@ -783,13 +782,13 @@ export class ControlService {
           this.projectChanged({ flowId, kind: 'run.created', projectId, runId: accepted.runId, version: 1 })
           this.wake()
         }
-        return { created: accepted.created, run: runDetails(this.requireRun(projectId, accepted.runId)) }
+        return { created: accepted.created, run: runDetails(this.requireRun(accepted.runId)) }
       }
     }
   }
 
-  getRun(projectId: string, runId: string): RunDetails {
-    return runDetails(this.requireRun(projectId, runId))
+  getRun(runId: string): RunDetails {
+    return runDetails(this.requireRun(runId))
   }
 
   listRuns(
@@ -810,8 +809,8 @@ export class ControlService {
     }
   }
 
-  getRunEvents(projectId: string, runId: string, after: number, limit: number): RunEvents {
-    const current = this.requireRun(projectId, runId)
+  getRunEvents(runId: string, after: number, limit: number): RunEvents {
+    const current = this.requireRun(runId)
     if (current.eventsExpiresAt != null && current.eventsExpiresAt <= this.clock()) {
       throw new ControlError(controlErrorCode.runEventsExpired, 'The Run event history has expired.')
     }
@@ -836,8 +835,8 @@ export class ControlService {
     }
   }
 
-  getRunResult(projectId: string, runId: string): RunResult {
-    const stored = this.requireRun(projectId, runId)
+  getRunResult(runId: string): RunResult {
+    const stored = this.requireRun(runId)
     if (!terminal(stored.status)) throw new ControlError(controlErrorCode.runNotTerminal, 'The Run is not terminal.')
     if (stored.finishedAt == null) throw new Error('Terminal Run is missing its completion timestamp.')
     const base = { finishedAt: timestamp(stored.finishedAt), runId, version: 1 as const }
@@ -856,8 +855,8 @@ export class ControlService {
     }
   }
 
-  cancelRun(projectId: string, runId: string): RunCancellation {
-    const canceled = this.store.cancelControlRun(projectId, runId)
+  cancelRun(runId: string): RunCancellation {
+    const canceled = this.store.cancelControlRun(runId)
     if (canceled == null) runNotFound()
     if (canceled.accepted) this.abortRun(runId)
     return { cancelAccepted: canceled.accepted, runId, status: terminalStatus(canceled.run.status), version: 1 }
@@ -913,8 +912,8 @@ export class ControlService {
     return stored
   }
 
-  private requireRun(projectId: string, runId: string): StoredControlRun {
-    const stored = this.store.controlRun(projectId, runId)
+  private requireRun(runId: string): StoredControlRun {
+    const stored = this.store.controlRun(runId)
     if (stored == null) runNotFound()
     return stored
   }
