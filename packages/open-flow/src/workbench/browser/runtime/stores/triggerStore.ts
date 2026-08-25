@@ -129,7 +129,7 @@ export class TriggerStore {
   #catalog?: Promise<ReadonlyMap<string, TriggerKeySnapshot>>
   #catalogController = new AbortController()
   readonly #client: WorkbenchClient
-  readonly #host: Pick<WorkbenchHost, 'openExternalPage' | 'returnUrl'>
+  readonly #host: Pick<WorkbenchHost, 'openExternalPage'>
   readonly #i18n: I18n
   readonly #refresh = new Latest()
   readonly #selected: ReadonlyVal<Selection>
@@ -144,7 +144,7 @@ export class TriggerStore {
     client: WorkbenchClient,
     workspace: WorkspaceStore,
     setNotice: SetNotice,
-    host: Pick<WorkbenchHost, 'openExternalPage' | 'returnUrl'>,
+    host: Pick<WorkbenchHost, 'openExternalPage'>,
     i18n: I18n = createI18n(),
   ) {
     this.#client = client
@@ -271,7 +271,7 @@ export class TriggerStore {
     const projectId = this.#workspace.$.projectId.value
     if (this.#disposed || projectId == null) return
     try {
-      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(projectId, provider, this.#host.returnUrl))
+      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(projectId, provider))
       if (!opened) {
         this.#setNotice({ kind: 'error', message: this.#i18n.t('notice.connectionPopupBlocked') })
         return

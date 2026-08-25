@@ -373,6 +373,11 @@ describe('Server Connector client', () => {
     expect(() => unconfigured.control.connectorConnectionPage(unavailableProject.project.projectId, 'mail')).toThrow(
       expect.objectContaining({ code: 'connector.unavailable', status: 503 }),
     )
+
+    const insecureFile = await databaseFile()
+    expect(() => ServerService.open(insecureFile, undefined, Date.now, {}, 'http://connector.example')).toThrow(
+      'Connector Console origin must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.',
+    )
   })
 
   it('resolves the stable Connection id and executes an action with the runtime grant', async () => {

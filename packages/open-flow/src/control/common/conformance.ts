@@ -939,7 +939,7 @@ export const connectorControlApiConformanceCases: readonly ControlApiConformance
 
       const externalPage = await json(
         await request(harness, `${base}/connections/${encodeURIComponent(serviceId)}/page`, {
-          body: JSON.stringify({ returnUrl: 'https://workbench.example/projects/connector', version: 1 }),
+          body: JSON.stringify({ version: 1 }),
           method: 'POST',
         }),
         200,
@@ -963,7 +963,7 @@ export const connectorControlApiConformanceCases: readonly ControlApiConformance
       await assertError(await request(harness, `${base}/connections/${'a'.repeat(257)}`), 400, 'project.invalid', 'Oversized Connector service')
       await assertError(
         await request(harness, `${base}/connections/mail/page`, {
-          body: JSON.stringify({ extra: true, returnUrl: 'https://workbench.example', version: 1 }),
+          body: JSON.stringify({ extra: true, version: 1 }),
           method: 'POST',
         }),
         400,

@@ -341,7 +341,7 @@ async function verifyConsumer(versions: { readonly react: string; readonly react
         "const runtimeProgram: RuntimeProgram = { engineContract: 'open-flow-engine/v1', engineDigest: 'sha256:test', entryModuleId: 'main', modules: {} }",
         "const location: WorkbenchLocation = { view: 'design' }",
         'const host: WorkbenchHost = {',
-        "  returnUrl: 'https://console.example/flows', notify: () => undefined, openExternalPage: async () => false,",
+        '  notify: () => undefined, openExternalPage: async () => false,',
         '  request: async () => Response.json({}), subscribeProject: () => () => undefined,',
         '}',
         "const workbench = createElement(OpenFlowWorkbench, { host, hrefFor: () => '/teams/team-a', language: 'en', location, onNavigate: () => undefined,",

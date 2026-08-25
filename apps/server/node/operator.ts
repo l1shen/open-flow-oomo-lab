@@ -11,6 +11,7 @@ const actorId = 'operator'
 const cookieName = 'open_flow_operator_session'
 const maxRequestBytes = 4 * 1024
 const sessionLifetimeSeconds = 12 * 60 * 60
+const defaultLoginAttemptsPerMinute = 10
 const encoder = new TextEncoder()
 
 export class OperatorSession {
@@ -60,8 +61,13 @@ export class OperatorSession {
   }
 }
 
-export function createOperatorApp(session?: OperatorSession): Hono {
+export function createOperatorApp(session?: OperatorSession, attemptsPerMinute = defaultLoginAttemptsPerMinute, clock: () => number = Date.now): Hono {
+  if (!Number.isSafeInteger(attemptsPerMinute) || attemptsPerMinute <= 0) {
+    throw new TypeError('Operator login attempts per minute must be a positive safe integer.')
+  }
   const app = new Hono()
+  let attempts = 0
+  let resetAt = 0
 
   app.get('/session', async (context) => {
     const authenticated = session == null ? false : (await session.actor(context.req.raw)) != null
@@ -75,6 +81,19 @@ export function createOperatorApp(session?: OperatorSession): Hono {
         version: 1,
       })
     }
+    const now = clock()
+    if (resetAt <= now) {
+      attempts = 0
+      resetAt = now + 60_000
+    }
+    if (attempts >= attemptsPerMinute) {
+      return json(
+        429,
+        { error: { code: serverErrorCode.authenticationInvalid, message: 'Operator login rate limit exceeded.' }, version: 1 },
+        new Headers({ 'retry-after': String(Math.max(1, Math.ceil((resetAt - now) / 1_000))) }),
+      )
+    }
+    attempts += 1
     const body = await loginRequest(context.req.raw)
     if (body == null) return json(400, { error: { code: serverErrorCode.operatorInvalid, message: 'Session request is invalid.' }, version: 1 })
     if (!session.matches(body.token)) {

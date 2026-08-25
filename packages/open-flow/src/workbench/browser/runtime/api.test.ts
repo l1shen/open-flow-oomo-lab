@@ -328,16 +328,14 @@ describe('WorkbenchClient', () => {
     expect(await client.listConnectorConnections('project-1', 'github')).toEqual([
       { connectionId: 'github-work', displayName: 'Work account', isDefault: true, serviceId: 'github', status: 'active' },
     ])
-    expect(await client.createConnectorConnectionPage('project-1', 'github', 'https://workbench.example/flow')).toBe(
-      'https://connector.example/providers/github',
-    )
+    expect(await client.createConnectorConnectionPage('project-1', 'github')).toBe('https://connector.example/providers/github')
 
     expect(requests[0]?.input).toBe('/v1/projects/project-1/connector/providers')
     expect(requests[1]?.input).toBe('/v1/projects/project-1/connector/actions?service=github')
     expect(requests[2]?.input).toBe('/v1/projects/project-1/connector/actions?q=create%20issue')
     expect(requests[3]?.input).toBe('/v1/projects/project-1/connector/connections/github')
     expect(requests[4]?.input).toBe('/v1/projects/project-1/connector/connections/github/page')
-    expect(JSON.parse(String(requests[4]?.init?.body))).toEqual({ returnUrl: 'https://workbench.example/flow', version: 1 })
+    expect(JSON.parse(String(requests[4]?.init?.body))).toEqual({ version: 1 })
   })
 
   it('discovers Trigger Keys through the shared Control API client', async () => {

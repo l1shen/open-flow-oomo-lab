@@ -18,6 +18,11 @@ it('uses a signed operator session, expires it on time or token rotation, and cl
   try {
     const anonymous = await app.request('/auth/session')
     expect(anonymous.headers.get('cache-control')).toBe('no-store')
+    expect(anonymous.headers.get('cross-origin-opener-policy')).toBe('same-origin')
+    expect(anonymous.headers.get('permissions-policy')).toBe('camera=(), geolocation=(), microphone=()')
+    expect(anonymous.headers.get('referrer-policy')).toBe('no-referrer')
+    expect(anonymous.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(anonymous.headers.get('x-frame-options')).toBe('DENY')
     expect(await anonymous.json()).toEqual({ authenticated: false, configured: true, version: 1 })
 
     const invalid = await app.request('/auth/session', {
@@ -76,6 +81,34 @@ it('uses a signed operator session, expires it on time or token rotation, and cl
     const callback = await app.request('/v1/webhooks/not-an-endpoint', { method: 'POST' })
     expect(callback.status).toBe(404)
     expect(await callback.text()).toBe('')
+  } finally {
+    await service.close()
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
+it('rate limits operator login attempts', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-operator-limit-'))
+  const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
+  const app = createServerApp(service, {
+    operator: new OperatorSession(token, false),
+    operatorLoginAttemptsPerMinute: 1,
+  })
+  try {
+    const invalid = await app.request('/auth/session', {
+      body: JSON.stringify({ token: 'wrong', version: 1 }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+    expect(invalid.status).toBe(401)
+    const limited = await app.request('/auth/session', {
+      body: JSON.stringify({ token, version: 1 }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+    expect(limited.status).toBe(429)
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0)
+    expect(limited.headers.get('set-cookie')).toBeNull()
   } finally {
     await service.close()
     await rm(directory, { force: true, recursive: true })

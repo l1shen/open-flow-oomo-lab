@@ -108,7 +108,7 @@ const maintenanceIntervalMs = 60_000
 const maintenanceRetryMs = 1_000
 const admissionRetryMs = 1_000
 const defaultMaxConcurrentRuns = 4
-const defaultRunTimeoutMs = 5 * 60 * 1_000
+const defaultRunTimeoutMs = 30 * 60 * 1_000
 
 class TaskHostError extends Error {
   constructor(
@@ -218,18 +218,33 @@ export class ServerService {
     if (runtime.runTimeoutMs != null && (!Number.isSafeInteger(runtime.runTimeoutMs) || runtime.runTimeoutMs <= 0)) {
       throw new TypeError('Run timeout must be a positive safe integer number of milliseconds.')
     }
+    if (runtime.integration != null) {
+      const publicOrigin = new URL(runtime.integration.publicOrigin)
+      if (
+        (publicOrigin.protocol != 'https:' &&
+          !(publicOrigin.protocol == 'http:' && ['127.0.0.1', '::1', '[::1]', 'localhost'].includes(publicOrigin.hostname))) ||
+        publicOrigin.username != '' ||
+        publicOrigin.password != '' ||
+        publicOrigin.pathname != '/' ||
+        publicOrigin.search != '' ||
+        publicOrigin.hash != ''
+      ) {
+        throw new Error('Integration public origin must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.')
+      }
+    }
     let consoleOrigin: URL | undefined
     if (connectorConsoleOrigin != null) {
       consoleOrigin = new URL(connectorConsoleOrigin)
       if (
-        (consoleOrigin.protocol != 'http:' && consoleOrigin.protocol != 'https:') ||
+        (consoleOrigin.protocol != 'https:' &&
+          !(consoleOrigin.protocol == 'http:' && ['127.0.0.1', '::1', '[::1]', 'localhost'].includes(consoleOrigin.hostname))) ||
         consoleOrigin.username != '' ||
         consoleOrigin.password != '' ||
         consoleOrigin.pathname != '/' ||
         consoleOrigin.search != '' ||
         consoleOrigin.hash != ''
       ) {
-        throw new Error('Connector Console origin must be an HTTP origin without credentials, a path, query, or fragment.')
+        throw new Error('Connector Console origin must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.')
       }
     }
     migrateDatabase(databaseFile)

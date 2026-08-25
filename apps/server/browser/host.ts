@@ -4,9 +4,6 @@ const reconnectDelayMs = 1_000
 
 export function createBrowserHost(notify: (notification: WorkbenchNotification | undefined) => void, sessionExpired: () => void): WorkbenchHost {
   return {
-    get returnUrl() {
-      return window.location.href
-    },
     async openExternalPage(resolveUrl) {
       const tab = window.open('about:blank', '_blank')
       if (tab == null) return false

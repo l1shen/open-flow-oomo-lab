@@ -126,7 +126,7 @@ describe('ControlClient', () => {
   it('rejects a non-HTTP Connector Connection page', async () => {
     const client = new ControlClient(vi.fn(async () => json({ url: 'javascript:alert(1)', version: 1 })))
 
-    await expect(client.createConnectorConnectionPage('project-1', 'mail', 'https://workbench.example')).rejects.toMatchObject({
+    await expect(client.createConnectorConnectionPage('project-1', 'mail')).rejects.toMatchObject({
       code: 'response.invalid',
       status: 502,
     })

@@ -41,9 +41,13 @@ async function main(): Promise<void> {
   if (!Number.isSafeInteger(maxConcurrentRuns) || maxConcurrentRuns <= 0) {
     throw new Error('OPEN_FLOW_MAX_CONCURRENT_RUNS must be a positive safe integer.')
   }
-  const runTimeoutMs = Number(process.env.OPEN_FLOW_RUN_TIMEOUT_MS ?? '300000')
+  const runTimeoutMs = Number(process.env.OPEN_FLOW_RUN_TIMEOUT_MS ?? '1800000')
   if (!Number.isSafeInteger(runTimeoutMs) || runTimeoutMs <= 0) {
     throw new Error('OPEN_FLOW_RUN_TIMEOUT_MS must be a positive safe integer.')
+  }
+  const operatorLoginAttemptsPerMinute = Number(process.env.OPEN_FLOW_OPERATOR_LOGIN_ATTEMPTS_PER_MINUTE ?? '10')
+  if (!Number.isSafeInteger(operatorLoginAttemptsPerMinute) || operatorLoginAttemptsPerMinute <= 0) {
+    throw new Error('OPEN_FLOW_OPERATOR_LOGIN_ATTEMPTS_PER_MINUTE must be a positive safe integer.')
   }
 
   const connectorOrigin = process.env.OPEN_FLOW_CONNECTOR_ORIGIN
@@ -63,14 +67,14 @@ async function main(): Promise<void> {
   if (integrationPublicOrigin != null && integrationCallbackKey != null) {
     const publicOrigin = new URL(integrationPublicOrigin)
     if (
-      (publicOrigin.protocol != 'http:' && publicOrigin.protocol != 'https:') ||
+      !publicProtocol(publicOrigin) ||
       publicOrigin.username != '' ||
       publicOrigin.password != '' ||
       publicOrigin.pathname != '/' ||
       publicOrigin.search != '' ||
       publicOrigin.hash != ''
     ) {
-      throw new Error('OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN must be an HTTP origin without credentials, a path, query, or fragment.')
+      throw new Error('OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.')
     }
     if (Buffer.byteLength(integrationCallbackKey) < 32) {
       throw new Error('OPEN_FLOW_INTEGRATION_CALLBACK_KEY must contain at least 32 UTF-8 bytes.')
@@ -97,7 +101,14 @@ async function main(): Promise<void> {
   let closing = false
   const server = serve(
     {
-      fetch: createServerApp(service, { callbackRequestsPerMinute, logger, operator, shutdownSignal: shutdownController.signal, ...workbenchHost }).fetch,
+      fetch: createServerApp(service, {
+        callbackRequestsPerMinute,
+        logger,
+        operator,
+        operatorLoginAttemptsPerMinute,
+        shutdownSignal: shutdownController.signal,
+        ...workbenchHost,
+      }).fetch,
       hostname: host,
       overrideGlobalObjects: false,
       port,
@@ -148,4 +159,8 @@ async function main(): Promise<void> {
     }
     await service.close()
   }
+}
+
+function publicProtocol(url: URL): boolean {
+  return url.protocol == 'https:' || (url.protocol == 'http:' && ['127.0.0.1', '::1', '[::1]', 'localhost'].includes(url.hostname))
 }

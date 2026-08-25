@@ -12,7 +12,6 @@ export interface WorkbenchNotification {
 }
 
 export interface WorkbenchHost {
-  readonly returnUrl: string
   notify(notification: WorkbenchNotification | undefined): void
   openExternalPage(resolveUrl: () => Promise<string>): Promise<boolean>
   request(input: RequestInfo | URL, init?: RequestInit): Promise<Response>

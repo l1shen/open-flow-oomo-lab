@@ -140,7 +140,7 @@ function connectorTarget(selection: ResolvedSelection | undefined): ConnectorTar
 export class ConnectorStore {
   readonly #client: WorkbenchClient
   readonly #i18n: I18n
-  readonly #host: Pick<WorkbenchHost, 'openExternalPage' | 'returnUrl'>
+  readonly #host: Pick<WorkbenchHost, 'openExternalPage'>
   readonly #providerActions = new Map<string, readonly ConnectorAction[]>()
   readonly #loadingActions = new Set<string>()
   readonly #refresh = new Latest()
@@ -159,7 +159,7 @@ export class ConnectorStore {
     client: WorkbenchClient,
     workspace: WorkspaceStore,
     setNotice: SetNotice,
-    host: Pick<WorkbenchHost, 'openExternalPage' | 'returnUrl'>,
+    host: Pick<WorkbenchHost, 'openExternalPage'>,
     i18n: I18n = createI18n(),
   ) {
     this.#client = client
@@ -297,7 +297,7 @@ export class ConnectorStore {
     if (projectId == null) return
     const catalog = this.#state.value.catalogs[serviceId]
     try {
-      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(projectId, serviceId, this.#host.returnUrl))
+      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(projectId, serviceId))
       if (!opened) {
         this.#setNotice({ kind: 'error', message: this.#i18n.t('notice.connectionPopupBlocked') })
         return

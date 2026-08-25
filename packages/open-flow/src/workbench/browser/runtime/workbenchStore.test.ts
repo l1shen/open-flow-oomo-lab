@@ -1201,7 +1201,7 @@ describe('WorkbenchStore', () => {
       preferences(),
       () => crypto.randomUUID(),
       createI18n(),
-      { openExternalPage, returnUrl: 'http://127.0.0.1:5173/' },
+      { openExternalPage },
     )
     await start(store)
 
@@ -1733,7 +1733,7 @@ describe('WorkbenchStore', () => {
       preferences(),
       () => crypto.randomUUID(),
       createI18n(),
-      { openExternalPage, returnUrl: 'http://127.0.0.1:5173/' },
+      { openExternalPage },
     )
     await start(store)
     store.selectNodes(['connector'])

@@ -167,9 +167,8 @@ export function createControlApp(service: ControlService, resolveActor?: Resolve
   app.post('/projects/:projectId/connector/connections/:serviceId/page', async (context) => {
     query(context.req.raw, [], controlErrorCode.projectInvalid)
     const body = await requestObject(context.req.raw, controlErrorCode.projectInvalid)
-    exact(body, ['returnUrl', 'version'], controlErrorCode.projectInvalid)
+    exact(body, ['version'], controlErrorCode.projectInvalid)
     version(body.version, controlErrorCode.projectInvalid)
-    text(body.returnUrl, controlErrorCode.projectInvalid)
     const url = service.connectorConnectionPage(context.req.param('projectId'), connectorService(context.req.param('serviceId')))
     return response(200, { url, version: 1 })
   })

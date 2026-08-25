@@ -1120,10 +1120,10 @@ export class ControlClient {
     return source.connections.map(connection)
   }
 
-  async createConnectorConnectionPage(projectId: string, serviceId: string, returnUrl: string): Promise<string> {
+  async createConnectorConnectionPage(projectId: string, serviceId: string): Promise<string> {
     const source = record(
       await this.request(`/v1/projects/${segment(projectId)}/connector/connections/${segment(serviceId)}/page`, {
-        body: JSON.stringify({ returnUrl, version: 1 }),
+        body: JSON.stringify({ version: 1 }),
         method: 'POST',
       }),
     )

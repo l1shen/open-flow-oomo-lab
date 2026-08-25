@@ -627,8 +627,8 @@ routes为：
 { connections: readonly ConnectorConnection[]; projectId: string; serviceId: string; version: 1 }
 ```
 
-Connection page请求严格为 `{ returnUrl: string, version: 1 }`，响应严格为 `{ url: string, version: 1 }`，其中 `url` 使用 HTTP(S)。`returnUrl`
-用于允许支持回跳的部署实现建立页面上下文；实现也可以返回不含回跳的 Connector Console页面。response不能包含 runtime/admin token、credential或账号资料。
+Connection page请求严格为 `{ version: 1 }`，响应严格为 `{ url: string, version: 1 }`，其中 `url` 使用 HTTP(S)。response不能包含
+runtime/admin token、credential或账号资料。
 Workbench先把 Connector Task加入 Draft，再从编辑上下文打开 external page；切回窗口后重新读取 Connection。
 
 ## 8. Stable errors

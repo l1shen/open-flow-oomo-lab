@@ -102,6 +102,9 @@ Publication 是指定 Flow 在固定 ProjectRevision 上的不可变发布记录
 Connector service 拥有 Provider 授权、credential、Connection lifecycle 和 proxy transport。Open Flow 只保存稳定的 opaque Connection identity，
 不能把 credential、token 或 Connector 数据库复制进 Revision、Browser 或 RunEvent。
 
+Provider 可访问的 callback origin 与 Browser 可访问的 Connector Console origin 除 loopback 本地开发外必须使用 HTTPS。带 bearer credential 的
+Connector runtime HTTP transport 只能位于部署者控制的受信任私网；跨不受信任网络时必须使用 TLS。
+
 公共 package 定义 Workbench 所需的 Connector 投影、部署中立 `connector-proxy` 调用合同、具体 Provider Trigger definitions 与唯一内置 Registry，
 但不拥有 Connector HTTP transport。Hosted 与 Server 消费同一 Registry；Server 通过部署配置接入 Connector，没有 Connector 时相关执行能力必须
 fail closed。
@@ -122,6 +125,9 @@ CORS 都不能承担认证。需要签名的 definition 必须获得受大小限
 
 Callback response 不能在承载 Workbench 或 Control API 的 origin 上成为 Project 控制的可执行内容，也不能修改 cookie、跳转、CORS 或其他部署级
 安全响应头。部署必须把 Project 配置的 callback response 限制为不可执行内容；若需要完整的自定义 HTTP responder，必须使用与管理面隔离的 origin。
+
+Operator session 创建入口必须限制认证尝试速率；Workbench、Control API 和 callback response 必须由部署统一设置防嵌入、MIME sniffing、referrer 与
+浏览器 capability 基础安全头。
 
 ## 5. 文档所有权
 

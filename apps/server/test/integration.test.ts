@@ -123,6 +123,21 @@ function runtime() {
   return { integration: { callbackKey: 'callback-key', publicOrigin: 'https://flow.example' } } as const
 }
 
+it('requires HTTPS for non-loopback Integration callback origins', async () => {
+  const file = await databaseFile()
+  expect(() =>
+    ServerService.open(
+      file,
+      undefined,
+      Date.now,
+      { integration: { callbackKey: 'callback-key', publicOrigin: 'http://flow.example' } },
+      undefined,
+      undefined,
+      [],
+    ),
+  ).toThrow('Integration public origin must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.')
+})
+
 it('rejects Integration publication when the callback runtime is not configured', async () => {
   const definition: IntegrationDefinition = {
     receive: () => ({ outcome: 'ignored', reason: 'unused' }),

@@ -46,6 +46,7 @@ interface ServerAppOptions {
   readonly callbackRequestsPerMinute?: number
   readonly logger?: Logger
   readonly operator?: OperatorSession
+  readonly operatorLoginAttemptsPerMinute?: number
   readonly publicDirectory?: string
   readonly resolveControlActor?: ResolveControlActor
   readonly shutdownSignal?: AbortSignal
@@ -74,6 +75,11 @@ export function createServerApp(service: ServerService, options: ServerAppOption
     context.set('requestId', requestId)
     await next()
     context.header('x-request-id', requestId)
+    context.header('cross-origin-opener-policy', 'same-origin')
+    context.header('permissions-policy', 'camera=(), geolocation=(), microphone=()')
+    context.header('referrer-policy', 'no-referrer')
+    context.header('x-content-type-options', 'nosniff')
+    context.header('x-frame-options', 'DENY')
     const fields = {
       category: 'http.request.completed',
       durationMs: Math.round(performance.now() - startedAt),
@@ -86,7 +92,7 @@ export function createServerApp(service: ServerService, options: ServerAppOption
     else logger.info(fields, 'HTTP request completed.')
   })
 
-  app.route('/auth', createOperatorApp(operator))
+  app.route('/auth', createOperatorApp(operator, options.operatorLoginAttemptsPerMinute))
   const admitCallback = (key: string): number | undefined => callbackRetryAfter(callbackWindows, key, callbackRequestsPerMinute, Date.now())
   app.all('/v1/integrations', (context) => integration(service, context.req.raw, logger, context.get('requestId'), admitCallback))
   app.all('/v1/integrations/*', (context) => integration(service, context.req.raw, logger, context.get('requestId'), admitCallback))

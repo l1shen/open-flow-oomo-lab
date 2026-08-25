@@ -60,9 +60,8 @@ function indexRunEventNodes(
   )
 }
 
-const blockedExternalPages: Pick<WorkbenchHost, 'openExternalPage' | 'returnUrl'> = {
+const blockedExternalPages: Pick<WorkbenchHost, 'openExternalPage'> = {
   openExternalPage: async () => false,
-  returnUrl: '',
 }
 
 export class WorkbenchStore {
@@ -84,7 +83,7 @@ export class WorkbenchStore {
     _preferences: WorkbenchPreferences,
     identity: () => string = () => crypto.randomUUID(),
     i18n: I18n = createI18n(),
-    host: Pick<WorkbenchHost, 'openExternalPage' | 'returnUrl'> = blockedExternalPages,
+    host: Pick<WorkbenchHost, 'openExternalPage'> = blockedExternalPages,
   ) {
     this.#i18n = i18n
     const setNotice = (notice: Notice | undefined): void => {

@@ -325,7 +325,10 @@ describe('provider Integration Trigger definitions', () => {
     ]
 
     for (const [key, config, headers, payload] of fixtures) {
-      await expect(integration(key).receive(receiveContext(config, headers, payload)), key).resolves.toMatchObject({ outcome: 'respond', status: 404 })
+      await expect(Promise.resolve(integration(key).receive(receiveContext(config, headers, payload))), key).resolves.toMatchObject({
+        outcome: 'respond',
+        status: 404,
+      })
     }
   })
 
