@@ -35,8 +35,15 @@ const forbiddenWebhookResponseHeaders = new Set([
 ])
 const reservedPaths = ['/assets', ...serverPaths] as const
 const encoder = new TextEncoder()
+const defaultCallbackRequestsPerMinute = 120
+
+interface CallbackWindow {
+  count: number
+  resetAt: number
+}
 
 interface ServerAppOptions {
+  readonly callbackRequestsPerMinute?: number
   readonly logger?: Logger
   readonly operator?: OperatorSession
   readonly publicDirectory?: string
@@ -50,7 +57,12 @@ interface AppEnv {
 }
 
 export function createServerApp(service: ServerService, options: ServerAppOptions = {}): Hono<AppEnv> {
+  const callbackRequestsPerMinute = options.callbackRequestsPerMinute ?? defaultCallbackRequestsPerMinute
+  if (!Number.isSafeInteger(callbackRequestsPerMinute) || callbackRequestsPerMinute <= 0) {
+    throw new TypeError('Callback requests per minute must be a positive safe integer.')
+  }
   const app = new Hono<AppEnv>()
+  const callbackWindows = new Map<string, CallbackWindow>()
   const logger = (options.logger ?? silentLogger).child({ component: 'http' })
   const operator = options.operator
   const resolveActor = operator == null ? options.resolveControlActor : (request: Request) => operator.actor(request)
@@ -74,10 +86,11 @@ export function createServerApp(service: ServerService, options: ServerAppOption
   })
 
   app.route('/auth', createOperatorApp(operator))
-  app.all('/v1/integrations', (context) => integration(service, context.req.raw, logger, context.get('requestId')))
-  app.all('/v1/integrations/*', (context) => integration(service, context.req.raw, logger, context.get('requestId')))
-  app.all('/v1/webhooks', (context) => webhook(service, context.req.raw, logger, context.get('requestId')))
-  app.all('/v1/webhooks/*', (context) => webhook(service, context.req.raw, logger, context.get('requestId')))
+  const admitCallback = (key: string): number | undefined => callbackRetryAfter(callbackWindows, key, callbackRequestsPerMinute, Date.now())
+  app.all('/v1/integrations', (context) => integration(service, context.req.raw, logger, context.get('requestId'), admitCallback))
+  app.all('/v1/integrations/*', (context) => integration(service, context.req.raw, logger, context.get('requestId'), admitCallback))
+  app.all('/v1/webhooks', (context) => webhook(service, context.req.raw, logger, context.get('requestId'), admitCallback))
+  app.all('/v1/webhooks/*', (context) => webhook(service, context.req.raw, logger, context.get('requestId'), admitCallback))
   app.get('/v1/projects/:projectId/notifications', async (context) => {
     const actor = await resolveActor?.(context.req.raw)
     if (actor == null || actor.length == 0) throw new ControlError(controlErrorCode.authenticationRequired, 'Authentication is required.')
@@ -177,18 +190,34 @@ function acceptsHtml(accept: string | undefined): boolean {
 class WebhookBodyTooLarge extends Error {}
 class WebhookRequestInvalid extends Error {}
 
-async function integration(service: ServerService, request: Request, logger: Logger, requestId: string): Promise<Response> {
+async function integration(
+  service: ServerService,
+  request: Request,
+  logger: Logger,
+  requestId: string,
+  admitCallback: (key: string) => number | undefined,
+): Promise<Response> {
   const endpointId = integrationEndpointId(new URL(request.url))
-  return endpointId == null ? plain(404) : await handleIntegration(service, endpointId, request, logger, requestId)
+  return endpointId == null
+    ? plain(404)
+    : await handleIntegration(service, endpointId, request, logger, requestId, () => admitCallback(`integration:${endpointId}`))
 }
 
-async function webhook(service: ServerService, request: Request, logger: Logger, requestId: string): Promise<Response> {
+async function webhook(
+  service: ServerService,
+  request: Request,
+  logger: Logger,
+  requestId: string,
+  admitCallback: (key: string) => number | undefined,
+): Promise<Response> {
   const endpointId = webhookEndpointId(new URL(request.url))
   if (endpointId == null) return plain(404)
   let origin: string | undefined
   try {
     const target = service.webhookTarget(endpointId)
     if (target == null) return plain(404)
+    const retryAfter = admitCallback(`webhook:${endpointId}`)
+    if (retryAfter != null) return plain(429, { 'retry-after': String(retryAfter) })
     const methods = (target.trigger.options?.allowedMethods ?? defaultWebhookMethods).map((method) => method.toUpperCase())
     const requestOrigin = requestHeader(request, 'origin')
     origin = corsOrigin(requestOrigin, target.trigger.options?.allowedOrigins)
@@ -204,6 +233,7 @@ async function webhook(service: ServerService, request: Request, logger: Logger,
     const accepted = await service.acceptWebhookTarget(target, occurrenceId, payload)
     if (accepted == null) return plain(404)
     if (accepted.kind == 'conflict') return plain(409, undefined, origin)
+    if (accepted.kind == 'overloaded') return plain(429, undefined, origin)
     return webhookSuccess(method, target.trigger, origin)
   } catch (error) {
     if (error instanceof WebhookBodyTooLarge) return plain(413, undefined, origin)
@@ -213,6 +243,16 @@ async function webhook(service: ServerService, request: Request, logger: Logger,
     logger.error({ category: 'webhook.request.failed', requestId, ...errorKind(error) }, 'Webhook request failed.')
     return plain(503, undefined, origin)
   }
+}
+
+function callbackRetryAfter(windows: Map<string, CallbackWindow>, key: string, limit: number, now: number): number | undefined {
+  const current = windows.get(key)
+  if (current == null || current.resetAt <= now) {
+    windows.set(key, { count: 1, resetAt: now + 60_000 })
+    return
+  }
+  if (current.count >= limit) return Math.max(1, Math.ceil((current.resetAt - now) / 1_000))
+  current.count += 1
 }
 
 function corsOrigin(origin: string | undefined, allowedOrigins: readonly string[] | undefined): string | undefined {

@@ -11,10 +11,19 @@ const encoder = new TextEncoder()
 class BodyTooLarge extends Error {}
 class RequestInvalid extends Error {}
 
-export async function handleIntegration(service: ServerService, endpointId: string, request: Request, logger: Logger, requestId: string): Promise<Response> {
+export async function handleIntegration(
+  service: ServerService,
+  endpointId: string,
+  request: Request,
+  logger: Logger,
+  requestId: string,
+  admit: () => number | undefined,
+): Promise<Response> {
   try {
     const target = service.integrationTarget(endpointId)
     if (target == null) return plain(404)
+    const retryAfter = admit()
+    if (retryAfter != null) return plain(429, { 'retry-after': String(retryAfter) })
     const endpoint = target.trigger.definition.endpoint
     const method = request.method
     if (!(endpoint.methods as readonly string[]).includes(method)) {

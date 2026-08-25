@@ -125,6 +125,46 @@ describe('Server Webhook Trigger admission', () => {
     await expect(service.acceptWebhookTarget(target, 'delivery-1', { message: 'different' })).resolves.toEqual({ kind: 'conflict' })
   })
 
+  it('bounds pending Runs without blocking idempotent replay', async () => {
+    const service = ServerService.open(await databaseFile(), undefined, Date.now, { maxPendingRuns: 1 })
+    services.push(service)
+    const target = await publishedWebhook(service)
+
+    const first = await service.acceptWebhookTarget(target, 'delivery-1', { message: 'hello' })
+    if (first == null || first.kind != 'accepted') throw new Error('Initial Webhook occurrence was not accepted.')
+    await expect(service.acceptWebhookTarget(target, 'delivery-2', { message: 'hello' })).resolves.toEqual({ kind: 'overloaded' })
+    await expect(service.acceptWebhookTarget(target, 'delivery-1', { message: 'hello' })).resolves.toMatchObject({
+      created: false,
+      runId: first.runId,
+      status: 'queued',
+    })
+    await expect(
+      service.control.createDraftRun(target.projectId, target.revisionId, target.flowId, target.engineContract, {}, 'manual-run'),
+    ).rejects.toMatchObject({ code: 'run.overloaded', status: 429 })
+  })
+
+  it('rate limits requests to a valid callback endpoint', async () => {
+    const service = ServerService.open(await databaseFile())
+    services.push(service)
+    const target = await publishedWebhook(service)
+    const app = createServerApp(service, { callbackRequestsPerMinute: 1 })
+    const url = `http://server.local/v1/webhooks/${target.endpointId}`
+
+    const first = await app.request(url, {
+      body: JSON.stringify({ message: 'hello' }),
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'delivery-1' },
+      method: 'POST',
+    })
+    expect(first.status).toBe(200)
+    const limited = await app.request(url, {
+      body: JSON.stringify({ message: 'again' }),
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'delivery-2' },
+      method: 'POST',
+    })
+    expect(limited.status).toBe(429)
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0)
+  })
+
   it('recovers a queued occurrence into the same Run after reopening SQLite', async () => {
     const file = await databaseFile()
     let service = ServerService.open(file)

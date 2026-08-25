@@ -701,6 +701,8 @@ export class ControlService {
         throw new ControlError(controlErrorCode.runConflict, 'The idempotency key refers to another Run request.')
       case 'not-found':
         return notFound()
+      case 'overloaded':
+        throw new ControlError(controlErrorCode.runOverloaded, 'The deployment has reached its pending Run limit.')
       case 'accepted': {
         if (accepted.created) {
           this.projectChanged({ flowId, kind: 'run.created', projectId, runId: accepted.runId, version: 1 })
@@ -777,6 +779,8 @@ export class ControlService {
         throw new ControlError(controlErrorCode.liveConflict, 'The Publication is no longer the current Live target.')
       case 'not-found':
         return notFound()
+      case 'overloaded':
+        throw new ControlError(controlErrorCode.runOverloaded, 'The deployment has reached its pending Run limit.')
       case 'accepted': {
         if (accepted.created) {
           this.projectChanged({ flowId, kind: 'run.created', projectId, runId: accepted.runId, version: 1 })

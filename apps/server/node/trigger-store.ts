@@ -72,6 +72,8 @@ export interface StoredCronTarget {
 
 export type PollHealth = 'failed' | 'healthy' | 'initializing' | 'needs_reauth'
 
+export type RunAdmission = RunAcceptance | { readonly kind: 'overloaded' }
+
 export interface StoredPollTarget {
   readonly bindingId: string
   readonly checkpoint: JsonValue
@@ -113,7 +115,7 @@ export interface StoredPollTestTarget {
 
 export type PollClaim = { readonly kind: 'acquired'; readonly leaseToken: string } | { readonly kind: 'busy' | 'completed' | 'unavailable' }
 
-export type PollCompletion = { readonly accepted?: RunAcceptance; readonly kind: 'completed' } | { readonly kind: 'ignored' }
+export type PollCompletion = { readonly accepted?: RunAcceptance; readonly kind: 'completed' } | { readonly kind: 'ignored' | 'overloaded' }
 
 export interface PollState {
   readonly bindingId: string
@@ -181,14 +183,14 @@ export type TriggerOccurrenceInput = TriggerOccurrence & {
 const triggerActivityRetentionMs = 30 * 24 * 60 * 60 * 1000
 
 export class TriggerStore {
-  readonly #acceptTriggerOccurrence: (input: TriggerOccurrenceInput) => RunAcceptance
+  readonly #acceptTriggerOccurrence: (input: TriggerOccurrenceInput) => RunAdmission
   readonly #database: DatabaseSync
   readonly #transaction: <Value>(operation: () => Value) => Value
 
   constructor(
     database: DatabaseSync,
     transaction: <Value>(operation: () => Value) => Value,
-    acceptTriggerOccurrence: (input: TriggerOccurrenceInput) => RunAcceptance,
+    acceptTriggerOccurrence: (input: TriggerOccurrenceInput) => RunAdmission,
   ) {
     this.#acceptTriggerOccurrence = acceptTriggerOccurrence
     this.#database = database
@@ -349,7 +351,7 @@ export class TriggerStore {
     readonly runtimeVersion: number
     readonly triggerJson: string
     readonly triggerNodeId: string
-  }): RunAcceptance | undefined {
+  }): RunAdmission | undefined {
     return this.#transaction(() => {
       const current = this.#database
         .prepare(
@@ -392,6 +394,7 @@ export class TriggerStore {
       if (current == null) return
 
       const accepted = this.#acceptTriggerOccurrence({ ...input, source: 'trigger' })
+      if (accepted.kind == 'overloaded') return accepted
       if (accepted.kind == 'accepted' && accepted.created) {
         this.#database
           .prepare('INSERT INTO webhook_admissions (run_id, endpoint_id, runtime_version, publication_id) VALUES (?, ?, ?, ?)')
@@ -403,7 +406,7 @@ export class TriggerStore {
 
   acceptCronTarget(
     input: StoredCronTarget & { readonly nextScheduledAt: number; readonly occurrenceId: string; readonly requestDigest: string },
-  ): RunAcceptance | undefined {
+  ): RunAdmission | undefined {
     return this.#transaction(() => {
       const current = this.#database
         .prepare(
@@ -465,6 +468,7 @@ export class TriggerStore {
         source: 'trigger',
         triggerNodeId: input.triggerNodeId,
       })
+      if (accepted.kind == 'overloaded') return accepted
       if (accepted.kind == 'accepted' && accepted.created) {
         this.#database
           .prepare('INSERT INTO cron_admissions (run_id, binding_id, runtime_version, publication_id, scheduled_at) VALUES (?, ?, ?, ?, ?)')
@@ -477,7 +481,7 @@ export class TriggerStore {
 
   acceptIntegrationTarget(
     input: StoredIntegrationTarget & { readonly occurrenceId: string; readonly payload: JsonValue; readonly requestDigest: string },
-  ): RunAcceptance | undefined {
+  ): RunAdmission | undefined {
     return this.#transaction(() => {
       const current = this.#database
         .prepare(
@@ -539,6 +543,7 @@ export class TriggerStore {
         source: 'trigger',
         triggerNodeId: input.triggerNodeId,
       })
+      if (accepted.kind == 'overloaded') return accepted
       if (accepted.kind == 'accepted' && accepted.created) {
         this.#database
           .prepare('INSERT INTO integration_admissions (run_id, binding_id, runtime_version, publication_id) VALUES (?, ?, ?, ?)')
@@ -930,7 +935,7 @@ export class TriggerStore {
 
       let accepted: RunAcceptance | undefined
       if (input.payload != null && input.requestDigest != null) {
-        accepted = this.#acceptTriggerOccurrence({
+        const admission = this.#acceptTriggerOccurrence({
           content: input.target.content,
           closureDigest: input.target.closureDigest,
           flowId: input.target.flowId,
@@ -945,6 +950,8 @@ export class TriggerStore {
           source: 'trigger',
           triggerNodeId: input.target.triggerNodeId,
         })
+        if (admission.kind == 'overloaded') return admission
+        accepted = admission
         if (accepted.kind == 'conflict') throw new Error('Poll page identity already refers to a different invocation.')
         if (accepted.created) {
           this.#database

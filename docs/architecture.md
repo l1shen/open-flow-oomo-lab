@@ -114,6 +114,9 @@ CORS 都不能承担认证。需要签名的 definition 必须获得受大小限
 一次有效 Trigger occurrence 只能准入普通 Flow Run，之后复用相同的 Run、执行、事件、取消和 terminal 语义。Trigger lifecycle 不能扩张成第二套
 执行系统；重投 occurrence 必须通过稳定 identity 和权威 store 约束为最多一个 Run。
 
+部署必须在权威 admission 事务中限制尚未 terminal 的 Run 总数，并在达到上限时拒绝新的 Control、Webhook、Cron、Poll 和 Integration admission；
+已接受 identity 的幂等重放仍须返回原 Run。公开 callback endpoint 还必须按 endpoint 限制请求速率，且未知 endpoint 不能扩大限流状态。
+
 Callback response 不能在承载 Workbench 或 Control API 的 origin 上成为 Project 控制的可执行内容，也不能修改 cookie、跳转、CORS 或其他部署级
 安全响应头。部署必须把 Project 配置的 callback response 限制为不可执行内容；若需要完整的自定义 HTTP responder，必须使用与管理面隔离的 origin。
 

@@ -653,6 +653,7 @@ Workbench先把 Connector Task加入 Draft，再从编辑上下文打开 externa
 | `run.not-found`                 |    404 | `runId` 不存在或不可见                         |
 | `run.not-terminal`              |    409 | Run 尚未提交 terminal result                   |
 | `run.events-expired`            |    410 | 指定的详细事件 history 已到期                  |
+| `run.overloaded`                |    429 | 部署已达到尚未 terminal 的 Run 上限            |
 | `route.not-found`               |    404 | route 不属于 Control API                       |
 
 P1 增加：

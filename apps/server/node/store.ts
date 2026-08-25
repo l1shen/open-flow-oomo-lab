@@ -1,8 +1,8 @@
 import type { JsonValue } from '@oomol-lab/open-flow/project-change'
 import type { ProjectedRunEvent } from '@oomol-lab/open-flow/run-events'
-import type { RunAcceptance, RunStatus, RunTerminalStatus } from '@oomol-lab/open-flow/run-lifecycle'
+import type { RunStatus, RunTerminalStatus } from '@oomol-lab/open-flow/run-lifecycle'
 import type { FlowRunOptions, TriggerSeed } from '@oomol-lab/open-flow/scheduler'
-import type { TriggerOccurrenceInput } from './trigger-store.ts'
+import type { RunAdmission, TriggerOccurrenceInput } from './trigger-store.ts'
 
 import { currentEngineContract } from '@oomol-lab/open-flow/runtime-contract'
 import { randomUUID } from 'node:crypto'
@@ -149,15 +149,19 @@ const maxEventBytes = 1024 * 1024
 const maxEventCount = 1_000
 const maxEventTotalBytes = 16 * 1024 * 1024
 const defaultRunEventRetentionMs = 30 * 24 * 60 * 60 * 1000
+const defaultMaxPendingRuns = 1_000
 
 export class Store {
   readonly triggers: TriggerStore
   readonly #clock: () => number
   readonly #database: DatabaseSync
+  readonly #maxPendingRuns: number
   readonly #runEventRetentionMs: number
 
-  constructor(file: string, clock: () => number = Date.now, runEventRetentionMs = defaultRunEventRetentionMs) {
+  constructor(file: string, clock: () => number = Date.now, runEventRetentionMs = defaultRunEventRetentionMs, maxPendingRuns = defaultMaxPendingRuns) {
+    if (!Number.isSafeInteger(maxPendingRuns) || maxPendingRuns <= 0) throw new TypeError('Maximum pending Runs must be a positive safe integer.')
     this.#clock = clock
+    this.#maxPendingRuns = maxPendingRuns
     this.#runEventRetentionMs = runEventRetentionMs
     this.#database = new DatabaseSync(file)
     this.#database.exec(`
@@ -481,7 +485,7 @@ export class Store {
     readonly requestDigest: string
     readonly revisionDigest: string
     readonly revisionId: string
-  }): RunAcceptance | { readonly kind: 'busy' | 'not-found' } {
+  }): RunAdmission | { readonly kind: 'busy' | 'not-found' } {
     return this.#transaction(() => {
       const existing = this.#database
         .prepare('SELECT run_id AS runId, request_digest AS requestDigest, status FROM runs WHERE idempotency_key = ?')
@@ -490,7 +494,6 @@ export class Store {
         if (existing.requestDigest != input.requestDigest) return { kind: 'conflict' }
         return { created: false, kind: 'accepted', runId: existing.runId, status: existing.status }
       }
-
       const revision = this.#database
         .prepare(
           `SELECT projects.status, revisions.digest
@@ -502,6 +505,7 @@ export class Store {
         .get(input.projectId, input.revisionId) as { readonly digest: string; readonly status: StoredProject['status'] } | undefined
       if (revision == null || revision.digest != input.revisionDigest) return { kind: 'not-found' }
       if (revision.status != 'active') return { kind: 'busy' }
+      if (!this.#hasRunCapacity()) return { kind: 'overloaded' }
 
       const runId = this.#insertRun({
         ...input,
@@ -522,7 +526,7 @@ export class Store {
     readonly requestDigest: string
     readonly revisionDigest: string
     readonly revisionId: string
-  }): RunAcceptance | { readonly kind: 'busy' | 'live-conflict' | 'not-found' } {
+  }): RunAdmission | { readonly kind: 'busy' | 'live-conflict' | 'not-found' } {
     return this.#transaction(() => {
       const existing = this.#database
         .prepare('SELECT run_id AS runId, request_digest AS requestDigest, source, status FROM runs WHERE idempotency_key = ?')
@@ -533,7 +537,6 @@ export class Store {
         if (existing.requestDigest != input.requestDigest || existing.source != 'live') return { kind: 'conflict' }
         return { created: false, kind: 'accepted', runId: existing.runId, status: existing.status }
       }
-
       const project = this.#project(input.projectId)
       if (project == null) return { kind: 'not-found' }
       if (project.status != 'active') return { kind: 'busy' }
@@ -548,6 +551,7 @@ export class Store {
       ) {
         return { kind: 'live-conflict' }
       }
+      if (!this.#hasRunCapacity()) return { kind: 'overloaded' }
 
       const runId = this.#insertRun({
         ...input,
@@ -1326,7 +1330,7 @@ export class Store {
     return true
   }
 
-  #acceptTriggerOccurrence(input: TriggerOccurrenceInput): RunAcceptance {
+  #acceptTriggerOccurrence(input: TriggerOccurrenceInput): RunAdmission {
     const existing = this.#database
       .prepare(
         `SELECT runs.request_digest AS requestDigest, runs.run_id AS runId, runs.status
@@ -1338,6 +1342,7 @@ export class Store {
       if (existing.requestDigest != input.requestDigest) return { kind: 'conflict' }
       return { created: false, kind: 'accepted', runId: existing.runId, status: existing.status }
     }
+    if (!this.#hasRunCapacity()) return { kind: 'overloaded' }
 
     this.#ensureRevision(input)
     const runId = this.#insertRun({
@@ -1349,6 +1354,10 @@ export class Store {
       .prepare('INSERT INTO trigger_occurrences (occurrence_id, run_id, trigger_node_id, payload) VALUES (?, ?, ?, ?)')
       .run(input.occurrenceId, runId, input.triggerNodeId, JSON.stringify(input.payload))
     return { created: true, kind: 'accepted', runId, status: 'queued' }
+  }
+
+  #hasRunCapacity(): boolean {
+    return this.#database.prepare('SELECT 1 FROM work LIMIT 1 OFFSET ?').get(this.#maxPendingRuns - 1) == null
   }
 
   #ensureRevision(input: { readonly content: string; readonly revisionDigest: string; readonly revisionId: string }): void {

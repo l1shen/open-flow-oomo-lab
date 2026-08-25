@@ -28,6 +28,14 @@ async function main(): Promise<void> {
   if (!Number.isSafeInteger(retentionDays) || retentionDays <= 0 || !Number.isSafeInteger(runEventRetentionMs)) {
     throw new Error('OPEN_FLOW_RUN_EVENT_RETENTION_DAYS must be a positive safe integer number of days.')
   }
+  const maxPendingRuns = Number(process.env.OPEN_FLOW_MAX_PENDING_RUNS ?? '1000')
+  if (!Number.isSafeInteger(maxPendingRuns) || maxPendingRuns <= 0) {
+    throw new Error('OPEN_FLOW_MAX_PENDING_RUNS must be a positive safe integer.')
+  }
+  const callbackRequestsPerMinute = Number(process.env.OPEN_FLOW_CALLBACK_REQUESTS_PER_MINUTE ?? '120')
+  if (!Number.isSafeInteger(callbackRequestsPerMinute) || callbackRequestsPerMinute <= 0) {
+    throw new Error('OPEN_FLOW_CALLBACK_REQUESTS_PER_MINUTE must be a positive safe integer.')
+  }
 
   const connectorOrigin = process.env.OPEN_FLOW_CONNECTOR_ORIGIN
   const connectorToken = process.env.OPEN_FLOW_CONNECTOR_TOKEN
@@ -70,7 +78,7 @@ async function main(): Promise<void> {
     path.join(dataDirectory, 'open-flow.sqlite'),
     connector,
     Date.now,
-    { ...(integration == null ? {} : { integration }), runEventRetentionMs },
+    { ...(integration == null ? {} : { integration }), maxPendingRuns, runEventRetentionMs },
     connectorConsoleOrigin,
     logger,
   )
@@ -79,7 +87,7 @@ async function main(): Promise<void> {
   let closing = false
   const server = serve(
     {
-      fetch: createServerApp(service, { logger, operator, ...workbenchHost }).fetch,
+      fetch: createServerApp(service, { callbackRequestsPerMinute, logger, operator, ...workbenchHost }).fetch,
       hostname: host,
       overrideGlobalObjects: false,
       port,

@@ -5,14 +5,13 @@ import type { ConnectorCapability, JsonValue, RevisionContent, TriggerNode } fro
 import type { PreparedFlow } from '@oomol-lab/open-flow/project-semantics'
 import type { ProviderTriggerDefinition } from '@oomol-lab/open-flow/provider-triggers'
 import type { ProjectedRunEvent } from '@oomol-lab/open-flow/run-events'
-import type { RunAcceptance } from '@oomol-lab/open-flow/run-lifecycle'
 import type { InvokeLlmTask, RuntimeCapabilityCall, RuntimeCapabilityResponse } from '@oomol-lab/open-flow/runtime-contract'
 import type { TaskInvocation } from '@oomol-lab/open-flow/scheduler'
 import type { Logger } from 'pino'
 import type { ConnectorHost } from './connector.ts'
 import type { IntegrationOptions, IntegrationResponse, IntegrationRuntimeState, IntegrationTarget } from './integration-runtime.ts'
 import type { PublicationAcceptance, RunEvent, RunRecord, StoredRun } from './store.ts'
-import type { PollState, StoredCronTarget, StoredPollTarget } from './trigger-store.ts'
+import type { PollState, RunAdmission, StoredCronTarget, StoredPollTarget } from './trigger-store.ts'
 
 import { controlErrorCode } from '@oomol-lab/open-flow/control-api'
 import { nextTriggerScheduledAt, scheduledTriggerOccurrenceId, validateTriggerSchedule } from '@oomol-lab/open-flow/cron-trigger'
@@ -67,6 +66,7 @@ interface PollOccurrenceInput {
 export interface ServerRuntime {
   readonly integration?: IntegrationOptions
   readonly llm?: InvokeLlmTask
+  readonly maxPendingRuns?: number
   readonly runEventRetentionMs?: number
 }
 
@@ -104,6 +104,7 @@ const maxTimerDelayMs = 2_147_483_647
 const maintenanceBatchSize = 100
 const maintenanceIntervalMs = 60_000
 const maintenanceRetryMs = 1_000
+const admissionRetryMs = 1_000
 
 interface ActiveRun {
   readonly cancellation: AbortController
@@ -134,6 +135,7 @@ export class ServerService {
   readonly #store: Store
   #cronTicking?: Promise<void>
   #cronTimer?: ReturnType<typeof setTimeout>
+  #cronRetryAt?: number
   #draining?: Promise<void>
   #failure?: unknown
   #maintenanceTicking?: Promise<void>
@@ -203,6 +205,9 @@ export class ServerService {
     if (runtime.runEventRetentionMs != null && (!Number.isSafeInteger(runtime.runEventRetentionMs) || runtime.runEventRetentionMs <= 0)) {
       throw new TypeError('Run event retention must be a positive safe integer number of milliseconds.')
     }
+    if (runtime.maxPendingRuns != null && (!Number.isSafeInteger(runtime.maxPendingRuns) || runtime.maxPendingRuns <= 0)) {
+      throw new TypeError('Maximum pending Runs must be a positive safe integer.')
+    }
     let consoleOrigin: URL | undefined
     if (connectorConsoleOrigin != null) {
       consoleOrigin = new URL(connectorConsoleOrigin)
@@ -218,7 +223,15 @@ export class ServerService {
       }
     }
     migrateDatabase(databaseFile)
-    return new ServerService(new Store(databaseFile, clock, runtime.runEventRetentionMs), connector, clock, runtime, consoleOrigin, logger, triggerDefinitions)
+    return new ServerService(
+      new Store(databaseFile, clock, runtime.runEventRetentionMs, runtime.maxPendingRuns),
+      connector,
+      clock,
+      runtime,
+      consoleOrigin,
+      logger,
+      triggerDefinitions,
+    )
   }
 
   async #testPollTrigger(
@@ -285,7 +298,7 @@ export class ServerService {
     }
   }
 
-  async acceptWebhookTarget(target: WebhookTarget, occurrenceId: string, payload: JsonValue): Promise<RunAcceptance | undefined> {
+  async acceptWebhookTarget(target: WebhookTarget, occurrenceId: string, payload: JsonValue): Promise<RunAdmission | undefined> {
     const fixed = await validatedFlow(target.revision, target.flowId)
     const trigger = fixed.prepared.flow.graph.nodes[target.triggerNodeId]
     if (
@@ -691,7 +704,7 @@ export class ServerService {
     }
   }
 
-  async #admitCron(target: StoredCronTarget, now: number): Promise<void> {
+  async #admitCron(target: StoredCronTarget, now: number): Promise<'admitted' | 'overloaded'> {
     const fixed = await validatedFlow(JSON.parse(target.content) as RevisionContent, target.flowId)
     const trigger = fixed.prepared.flow.graph.nodes[target.triggerNodeId]
     if (
@@ -724,8 +737,14 @@ export class ServerService {
       occurrenceId,
       requestDigest,
     })
+    if (accepted?.kind == 'overloaded') {
+      this.#cronRetryAt = now + admissionRetryMs
+      return 'overloaded'
+    }
+    this.#cronRetryAt = undefined
     if (accepted?.kind == 'accepted' && accepted.created) this.#runCreated(target.projectId, target.flowId, accepted.runId)
     if (accepted != null) this.#wake()
+    return 'admitted'
   }
 
   async #poll(target: StoredPollTarget, occurrenceId: string, now: number): Promise<void> {
@@ -828,6 +847,10 @@ export class ServerService {
         rootOccurrenceId,
         target,
       })
+      if (completed.kind == 'overloaded') {
+        this.#store.triggers.failPollClaim(target.bindingId, target.runtimeVersion, claim.leaseToken, { retryAt: now + admissionRetryMs })
+        return
+      }
       if (completed.kind == 'completed' && completed.accepted?.kind == 'accepted') {
         if (completed.accepted.created) this.#runCreated(target.projectId, target.flowId, completed.accepted.runId)
         this.#wake()
@@ -884,7 +907,7 @@ export class ServerService {
     while (true) {
       const targets = this.#store.triggers.dueCron(now, cronBatchSize)
       if (targets.length == 0) return
-      for (const target of targets) await this.#admitCron(target, now)
+      for (const target of targets) if ((await this.#admitCron(target, now)) == 'overloaded') return
     }
   }
 
@@ -1012,7 +1035,7 @@ export class ServerService {
     if (!this.#started || this.#failure != null || this.#cronTicking != null) return
     const nextAt = this.#store.triggers.nextCronAt()
     if (nextAt == null) return
-    const delay = Math.max(0, Math.min(nextAt - this.#clock(), maxTimerDelayMs))
+    const delay = Math.max(0, Math.min(Math.max(nextAt, this.#cronRetryAt ?? nextAt) - this.#clock(), maxTimerDelayMs))
     this.#cronTimer = setTimeout(() => {
       this.#cronTimer = undefined
       void this.tickCron().catch((error: unknown) => {

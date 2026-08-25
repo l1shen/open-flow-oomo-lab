@@ -296,6 +296,7 @@ export class IntegrationRuntime {
         })
         if (accepted == null) return { status: 404 }
         if (accepted.kind == 'conflict') return { status: 409 }
+        if (accepted.kind == 'overloaded') return { status: 429 }
         if (accepted.created) {
           this.#runCreated(target.stored.projectId, target.stored.flowId, accepted.runId)
           this.#wake()
