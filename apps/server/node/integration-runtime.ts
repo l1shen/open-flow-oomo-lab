@@ -223,6 +223,7 @@ export class IntegrationRuntime {
       readonly method: IntegrationReceiveContext['method']
       readonly payload: JsonValue
       readonly query: URLSearchParams
+      readonly rawBody: Uint8Array
     },
   ): Promise<IntegrationResponse> {
     const fixed = await this.#validateFlow(JSON.parse(target.stored.content) as RevisionContent, target.stored.flowId)
@@ -253,6 +254,7 @@ export class IntegrationRuntime {
         now,
         payload: input.payload,
         query: (name) => input.query.get(name) ?? undefined,
+        rawBody: input.rawBody,
         state: target.state,
       })
       if (received.outcome == 'respond') {

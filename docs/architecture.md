@@ -104,6 +104,10 @@ Trigger 是 Flow graph 中的 source node。Webhook、Cron、Poll 和 Integratio
 package；subscription、checkpoint、调度持久化、endpoint routing 和 admission 事务属于部署实现。Trigger 通过 Connector 的通用 Action 或 proxy
 调用 Provider，不能要求 Connector 增加 Trigger 专用接口，也不由用户或部署者注册 definitions。
 
+Integration callback 必须在解析后、准入前使用 Provider 签名、独立 callback secret 或等价 workload authority 认证；callback endpoint identity 和
+CORS 都不能承担认证。需要签名的 definition 必须获得受大小限制的原始请求 bytes。Provider 生成的 callback verifier 只能保存在部署 runtime state，
+不能进入 ProjectRevision、Workbench、RunEvent 或日志；Provider app credential 仍归 Connector 所有。
+
 一次有效 Trigger occurrence 只能准入普通 Flow Run，之后复用相同的 Run、执行、事件、取消和 terminal 语义。Trigger lifecycle 不能扩张成第二套
 执行系统；重投 occurrence 必须通过稳定 identity 和权威 store 约束为最多一个 Run。
 

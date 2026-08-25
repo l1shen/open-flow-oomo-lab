@@ -273,6 +273,7 @@ describe('Server Integration callback fencing', () => {
         method: 'POST' as const,
         payload: { deliveryId: 'delivery-main' } satisfies JsonValue,
         query: new URLSearchParams(),
+        rawBody: new TextEncoder().encode('{"deliveryId":"delivery-main"}'),
       }
       const outcomes = await Promise.allSettled([service.receiveIntegrationTarget(first, input), service.receiveIntegrationTarget(second, input)])
       expect(outcomes.filter((outcome) => outcome.status == 'fulfilled').map((outcome) => outcome.value.status)).toEqual([202])

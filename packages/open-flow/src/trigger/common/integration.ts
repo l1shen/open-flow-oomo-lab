@@ -46,6 +46,7 @@ export interface IntegrationReceiveContext {
   readonly now: Date
   readonly payload: JsonValue
   readonly query: (name: string) => string | undefined
+  readonly rawBody: Uint8Array
   readonly state?: IntegrationStateContext
 }
 

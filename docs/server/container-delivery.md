@@ -113,6 +113,8 @@ docker stop --time 30 open-flow-server
 
 ## 6. 持久化与恢复
 
-项目、Revision、Publication、Run、RunEvent、Trigger binding 和 migration version 都位于数据卷中的 SQLite 文件。当前只承诺 quiesced backup：先停止入口流量并让容器正常退出，再备份 volume；恢复时把完整数据目录挂载到相同路径后启动一个 Server 容器。
+项目、Revision、Publication、Run、RunEvent、Trigger binding、Provider callback verifier 和 migration version 都位于数据卷中的 SQLite 文件。callback
+verifier 只属于 Trigger runtime state，不进入 ProjectRevision、Workbench 或 RunEvent。当前只承诺 quiesced backup：先停止入口流量并让容器正常退出，
+再备份 volume；恢复时把完整数据目录挂载到相同路径后启动一个 Server 容器。
 
 不能只复制主 `.sqlite` 文件而遗漏同目录中的 WAL/SHM 状态，也不能在一个仍写入的容器和一个恢复容器之间共享数据卷。Connector 持久化是外部服务自己的备份边界，不属于 `/data/open-flow`。

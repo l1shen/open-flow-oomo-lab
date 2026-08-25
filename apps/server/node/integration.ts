@@ -20,11 +20,13 @@ export async function handleIntegration(service: ServerService, endpointId: stri
     if (!(endpoint.methods as readonly string[]).includes(method)) {
       return plain(405, { allow: endpoint.methods.join(', ') })
     }
+    const body = await payload(request, endpoint)
     const result = await service.receiveIntegrationTarget(target, {
       headers: request.headers,
       method: method as (typeof endpoint.methods)[number],
-      payload: await payload(request, endpoint),
+      payload: body.value,
       query: new URL(request.url).searchParams,
+      rawBody: body.bytes,
     })
     const headers = new Headers(result.headers)
     if (result.contentType != null) headers.set('content-type', result.contentType)
@@ -37,15 +39,15 @@ export async function handleIntegration(service: ServerService, endpointId: stri
   }
 }
 
-async function payload(request: Request, declaration: IntegrationEndpointDeclaration): Promise<JsonValue> {
-  if (request.method == 'GET' || request.method == 'HEAD') return {}
+async function payload(request: Request, declaration: IntegrationEndpointDeclaration): Promise<{ readonly bytes: Uint8Array; readonly value: JsonValue }> {
+  if (request.method == 'GET' || request.method == 'HEAD') return { bytes: new Uint8Array(), value: {} }
   const format = bodyFormat(request.headers.get('content-type') ?? undefined)
   const bytes = await readBytes(request)
-  if (bytes.byteLength == 0 && declaration.body.allowEmpty) return {}
+  if (bytes.byteLength == 0 && declaration.body.allowEmpty) return { bytes, value: {} }
   if (!declaration.body.formats.includes(format)) throw new RequestInvalid()
-  if (format == 'form') return form(new URLSearchParams(decoder.decode(bytes)))
-  if (format == 'multipart') return await multipart(request, bytes)
-  return json(decoder.decode(bytes), declaration.body.allowArray)
+  if (format == 'form') return { bytes, value: form(new URLSearchParams(decoder.decode(bytes))) }
+  if (format == 'multipart') return { bytes, value: await multipart(request, bytes) }
+  return { bytes, value: json(decoder.decode(bytes), declaration.body.allowArray) }
 }
 
 function bodyFormat(contentType: string | undefined): IntegrationBodyFormat {

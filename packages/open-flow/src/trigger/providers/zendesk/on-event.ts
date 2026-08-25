@@ -3,6 +3,9 @@ import type { JsonValue, TriggerKeySnapshot } from '../../../project/common/chan
 import type { IntegrationDefinition, IntegrationReconcileContext, IntegrationStateContext } from '../../common/integration.ts'
 
 import { IntegrationConnectionError, PermanentIntegrationError, TransientIntegrationError } from '../../common/integration.ts'
+import { bytes, verifyBase64Hmac } from '../signature.ts'
+
+const signatureToleranceMs = 5 * 60 * 1_000
 
 const events = [
   'zen:event-type:ticket.agent_assignment_changed',
@@ -86,7 +89,7 @@ const snapshot = {
     title: 'Zendesk Event Subscription Config',
     type: 'object',
   },
-  definitionVersion: 1,
+  definitionVersion: 2,
   description: 'Triggers when one of the selected Zendesk account events occurs.',
   displayName: 'Zendesk: Event Subscription',
   endpoint: { body: { allowArray: false, allowEmpty: false, formats: ['json'] }, methods: ['POST'], successStatus: 202 },
@@ -106,7 +109,19 @@ const snapshot = {
 export const zendeskEvent: IntegrationDefinition = {
   initialState: { checkpoint: null, subscription: {} },
   snapshot,
-  receive(context) {
+  async receive(context) {
+    const signingSecret = subscriptionSecret(context.state)
+    const timestamp = context.header('x-zendesk-webhook-signature-timestamp')
+    const signedAt = timestamp == null ? Number.NaN : Date.parse(timestamp)
+    if (
+      signingSecret == null ||
+      timestamp == null ||
+      !Number.isFinite(signedAt) ||
+      Math.abs(context.now.getTime() - signedAt) > signatureToleranceMs ||
+      !(await verifyBase64Hmac(signingSecret, [bytes(timestamp), context.rawBody], context.header('x-zendesk-webhook-signature')))
+    ) {
+      return { body: '', contentType: 'text/plain', outcome: 'respond', status: 404 }
+    }
     if (context.payload == null || typeof context.payload != 'object' || Array.isArray(context.payload)) {
       return { outcome: 'ignored', reason: 'Zendesk event body is missing.' }
     }
@@ -154,7 +169,7 @@ export const zendeskEvent: IntegrationDefinition = {
       success(aligned, 'webhook update')
     }
     for (const duplicate of listed.filter((value) => value != webhookId)) await remove(context, duplicate)
-    await state.saveSubscription({ webhookId }, later(context.now))
+    await state.saveSubscription({ signingSecret: await readSigningSecret(context, webhookId), webhookId }, later(context.now))
     return { outcome: 'ready' }
   },
 }
@@ -239,6 +254,19 @@ function requireState(value: IntegrationStateContext | undefined): IntegrationSt
 function subscriptionId(state: IntegrationStateContext): string | null {
   const value = state.subscription.webhookId
   return typeof value == 'string' && value.length > 0 ? value : null
+}
+
+function subscriptionSecret(state: IntegrationStateContext | undefined): string | null {
+  const value = state?.subscription.signingSecret
+  return typeof value == 'string' && value.length > 0 ? value : null
+}
+
+async function readSigningSecret(context: IntegrationReconcileContext, webhookId: string): Promise<string> {
+  const result = await request(context, 'webhook signing secret', { endpoint: `${endpoint}/${webhookId}/signing_secret`, method: 'GET' })
+  success(result, 'webhook signing secret')
+  const secret = record(record(result.data)?.signing_secret)?.secret
+  if (typeof secret != 'string' || secret.length == 0) throw new TransientIntegrationError('Zendesk webhook signing secret response is invalid.')
+  return secret
 }
 
 function later(now: Date): Date {

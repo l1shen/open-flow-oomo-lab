@@ -103,7 +103,15 @@ function receiveContext(config: Readonly<Record<string, JsonValue>>, headers: Re
     now: new Date('2026-08-20T12:34:20.000Z'),
     payload,
     query: () => undefined,
+    rawBody: new TextEncoder().encode(JSON.stringify(payload)),
   }
+}
+
+async function signature(secret: string, source: Uint8Array, format: 'base64' | 'hex'): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { hash: 'SHA-256', name: 'HMAC' }, false, ['sign'])
+  const value = new Uint8Array(await crypto.subtle.sign('HMAC', key, new Uint8Array(source).buffer))
+  if (format == 'hex') return [...value].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  return btoa(String.fromCharCode(...value))
 }
 
 describe('provider Poll Trigger definitions', () => {
@@ -306,34 +314,98 @@ describe('provider Poll Trigger definitions', () => {
 })
 
 describe('provider Integration Trigger definitions', () => {
+  it('rejects unauthenticated provider deliveries', async () => {
+    const fixtures: readonly [string, Readonly<Record<string, JsonValue>>, Readonly<Record<string, string>>, JsonValue][] = [
+      ['github.on_repo_event', { events: ['push'], owner: 'oomol', repo: 'flow' }, { 'x-github-event': 'push' }, {}],
+      ['gitlab.on_project_event', { events: ['pipeline'], project: 'oomol/flow' }, { 'x-gitlab-event': 'Pipeline Hook' }, {}],
+      ['shopify.on_shop_event', { topics: ['orders/create'] }, { 'x-shopify-topic': 'orders/create' }, {}],
+      ['stripe.on_event', { events: ['invoice.paid'] }, {}, { id: 'evt_1', type: 'invoice.paid' }],
+      ['woocommerce.on_store_event', { events: ['order.created'] }, { 'x-wc-webhook-topic': 'order.created' }, {}],
+      ['zendesk.on_event', { events: ['zen:event-type:ticket.created'] }, {}, { id: 'd6', type: 'zen:event-type:ticket.created' }],
+    ]
+
+    for (const [key, config, headers, payload] of fixtures) {
+      await expect(integration(key).receive(receiveContext(config, headers, payload)), key).resolves.toMatchObject({ outcome: 'respond', status: 404 })
+    }
+  })
+
   it('normalizes provider deliveries and rejects unsubscribed events', async () => {
+    const encoder = new TextEncoder()
+    const githubPayload = { ref: 'main' }
+    const githubBody = encoder.encode(JSON.stringify(githubPayload))
     expect(
-      await integration('github.on_repo_event').receive(
-        receiveContext({ events: ['push'], owner: 'oomol', repo: 'flow' }, { 'x-github-delivery': 'd1', 'x-github-event': 'push' }, { ref: 'main' }),
-      ),
+      await integration('github.on_repo_event').receive({
+        ...receiveContext(
+          { events: ['push'], owner: 'oomol', repo: 'flow' },
+          { 'x-github-delivery': 'd1', 'x-github-event': 'push', 'x-hub-signature-256': `sha256=${await signature('secret', githubBody, 'hex')}` },
+          githubPayload,
+        ),
+        rawBody: githubBody,
+      }),
     ).toMatchObject({ dedupeKey: 'd1', outcome: 'event', payload: { event: 'push' } })
     expect(
       await integration('gitlab.on_project_event').receive(
-        receiveContext({ events: ['pipeline'], project: 'oomol/flow' }, { 'idempotency-key': 'd2', 'x-gitlab-event': 'Pipeline Hook' }, {}),
+        receiveContext(
+          { events: ['pipeline'], project: 'oomol/flow' },
+          { 'idempotency-key': 'd2', 'x-gitlab-event': 'Pipeline Hook', 'x-gitlab-token': 'secret' },
+          {},
+        ),
       ),
     ).toMatchObject({ dedupeKey: 'd2', outcome: 'event', payload: { event: 'pipeline' } })
     expect(
-      await integration('shopify.on_shop_event').receive(
-        receiveContext({ topics: ['orders/create'] }, { 'x-shopify-topic': 'orders/create', 'x-shopify-webhook-id': 'd3' }, { id: 1 }),
-      ),
+      await integration('shopify.on_shop_event').receive({
+        ...receiveContext({ topics: ['orders/create'] }, { 'x-shopify-topic': 'orders/create', 'x-shopify-webhook-id': 'd3' }, { id: 1 }),
+        query: (name) => (name == 'open_flow_callback' ? 'secret' : undefined),
+      }),
     ).toMatchObject({ dedupeKey: 'd3', outcome: 'event', payload: { topic: 'orders/create' } })
+    const stripePayload = { id: 'evt_1', livemode: true, type: 'invoice.paid' }
+    const stripeBody = encoder.encode(JSON.stringify(stripePayload))
+    const stripeTimestamp = String(Date.parse('2026-08-20T12:34:20.000Z') / 1_000)
     expect(
-      await integration('stripe.on_event').receive(receiveContext({ events: ['invoice.paid'] }, {}, { id: 'evt_1', livemode: true, type: 'invoice.paid' })),
+      await integration('stripe.on_event').receive({
+        ...receiveContext(
+          { events: ['invoice.paid'] },
+          {
+            'stripe-signature': `t=${stripeTimestamp},v1=${await signature('whsec_test', encoder.encode(`${stripeTimestamp}.${JSON.stringify(stripePayload)}`), 'hex')}`,
+          },
+          stripePayload,
+        ),
+        rawBody: stripeBody,
+        state: state({ subscription: { endpointId: 'we_4', signingSecret: 'whsec_test' } }).value,
+      }),
     ).toMatchObject({ dedupeKey: 'evt_1', outcome: 'event', payload: { event: 'invoice.paid', livemode: true } })
+    const wooPayload = { id: 1 }
+    const wooBody = encoder.encode(JSON.stringify(wooPayload))
     expect(
-      await integration('woocommerce.on_store_event').receive(
-        receiveContext({ events: ['order.created'] }, { 'x-wc-webhook-delivery-id': 'd5', 'x-wc-webhook-topic': 'order.created' }, { id: 1 }),
-      ),
+      await integration('woocommerce.on_store_event').receive({
+        ...receiveContext(
+          { events: ['order.created'] },
+          {
+            'x-wc-webhook-delivery-id': 'd5',
+            'x-wc-webhook-signature': await signature('secret', wooBody, 'base64'),
+            'x-wc-webhook-topic': 'order.created',
+          },
+          wooPayload,
+        ),
+        rawBody: wooBody,
+      }),
     ).toMatchObject({ dedupeKey: 'd5', outcome: 'event', payload: { topic: 'order.created' } })
+    const zendeskPayload = { id: 'd6', type: 'zen:event-type:ticket.created' }
+    const zendeskBody = encoder.encode(JSON.stringify(zendeskPayload))
+    const zendeskTimestamp = '2026-08-20T12:34:20.000Z'
     expect(
-      await integration('zendesk.on_event').receive(
-        receiveContext({ events: ['zen:event-type:ticket.created'] }, {}, { id: 'd6', type: 'zen:event-type:ticket.created' }),
-      ),
+      await integration('zendesk.on_event').receive({
+        ...receiveContext(
+          { events: ['zen:event-type:ticket.created'] },
+          {
+            'x-zendesk-webhook-signature': await signature('zendesk-secret', encoder.encode(`${zendeskTimestamp}${JSON.stringify(zendeskPayload)}`), 'base64'),
+            'x-zendesk-webhook-signature-timestamp': zendeskTimestamp,
+          },
+          zendeskPayload,
+        ),
+        rawBody: zendeskBody,
+        state: state({ subscription: { signingSecret: 'zendesk-secret', webhookId: 'wh_6' } }).value,
+      }),
     ).toMatchObject({ dedupeKey: 'd6', outcome: 'event', payload: { event: 'zen:event-type:ticket.created' } })
   })
 
@@ -376,10 +448,10 @@ describe('provider Integration Trigger definitions', () => {
         key: 'stripe.on_event',
         responses: [
           { data: { data: [], has_more: false }, status: 200 },
-          { data: { id: 'we_4' }, status: 200 },
+          { data: { id: 'we_4', secret: 'whsec_4' }, status: 200 },
           { data: { id: 'we_4' }, status: 200 },
         ],
-        subscription: { endpointId: 'we_4' },
+        subscription: { endpointId: 'we_4', signingSecret: 'whsec_4' },
       },
       {
         config: { events: ['order.created'] },
@@ -396,8 +468,9 @@ describe('provider Integration Trigger definitions', () => {
         responses: [
           { data: { meta: { has_more: false }, webhooks: [] }, status: 200 },
           { data: { webhook: { id: 'wh_6' } }, status: 201 },
+          { data: { signing_secret: { algorithm: 'SHA256', secret: 'zendesk-secret' } }, status: 200 },
         ],
-        subscription: { webhookId: 'wh_6' },
+        subscription: { signingSecret: 'zendesk-secret', webhookId: 'wh_6' },
       },
     ]
 

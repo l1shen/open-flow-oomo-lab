@@ -3,6 +3,7 @@ import type { JsonValue, TriggerKeySnapshot } from '../../../project/common/chan
 import type { IntegrationDefinition, IntegrationReconcileContext, IntegrationStateContext } from '../../common/integration.ts'
 
 import { IntegrationConnectionError, PermanentIntegrationError, TransientIntegrationError } from '../../common/integration.ts'
+import { sameSecret } from '../signature.ts'
 
 interface Config {
   readonly events: readonly string[]
@@ -68,7 +69,7 @@ const snapshot = {
     title: 'GitLab Project Event Config',
     type: 'object',
   },
-  definitionVersion: 1,
+  definitionVersion: 2,
   description: 'Triggers when selected GitLab webhook events occur in a project.',
   displayName: 'GitLab: Project Event',
   endpoint: { body: { allowArray: false, allowEmpty: false, formats: ['json'] }, methods: ['POST'], successStatus: 202 },
@@ -94,6 +95,9 @@ export const gitlabProjectEvent: IntegrationDefinition = {
   initialState: { checkpoint: null, subscription: {} },
   snapshot,
   receive(context) {
+    if (!sameSecret(context.header('x-gitlab-token'), context.callbackSecret)) {
+      return { body: '', contentType: 'text/plain', outcome: 'respond', status: 404 }
+    }
     const gitlabEvent = context.header('x-gitlab-event')?.trim()
     if (!gitlabEvent) return { outcome: 'ignored', reason: 'GitLab event header is missing.' }
     const event = eventNames.get(gitlabEvent)
@@ -122,7 +126,7 @@ export const gitlabProjectEvent: IntegrationDefinition = {
     let hookId = known ?? matches[0]
     if (hookId == null) {
       const created = await request(context, 'hook create', {
-        body: desired(context.endpointUrl, config),
+        body: desired(context.endpointUrl, context.callbackSecret, config),
         endpoint: endpoint(config),
         method: 'POST',
       })
@@ -130,7 +134,7 @@ export const gitlabProjectEvent: IntegrationDefinition = {
       hookId = readId(created.data)
     } else {
       const aligned = await request(context, 'hook update', {
-        body: desired(context.endpointUrl, config),
+        body: desired(context.endpointUrl, context.callbackSecret, config),
         endpoint: `${endpoint(config)}/${hookId}`,
         method: 'PUT',
       })
@@ -159,7 +163,7 @@ function endpoint(config: Config): string {
   return `/projects/${encodeURIComponent(config.project)}/hooks`
 }
 
-function desired(url: string, config: Config): Readonly<Record<string, JsonValue>> {
+function desired(url: string, token: string, config: Config): Readonly<Record<string, JsonValue>> {
   return {
     branch_filter_strategy: 'wildcard',
     description: 'Managed by Open Flow.',
@@ -167,6 +171,7 @@ function desired(url: string, config: Config): Readonly<Record<string, JsonValue
     name: `Open Flow ${url.slice(url.lastIndexOf('/') + 1)}`,
     push_events_branch_filter: config.pushBranchFilter,
     url,
+    token,
     ...Object.fromEntries(events.map((event) => [`${event}_events`, config.events.includes(event)])),
   }
 }

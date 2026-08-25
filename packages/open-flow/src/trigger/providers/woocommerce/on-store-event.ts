@@ -3,6 +3,7 @@ import type { JsonValue, TriggerKeySnapshot } from '../../../project/common/chan
 import type { IntegrationDefinition, IntegrationReconcileContext, IntegrationStateContext } from '../../common/integration.ts'
 
 import { IntegrationConnectionError, PermanentIntegrationError, TransientIntegrationError } from '../../common/integration.ts'
+import { verifyBase64Hmac } from '../signature.ts'
 
 interface Config {
   readonly events: readonly string[]
@@ -39,7 +40,7 @@ const snapshot = {
     title: 'WooCommerce Store Event Config',
     type: 'object',
   },
-  definitionVersion: 1,
+  definitionVersion: 2,
   description: 'Triggers when selected WooCommerce store events occur.',
   displayName: 'WooCommerce: Store Event',
   endpoint: { body: { allowArray: false, allowEmpty: false, formats: ['json'] }, methods: ['POST'], successStatus: 202 },
@@ -67,7 +68,10 @@ const snapshot = {
 export const wooCommerceStoreEvent: IntegrationDefinition = {
   initialState: { checkpoint: null, subscription: {} },
   snapshot,
-  receive(context) {
+  async receive(context) {
+    if (!(await verifyBase64Hmac(context.callbackSecret, [context.rawBody], context.header('x-wc-webhook-signature')))) {
+      return { body: '', contentType: 'text/plain', outcome: 'respond', status: 404 }
+    }
     const topic = context.header('x-wc-webhook-topic')?.trim()
     if (!topic) return { outcome: 'ignored', reason: 'WooCommerce topic header is missing.' }
     if (!resolveConfig(context.config).events.includes(topic)) return { outcome: 'ignored', reason: 'WooCommerce topic is not subscribed.' }
@@ -115,7 +119,7 @@ function resolveConfig(value: Readonly<Record<string, JsonValue>>): Config {
 
 async function create(context: IntegrationReconcileContext, config: Config, topic: string): Promise<string> {
   const result = await request(context, `webhook create (${topic})`, {
-    body: { delivery_url: context.endpointUrl, name: `${config.webhookName} - ${topic}`, topic },
+    body: { delivery_url: context.endpointUrl, name: `${config.webhookName} - ${topic}`, secret: context.callbackSecret, topic },
     endpoint: '/webhooks',
     method: 'POST',
   })
@@ -125,7 +129,7 @@ async function create(context: IntegrationReconcileContext, config: Config, topi
 
 async function align(context: IntegrationReconcileContext, webhookId: string, topic: string): Promise<string> {
   const result = await request(context, `webhook update (${topic})`, {
-    body: { delivery_url: context.endpointUrl, status: 'active', topic },
+    body: { delivery_url: context.endpointUrl, secret: context.callbackSecret, status: 'active', topic },
     endpoint: `/webhooks/${webhookId}`,
     method: 'PUT',
   })

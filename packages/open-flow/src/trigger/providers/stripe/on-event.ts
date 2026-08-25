@@ -3,6 +3,9 @@ import type { JsonValue, TriggerKeySnapshot } from '../../../project/common/chan
 import type { IntegrationDefinition, IntegrationReconcileContext, IntegrationStateContext } from '../../common/integration.ts'
 
 import { IntegrationConnectionError, PermanentIntegrationError, TransientIntegrationError } from '../../common/integration.ts'
+import { bytes, verifyHexHmac } from '../signature.ts'
+
+const signatureToleranceSeconds = 5 * 60
 
 interface Config {
   readonly apiVersion: string
@@ -30,7 +33,7 @@ const snapshot = {
     title: 'Stripe Event Config',
     type: 'object',
   },
-  definitionVersion: 1,
+  definitionVersion: 2,
   description: 'Triggers when selected Stripe events happen on the connected account.',
   displayName: 'Stripe: Account Event',
   endpoint: { body: { allowArray: false, allowEmpty: false, formats: ['json'] }, methods: ['POST'], successStatus: 202 },
@@ -55,7 +58,11 @@ const snapshot = {
 export const stripeEvent: IntegrationDefinition = {
   initialState: { checkpoint: null, subscription: {} },
   snapshot,
-  receive(context) {
+  async receive(context) {
+    const signingSecret = subscriptionSecret(context.state)
+    if (signingSecret == null || !(await validSignature(context.header('stripe-signature'), signingSecret, context.rawBody, context.now))) {
+      return { body: '', contentType: 'text/plain', outcome: 'respond', status: 404 }
+    }
     if (context.payload == null || typeof context.payload != 'object' || Array.isArray(context.payload)) {
       return { outcome: 'ignored', reason: 'Stripe event body is missing.' }
     }
@@ -75,6 +82,7 @@ export const stripeEvent: IntegrationDefinition = {
     const state = requireState(context.state)
     const config = resolveConfig(context.config)
     let endpointId = subscriptionId(state)
+    let signingSecret = subscriptionSecret(state)
     if (!context.active) {
       endpointId ??= await findByUrl(context)
       if (endpointId != null) {
@@ -85,6 +93,11 @@ export const stripeEvent: IntegrationDefinition = {
       return { outcome: 'ready' }
     }
     endpointId ??= await findByUrl(context)
+    if (endpointId != null && signingSecret == null) {
+      const removed = await request(context, 'endpoint delete', { endpoint: `${endpoints}/${endpointId}`, method: 'DELETE' })
+      if (removed.status != 404) success(removed, 'endpoint delete')
+      endpointId = null
+    }
     if (endpointId == null) {
       const created = await request(context, 'endpoint create', {
         body: createForm(context.endpointUrl, config),
@@ -93,7 +106,9 @@ export const stripeEvent: IntegrationDefinition = {
         method: 'POST',
       })
       success(created, 'endpoint create')
-      endpointId = id(created.data)
+      const endpoint = createdEndpoint(created.data)
+      endpointId = endpoint.id
+      signingSecret = endpoint.secret
     }
     const aligned = await request(context, 'endpoint update', {
       body: form([
@@ -110,7 +125,7 @@ export const stripeEvent: IntegrationDefinition = {
       return { outcome: 'pending' }
     }
     success(aligned, 'endpoint update')
-    await state.saveSubscription({ endpointId }, later(context.now))
+    await state.saveSubscription({ endpointId, signingSecret }, later(context.now))
     return { outcome: 'ready' }
   },
 }
@@ -181,10 +196,12 @@ function success(result: ConnectorProxyResult, operation: string): void {
   throw new TransientIntegrationError(`Stripe ${operation} failed with status ${result.status}.`)
 }
 
-function id(data: unknown): string {
-  const value = record(data)?.id
-  if (typeof value != 'string') throw new TransientIntegrationError('Stripe endpoint response is missing its ID.')
-  return value
+function createdEndpoint(data: unknown): { readonly id: string; readonly secret: string } {
+  const value = record(data)
+  if (typeof value?.id != 'string' || typeof value.secret != 'string' || value.secret.length == 0) {
+    throw new TransientIntegrationError('Stripe endpoint response is missing its ID or signing secret.')
+  }
+  return { id: value.id, secret: value.secret }
 }
 
 function requireState(value: IntegrationStateContext | undefined): IntegrationStateContext {
@@ -195,6 +212,23 @@ function requireState(value: IntegrationStateContext | undefined): IntegrationSt
 function subscriptionId(state: IntegrationStateContext): string | null {
   const value = state.subscription.endpointId
   return typeof value == 'string' && value.length > 0 ? value : null
+}
+
+function subscriptionSecret(state: IntegrationStateContext | undefined): string | null {
+  const value = state?.subscription.signingSecret
+  return typeof value == 'string' && value.length > 0 ? value : null
+}
+
+async function validSignature(header: string | undefined, secret: string, body: Uint8Array, now: Date): Promise<boolean> {
+  if (header == null) return false
+  const values = header.split(',').map((value) => value.trim().split('=', 2) as [string, string | undefined])
+  const timestamp = values.find(([name]) => name == 't')?.[1]
+  if (timestamp == null || !/^\d+$/.test(timestamp)) return false
+  const seconds = Number(timestamp)
+  if (!Number.isSafeInteger(seconds) || Math.abs(Math.floor(now.getTime() / 1_000) - seconds) > signatureToleranceSeconds) return false
+  const signatures = values.filter(([name, value]) => name == 'v1' && value != null).map(([, value]) => value!)
+  const source = [bytes(`${timestamp}.`), body]
+  return (await Promise.all(signatures.map((signature) => verifyHexHmac(secret, source, signature)))).some(Boolean)
 }
 
 function later(now: Date): Date {

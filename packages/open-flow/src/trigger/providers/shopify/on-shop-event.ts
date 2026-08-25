@@ -3,6 +3,7 @@ import type { JsonValue, TriggerKeySnapshot } from '../../../project/common/chan
 import type { IntegrationDefinition, IntegrationReconcileContext, IntegrationStateContext } from '../../common/integration.ts'
 
 import { IntegrationConnectionError, PermanentIntegrationError, TransientIntegrationError } from '../../common/integration.ts'
+import { sameSecret } from '../signature.ts'
 
 const topics = [
   'app/scopes_update',
@@ -196,7 +197,7 @@ const snapshot = {
     title: 'Shopify Store Event Config',
     type: 'object',
   },
-  definitionVersion: 1,
+  definitionVersion: 2,
   description: 'Triggers when selected Shopify webhook topics occur in the connected store.',
   displayName: 'Shopify: Store Event',
   endpoint: { body: { allowArray: false, allowEmpty: false, formats: ['json'] }, methods: ['POST'], successStatus: 202 },
@@ -225,6 +226,9 @@ export const shopifyShopEvent: IntegrationDefinition = {
   initialState: { checkpoint: null, subscription: {} },
   snapshot,
   receive(context) {
+    if (!sameSecret(context.query('open_flow_callback'), context.callbackSecret)) {
+      return { body: '', contentType: 'text/plain', outcome: 'respond', status: 404 }
+    }
     const topic = context.header('x-shopify-topic')?.trim()
     if (!topic) return { outcome: 'ignored', reason: 'Shopify topic header is missing.' }
     if (!configuredTopics(context.config).includes(topic)) return { outcome: 'ignored', reason: 'Shopify topic is not subscribed.' }
@@ -283,8 +287,9 @@ function configuredTopics(value: Readonly<Record<string, JsonValue>>): readonly 
 }
 
 async function create(context: IntegrationReconcileContext, topic: string): Promise<{ readonly created: boolean; readonly id: string }> {
+  const address = callbackUrl(context)
   const result = await request(context, 'subscription create', {
-    body: { webhook: { address: context.endpointUrl, format: 'json', topic } },
+    body: { webhook: { address, format: 'json', topic } },
     endpoint: '/webhooks.json',
     method: 'POST',
   })
@@ -300,10 +305,11 @@ async function create(context: IntegrationReconcileContext, topic: string): Prom
 }
 
 async function list(context: IntegrationReconcileContext): Promise<Map<string, string> | null> {
+  const address = callbackUrl(context)
   const result = await request(context, 'subscription list', {
     endpoint: '/webhooks.json',
     method: 'GET',
-    query: { address: context.endpointUrl, limit: 250 },
+    query: { address, limit: 250 },
   })
   if (result.status == 404) return null
   success(result, 'subscription list')
@@ -313,9 +319,15 @@ async function list(context: IntegrationReconcileContext): Promise<Map<string, s
   for (const item of raw) {
     const value = record(item)
     const id = normalizeId(value?.id)
-    if (value?.address === context.endpointUrl && typeof value.topic == 'string' && id != null) subscriptions.set(value.topic, id)
+    if (value?.address === address && typeof value.topic == 'string' && id != null) subscriptions.set(value.topic, id)
   }
   return subscriptions
+}
+
+function callbackUrl(context: IntegrationReconcileContext): string {
+  const url = new URL(context.endpointUrl)
+  url.searchParams.set('open_flow_callback', context.callbackSecret)
+  return url.href
 }
 
 async function remove(context: IntegrationReconcileContext, id: string): Promise<void> {

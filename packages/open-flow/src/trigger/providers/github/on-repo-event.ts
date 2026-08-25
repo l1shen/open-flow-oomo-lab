@@ -3,6 +3,7 @@ import type { JsonValue, TriggerKeySnapshot } from '../../../project/common/chan
 import type { IntegrationDefinition, IntegrationReconcileContext, IntegrationStateContext } from '../../common/integration.ts'
 
 import { IntegrationConnectionError, PermanentIntegrationError, TransientIntegrationError } from '../../common/integration.ts'
+import { verifyHexHmac } from '../signature.ts'
 
 interface Config {
   readonly events: readonly string[]
@@ -81,7 +82,7 @@ const snapshot = {
     title: 'GitHub Repo Event Config',
     type: 'object',
   },
-  definitionVersion: 1,
+  definitionVersion: 2,
   description: 'Triggers when selected GitHub webhook events occur in a repository.',
   displayName: 'GitHub: Repository Event',
   endpoint: { body: { allowArray: false, allowEmpty: false, formats: ['json'] }, methods: ['POST'], successStatus: 202 },
@@ -101,7 +102,11 @@ const snapshot = {
 export const githubRepoEvent: IntegrationDefinition = {
   initialState: { checkpoint: null, subscription: {} },
   snapshot,
-  receive(context) {
+  async receive(context) {
+    const signature = context.header('x-hub-signature-256')
+    if (!signature?.startsWith('sha256=') || !(await verifyHexHmac(context.callbackSecret, [context.rawBody], signature.slice(7)))) {
+      return { body: '', contentType: 'text/plain', outcome: 'respond', status: 404 }
+    }
     const event = context.header('x-github-event')?.trim()
     if (!event) return { outcome: 'ignored', reason: 'GitHub event header is missing.' }
     if (event == 'ping') return { outcome: 'ignored', reason: 'GitHub ping handshake.' }
@@ -129,7 +134,7 @@ export const githubRepoEvent: IntegrationDefinition = {
       await state.saveSubscription({}, later(context.now))
       return { outcome: 'ready' }
     }
-    const desired = body(context.endpointUrl, config)
+    const desired = body(context.endpointUrl, context.callbackSecret, config)
     if (hookId == null) {
       const result = await request(context, 'hook create', { body: desired, endpoint: endpoint(config), method: 'POST' })
       if (result.status == 201) hookId = id(result.data)
@@ -169,10 +174,10 @@ function endpoint(config: Config): string {
   return `/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/hooks`
 }
 
-function body(url: string, config: Config): Readonly<Record<string, JsonValue>> {
+function body(url: string, secret: string, config: Config): Readonly<Record<string, JsonValue>> {
   return {
     active: true,
-    config: { content_type: 'json', insecure_ssl: config.insecureSsl ? '1' : '0', url },
+    config: { content_type: 'json', insecure_ssl: config.insecureSsl ? '1' : '0', secret, url },
     events: config.events,
     name: 'web',
   }
