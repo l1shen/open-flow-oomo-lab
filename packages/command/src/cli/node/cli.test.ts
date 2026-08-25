@@ -105,25 +105,17 @@ function run(source: 'draft' | 'live', status: 'completed' | 'queued' = 'queued'
 
 function runtime(
   env: Readonly<Record<string, string | undefined>> = {},
-  input: { readonly answers?: readonly string[]; readonly files?: Readonly<Record<string, string>>; readonly stdin?: string } = {},
+  input: { readonly files?: Readonly<Record<string, string>>; readonly stdin?: string } = {},
 ) {
   let stdout = ''
   let stderr = ''
   const opened: string[] = []
-  const answers = [...(input.answers ?? [])]
   return {
     value: {
       env,
-      interactive: input.answers != null,
       language: 'en' as const,
       openUrl: async (url: string) => {
         opened.push(url)
-      },
-      question: async (prompt: string) => {
-        stdout += prompt
-        const answer = answers.shift()
-        if (answer == null) throw new Error('Missing interactive answer.')
-        return answer
       },
       readFile: async (path: string) => {
         const value = input.files?.[path]
@@ -142,7 +134,7 @@ function runtime(
 }
 
 describe('CLI', () => {
-  it('prints help without waiting when stdin or stdout is not a TTY', async () => {
+  it('prints help without loading a Project when no arguments are provided', async () => {
     const output = runtime()
     const request = vi.fn()
 
@@ -151,6 +143,22 @@ describe('CLI', () => {
     ).resolves.toBe(0)
 
     expect(output.stdout()).toContain('Open Flow commands')
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('prints exact nested Code command help without loading a Project', async () => {
+    const output = runtime()
+    const request = vi.fn()
+
+    await expect(
+      runCli(
+        ['code', 'edit', '--help'],
+        { request: request, getProject: async () => undefined, getWorkbenchUrl: async () => '', setProject: async () => {} },
+        output.value,
+      ),
+    ).resolves.toBe(0)
+
+    expect(output.stdout()).toBe('Usage: oo flow code edit <module> --code <javascript|@file|-> [--project <project>] [--json]\n')
     expect(request).not.toHaveBeenCalled()
   })
 
@@ -171,43 +179,6 @@ describe('CLI', () => {
 
     expect(JSON.parse(output.stderr())).toMatchObject({ error: { code: 'cli.invalid-arguments', message: expect.stringContaining('letters, numbers') } })
     expect(request.mock.calls.some(([path]) => String(path).endsWith('/draft/changes'))).toBe(false)
-  })
-
-  it('uses the TTY only as a Project, Flow, and stateless action selector', async () => {
-    const request = vi.fn(async (path: string) => {
-      if (path == '/v1/projects?limit=100') return Response.json({ projects: [project()], version: 1 })
-      if (path == '/v1/projects/project-1') return Response.json(project())
-      if (path == '/v1/projects/project-1/flows') {
-        return Response.json({ flows: [flow()], projectId: 'project-1', version: 1 })
-      }
-      if (path == '/v1/projects/project-1/revisions/revision-1/flows/flow-1/check') {
-        return Response.json({
-          closureDigest: 'closure-1',
-          diagnostics: [],
-          engineContract: 'open-flow-engine/v1',
-          flowId: 'flow-1',
-          modelVersion: 1,
-          projectId: 'project-1',
-          revisionDigest: 'digest-revision-1',
-          revisionId: 'revision-1',
-          valid: true,
-          version: 1,
-        })
-      }
-      throw new Error(path)
-    })
-    const output = runtime({}, { answers: ['1', '1', '3', '6', '9'] })
-    const workbench = vi.fn(async () => 'https://console.example/team/example/flows/project-1/flows/flow-1/design')
-
-    await expect(
-      runCli([], { request: request, getProject: async () => undefined, getWorkbenchUrl: workbench, setProject: async () => {} }, output.value),
-    ).resolves.toBe(0)
-
-    expect(output.stdout()).toContain('valid\trevision\tMain\tflow-1')
-    expect(output.stdout()).toContain('https://console.example/team/example/flows/project-1/flows/flow-1/design')
-    expect(output.opened()).toEqual(['https://console.example/team/example/flows/project-1/flows/flow-1/design'])
-    expect(workbench).toHaveBeenCalledWith('project-1', 'flow-1')
-    expect(request.mock.calls.filter(([path]) => String(path).endsWith('/check'))).toHaveLength(1)
   })
 
   it('opens the Workbench only for the open command', async () => {
@@ -235,43 +206,6 @@ describe('CLI', () => {
     expect(JSON.parse(open.stdout())).toMatchObject({ kind: 'flow.open', url })
     expect(workbench.opened()).toEqual([])
     expect(JSON.parse(workbench.stdout())).toMatchObject({ kind: 'flow.workbench', url })
-  })
-
-  it('creates a Project and Flow through the existing handlers before entering the action menu', async () => {
-    let projects: ReturnType<typeof project>[] = []
-    let flows: ReturnType<typeof flow>[] = []
-    let mutationRequests = 0
-    const request = vi.fn(async (path: string, init?: RequestInit) => {
-      if (path == '/v1/projects?limit=100') return Response.json({ projects, version: 1 })
-      if (path == '/v1/projects' && init?.method == 'POST') {
-        projects = [{ ...project(), name: 'Created' }]
-        return Response.json(projects[0])
-      }
-      if (path == '/v1/projects/project-1') return Response.json(project())
-      if (path == '/v1/projects/project-1/flows') {
-        return Response.json({ flows, projectId: 'project-1', version: 1 })
-      }
-      if (path == '/v1/projects/project-1/draft/changes') {
-        mutationRequests += 1
-        const body = JSON.parse(String(init?.body)) as { readonly operations: readonly { readonly flowId: string }[] }
-        flows = [{ ...flow('revision-2'), flowId: body.operations[0]!.flowId }]
-        return Response.json({
-          draftFlows: [{ closureDigest: 'closure-1', flowId: flows[0]!.flowId, name: 'Main' }],
-          revision: revision('revision-2', 'revision-1'),
-          version: 1,
-        })
-      }
-      throw new Error(path)
-    })
-    const output = runtime({}, { answers: ['1', 'Created', '1', 'Main', '9'] })
-
-    await expect(runCli([], { request: request, getProject: async () => undefined, setProject: async () => {} }, output.value)).resolves.toBe(0)
-
-    expect(projects).toHaveLength(1)
-    expect(flows).toHaveLength(1)
-    expect(mutationRequests).toBe(1)
-    expect(output.stdout()).toContain('Created\tproject-1\tactive')
-    expect(output.stdout()).toContain('Main')
   })
 
   it('stores a verified Project and reads it from another invocation', async () => {
@@ -1154,7 +1088,7 @@ describe('CLI', () => {
     expect(requests.filter(({ path }) => path.endsWith('/draft/changes'))).toHaveLength(1)
   })
 
-  it('reports the accepted Revision without inviting a retry when the post-apply check fails', async () => {
+  it('returns the accepted Revision once when the post-apply check is unavailable', async () => {
     const requests: Array<{ readonly init?: RequestInit; readonly path: string }> = []
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       requests.push({ init, path })
@@ -1179,21 +1113,73 @@ describe('CLI', () => {
         { request: request, getProject: async () => undefined, setProject: async () => {} },
         output.value,
       ),
-    ).resolves.toBe(1)
+    ).resolves.toBe(0)
 
     expect(requests.filter(({ path }) => path.endsWith('/draft/changes'))).toHaveLength(1)
     expect(JSON.parse(output.stdout())).toMatchObject({
-      check: { status: 'unavailable' },
+      changed: true,
+      check: { error: { message: 'check unavailable' }, status: 'unavailable' },
       kind: 'flow.apply',
       revision: { revisionId: 'revision-2' },
     })
-    expect(JSON.parse(output.stderr())).toMatchObject({
-      error: {
-        code: 'flow.apply-check-failed',
-        details: { revisionId: 'revision-2' },
-        message: expect.stringContaining('Do not retry'),
-      },
+    expect(output.stderr()).toBe('')
+  })
+
+  it('returns accepted Draft diagnostics once without reporting the mutation as failed', async () => {
+    const requests: Array<{ readonly init?: RequestInit; readonly path: string }> = []
+    const diagnostic = {
+      code: 'task.connector-connection-required',
+      column: 0,
+      line: 1,
+      message: 'Connector Task "task-1" requires a Connection.',
+      path: '/document/tasks/task-1/executor/connectionId',
+    }
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      requests.push({ init, path })
+      if (path == '/v1/projects/project-1') return Response.json(project())
+      if (path == '/v1/projects/project-1/flows') return Response.json({ flows: [flow()], projectId: 'project-1', version: 1 })
+      if (path == '/v1/projects/project-1/revisions/revision-1') return Response.json(draftRevision())
+      if (path == '/v1/projects/project-1/draft/changes') {
+        return Response.json({
+          draftFlows: [{ closureDigest: 'closure-2', flowId: 'flow-1', name: 'Main' }],
+          revision: revision('revision-2', 'revision-1'),
+          version: 1,
+        })
+      }
+      if (path == '/v1/projects/project-1/revisions/revision-2/flows/flow-1/check') {
+        return Response.json({
+          closureDigest: 'closure-2',
+          diagnostics: [diagnostic],
+          engineContract: 'open-flow-engine/v1',
+          flowId: 'flow-1',
+          modelVersion: 1,
+          projectId: 'project-1',
+          revisionDigest: 'digest-revision-2',
+          revisionId: 'revision-2',
+          valid: false,
+          version: 1,
+        })
+      }
+      throw new Error(path)
     })
+    const output = runtime({}, { files: { 'flow.json': JSON.stringify({ edges: [], nodes: { value: { kind: 'value', name: 'Value' } }, version: 1 }) } })
+
+    await expect(
+      runCli(
+        ['apply', 'Main', '--file', 'flow.json', '--project', 'project-1', '--json'],
+        { request: request, getProject: async () => undefined, setProject: async () => {} },
+        output.value,
+      ),
+    ).resolves.toBe(0)
+
+    expect(requests.filter(({ path }) => path.endsWith('/draft/changes'))).toHaveLength(1)
+    expect(JSON.parse(output.stdout())).toMatchObject({
+      changed: true,
+      check: { diagnostics: [diagnostic], valid: false },
+      kind: 'flow.apply',
+      revision: { revisionId: 'revision-2' },
+    })
+    expect(output.stderr()).toBe('')
   })
 
   it('rejects a stale flow apply request before reading its file or writing the Draft', async () => {

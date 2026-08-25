@@ -2,7 +2,6 @@
 
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
-import { createInterface } from 'node:readline/promises'
 import { setTimeout } from 'node:timers/promises'
 import { commandArtifactVersion } from '../../distribution/common/commandProtocol.ts'
 import { runCli } from './cli.ts'
@@ -39,39 +38,29 @@ export async function runOpenFlowCommand(args: readonly string[], host: OpenFlow
     process.stderr.write('Open Flow Control API is not configured in this CLI host.\n')
     return 1
   }
-  let terminal: ReturnType<typeof createInterface> | undefined
-  try {
-    return await runCli(
-      args,
-      {
-        request: host.cloudRequest,
-        getProject: host.getProject,
-        getWorkbenchUrl: host.getWorkbenchUrl,
-        setProject: host.setProject,
+  return await runCli(
+    args,
+    {
+      request: host.cloudRequest,
+      getProject: host.getProject,
+      getWorkbenchUrl: host.getWorkbenchUrl,
+      setProject: host.setProject,
+    },
+    {
+      env: process.env,
+      language: host.language == 'zh-CN' ? 'zh-CN' : 'en',
+      openUrl: openExternalUrl,
+      readFile: async (path) => await readFile(path, 'utf8'),
+      readStdin: async () => {
+        let value = ''
+        for await (const chunk of process.stdin) value += String(chunk)
+        return value
       },
-      {
-        env: process.env,
-        interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
-        language: host.language == 'zh-CN' ? 'zh-CN' : 'en',
-        openUrl: openExternalUrl,
-        question: async (prompt) => {
-          terminal ??= createInterface({ input: process.stdin, output: process.stdout })
-          return await terminal.question(prompt)
-        },
-        readFile: async (path) => await readFile(path, 'utf8'),
-        readStdin: async () => {
-          let value = ''
-          for await (const chunk of process.stdin) value += String(chunk)
-          return value
-        },
-        stderr: process.stderr,
-        stdout: process.stdout,
-        wait: async (milliseconds) => await setTimeout(milliseconds),
-      },
-    )
-  } finally {
-    terminal?.close()
-  }
+      stderr: process.stderr,
+      stdout: process.stdout,
+      wait: async (milliseconds) => await setTimeout(milliseconds),
+    },
+  )
 }
 
 if (import.meta.main) process.exitCode = await runOpenFlowCommand(process.argv.slice(2))

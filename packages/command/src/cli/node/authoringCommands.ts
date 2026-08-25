@@ -634,11 +634,14 @@ export async function applyFlowCommand(
   try {
     check = await client.checkFlow(project.projectId, changed.revision.revisionId, selected.flow.flowId)
   } catch (error) {
+    const checkError =
+      error instanceof ApiError ? { code: error.code, message: error.message } : { message: error instanceof Error ? error.message : String(error) }
     write(
       runtime,
       args.json,
       {
-        check: { status: 'unavailable' },
+        changed: true,
+        check: { error: checkError, status: 'unavailable' },
         edges,
         flowId: selected.flow.flowId,
         kind: 'flow.apply',
@@ -648,18 +651,18 @@ export async function applyFlowCommand(
         triggers: triggerIdentities,
         version: 1,
       },
-      `applied\t${selected.flow.draft!.name}\t${changed.revision.revisionId}\tcheck-unavailable\t${preparedNodes.length} nodes\t${preparedTriggers.length} triggers\t${edges.length} edges`,
+      [
+        `applied\t${selected.flow.draft!.name}\t${changed.revision.revisionId}\tcheck-unavailable\t${preparedNodes.length} nodes\t${preparedTriggers.length} triggers\t${edges.length} edges`,
+        `check-error\t${checkError.code ?? 'unavailable'}\t${checkError.message}`,
+      ].join('\n'),
     )
-    throw new CliError('flow.apply-check-failed', 'The Flow apply change was accepted, but the resulting Draft could not be checked. Do not retry the apply.', {
-      checkError:
-        error instanceof ApiError ? { code: error.code, message: error.message } : { message: error instanceof Error ? error.message : String(error) },
-      revisionId: changed.revision.revisionId,
-    })
+    return
   }
   write(
     runtime,
     args.json,
     {
+      changed: true,
       check,
       edges,
       flowId: selected.flow.flowId,
@@ -670,12 +673,9 @@ export async function applyFlowCommand(
       triggers: triggerIdentities,
       version: 1,
     },
-    `applied\t${selected.flow.draft!.name}\t${changed.revision.revisionId}\t${check.valid ? 'valid' : 'invalid'}\t${preparedNodes.length} nodes\t${preparedTriggers.length} triggers\t${edges.length} edges`,
+    [
+      `applied\t${selected.flow.draft!.name}\t${changed.revision.revisionId}\t${check.valid ? 'valid' : 'invalid'}\t${preparedNodes.length} nodes\t${preparedTriggers.length} triggers\t${edges.length} edges`,
+      ...check.diagnostics.map((diagnostic) => `diagnostic\t${diagnostic.code}\t${diagnostic.path}\t${diagnostic.message}`),
+    ].join('\n'),
   )
-  if (!check.valid) {
-    throw new CliError('flow.invalid', 'The Flow apply change was accepted, but the resulting Draft has diagnostics.', {
-      diagnostics: check.diagnostics,
-      revisionId: changed.revision.revisionId,
-    })
-  }
 }

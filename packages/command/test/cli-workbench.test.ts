@@ -157,10 +157,8 @@ describe('CLI and Workbench', () => {
       { request, getProject: async () => undefined, setProject: async () => {} },
       {
         env: {},
-        interactive: false,
         language: 'en',
         openUrl: async () => {},
-        question: async () => '',
         readFile: async () => '',
         readStdin: async () => '',
         stderr: { write: (value) => (stderr += value) },

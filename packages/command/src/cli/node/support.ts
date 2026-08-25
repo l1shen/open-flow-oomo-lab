@@ -34,10 +34,8 @@ export interface CommandHost {
 
 export interface Runtime {
   readonly env: Readonly<Record<string, string | undefined>>
-  readonly interactive: boolean
   readonly language: 'en' | 'zh-CN'
   openUrl(url: string): Promise<void>
-  question(prompt: string): Promise<string>
   readFile(path: string): Promise<string>
   readStdin(): Promise<string>
   readonly stderr: { write(value: string): unknown }
