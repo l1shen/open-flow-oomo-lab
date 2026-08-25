@@ -526,6 +526,21 @@ describe('revision graph scheduler', () => {
     )
     controller.abort(new Error('canceled by test'))
     await expect(canceled).rejects.toThrow('canceled by test')
+
+    const raced = new AbortController()
+    await expect(
+      runFlow(
+        { ...prepared, flow: { ...prepared.flow, graph: { nodes: { slow: { ...slow, timeoutMs: undefined } } } } },
+        {
+          invokeTask: async () => {
+            raced.abort(new Error('canceled during invocation'))
+            throw raced.signal.reason
+          },
+          runId: 'run-raced-cancel',
+          signal: raced.signal,
+        },
+      ),
+    ).rejects.toThrow('canceled during invocation')
   })
 
   it.each([

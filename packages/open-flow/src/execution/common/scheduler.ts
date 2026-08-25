@@ -406,13 +406,11 @@ function abortError(signal: AbortSignal): Error {
 }
 
 function raceAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(abortError(signal))
   return new Promise<T>((resolve, reject) => {
     const abort = (): void => {
       signal.removeEventListener('abort', abort)
       reject(abortError(signal))
     }
-    signal.addEventListener('abort', abort, { once: true })
     operation.then(
       (value) => {
         signal.removeEventListener('abort', abort)
@@ -423,6 +421,8 @@ function raceAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
         reject(error)
       },
     )
+    if (signal.aborted) abort()
+    else signal.addEventListener('abort', abort, { once: true })
   })
 }
 
