@@ -9,6 +9,7 @@ import { OperatorSession } from './operator.ts'
 import { ServerService } from './service.ts'
 
 const logger = createLogger()
+const shutdownTimeoutMs = 30_000
 
 await main().catch((error: unknown) => {
   logger.fatal({ category: 'process.start.failed', err: error }, 'Server failed to start.')
@@ -84,10 +85,11 @@ async function main(): Promise<void> {
   )
   service.start()
   const workbenchHost = process.argv.includes('--api-only') ? {} : { publicDirectory: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public') }
+  const shutdownController = new AbortController()
   let closing = false
   const server = serve(
     {
-      fetch: createServerApp(service, { callbackRequestsPerMinute, logger, operator, ...workbenchHost }).fetch,
+      fetch: createServerApp(service, { callbackRequestsPerMinute, logger, operator, shutdownSignal: shutdownController.signal, ...workbenchHost }).fetch,
       hostname: host,
       overrideGlobalObjects: false,
       port,
@@ -113,6 +115,7 @@ async function main(): Promise<void> {
     process.removeListener('SIGINT', interrupt)
     process.removeListener('SIGTERM', terminate)
     logger.info({ category: 'process.stopping', signal }, 'Server is stopping.')
+    shutdownController.abort(new Error('Server is stopping.'))
     void close()
       .then(() => {
         logger.info({ category: 'process.stopped', signal }, 'Server stopped.')
@@ -126,7 +129,15 @@ async function main(): Promise<void> {
   }
 
   async function close(): Promise<void> {
-    await new Promise<void>((resolve, reject) => server.close((error) => (error == null ? resolve() : reject(error))))
+    const forceTimer = setTimeout(() => {
+      logger.warn({ category: 'process.stop.forced', timeoutMs: shutdownTimeoutMs }, 'Server connections exceeded the shutdown deadline.')
+      if ('closeAllConnections' in server) server.closeAllConnections()
+    }, shutdownTimeoutMs)
+    try {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error == null ? resolve() : reject(error))))
+    } finally {
+      clearTimeout(forceTimer)
+    }
     await service.close()
   }
 }

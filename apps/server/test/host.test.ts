@@ -142,6 +142,26 @@ it('streams authenticated project invalidations without making the stream author
   }
 })
 
+it('closes project notification streams during shutdown', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-notification-shutdown-'))
+  const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
+  const shutdown = new AbortController()
+  try {
+    const created = await service.control.createProject('operator', 'Shutdown', 'shutdown-project')
+    const app = createServerApp(service, { resolveControlActor: () => 'operator', shutdownSignal: shutdown.signal })
+    const response = await app.request(`/v1/projects/${created.project.projectId}/notifications`)
+    const reader = response.body?.getReader()
+    if (reader == null) throw new Error('Project notification stream is missing.')
+    await expect(reader.read()).resolves.toMatchObject({ done: false })
+
+    shutdown.abort()
+    await expect(reader.read()).resolves.toEqual({ done: true, value: undefined })
+  } finally {
+    await service.close()
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
 it('serves immutable assets and limits the SPA fallback to non-reserved HTML navigation', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-static-'))
   const publicDirectory = path.join(directory, 'public')

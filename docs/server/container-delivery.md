@@ -101,6 +101,9 @@ Callback 请求限流只为已存在的 endpoint 建立内存窗口，超过限�
 镜像的 Docker `HEALTHCHECK` 请求 `GET /healthz`，只表示 Server 进程能够响应。部署入口应另外使用 `GET /readyz` 判断是否接收新流量；Server 尚未
 启动、Run/Trigger/Maintenance 后台处理已停止或配置的外部 Connector 不可用时，readiness 返回 503，但 liveness 仍保持 200。
 
+收到 `SIGINT` 或 `SIGTERM` 后，Server 先结束所有 Project notification SSE、停止接收新连接，再等待现有请求和运行时工作完成。连接在 30 秒内未结束时
+会被强制关闭；因此容器编排器的 termination grace period 应大于 30 秒。
+
 检查状态：
 
 ```bash

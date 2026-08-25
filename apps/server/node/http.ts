@@ -48,6 +48,7 @@ interface ServerAppOptions {
   readonly operator?: OperatorSession
   readonly publicDirectory?: string
   readonly resolveControlActor?: ResolveControlActor
+  readonly shutdownSignal?: AbortSignal
 }
 
 interface AppEnv {
@@ -94,7 +95,7 @@ export function createServerApp(service: ServerService, options: ServerAppOption
   app.get('/v1/projects/:projectId/notifications', async (context) => {
     const actor = await resolveActor?.(context.req.raw)
     if (actor == null || actor.length == 0) throw new ControlError(controlErrorCode.authenticationRequired, 'Authentication is required.')
-    return new Response(projectNotifications(service, context.req.param('projectId'), context.req.raw.signal), {
+    return new Response(projectNotifications(service, context.req.param('projectId'), [context.req.raw.signal, options.shutdownSignal]), {
       headers: {
         'cache-control': 'no-cache',
         'connection': 'keep-alive',
@@ -153,18 +154,33 @@ export function createServerApp(service: ServerService, options: ServerAppOption
   return app
 }
 
-function projectNotifications(service: ServerService, projectId: string, signal: AbortSignal): ReadableStream<Uint8Array> {
+function projectNotifications(service: ServerService, projectId: string, signals: readonly (AbortSignal | undefined)[]): ReadableStream<Uint8Array> {
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+  let closed = false
   let unsubscribe: (() => void) | undefined
-  const aborted = (): void => unsubscribe?.()
+  const cleanup = (): void => {
+    if (closed) return
+    closed = true
+    for (const signal of signals) signal?.removeEventListener('abort', abort)
+    unsubscribe?.()
+  }
+  const abort = (): void => {
+    if (closed) return
+    cleanup()
+    controller?.close()
+  }
   return new ReadableStream({
     cancel() {
-      signal.removeEventListener('abort', aborted)
-      unsubscribe?.()
+      cleanup()
     },
-    start(controller) {
-      unsubscribe = service.subscribeProject(projectId, (event) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)))
-      signal.addEventListener('abort', aborted, { once: true })
-      controller.enqueue(encoder.encode(': connected\n\n'))
+    start(streamController) {
+      controller = streamController
+      unsubscribe = service.subscribeProject(projectId, (event) => {
+        if (!closed) streamController.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+      })
+      if (signals.some((signal) => signal?.aborted)) return abort()
+      for (const signal of signals) signal?.addEventListener('abort', abort, { once: true })
+      streamController.enqueue(encoder.encode(': connected\n\n'))
     },
   })
 }
