@@ -37,7 +37,7 @@
     },
     "packages/command": {
       "name": "@oomol-lab/open-flow-command",
-      "version": "0.1.0-alpha.2",
+      "version": "0.1.0-alpha.3",
       "dependencies": {
         "@oomol-lab/open-flow": "workspace:*",
         "@wopjs/cast": "^0.1.16",
