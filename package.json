@@ -8,6 +8,9 @@
     "packages/*",
     "apps/*"
   ],
+  "devDependencies": {
+    "oxfmt": "^0.60.0"
+  },
   "scripts": {
     "build": "bun run --workspaces --if-present build",
     "check": "bun run format -- --check && bun run --workspaces --if-present check",

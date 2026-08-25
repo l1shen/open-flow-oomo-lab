@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "open-flow-workspace",
+      "devDependencies": {
+        "oxfmt": "^0.60.0",
+      },
     },
     "apps/server": {
       "name": "@oomol-lab/open-flow-server",
