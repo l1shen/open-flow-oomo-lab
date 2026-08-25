@@ -78,6 +78,8 @@ Workbench 和 API 位于 `http://127.0.0.1:3000`。最终镜像默认监听 `0.0
 | `OPEN_FLOW_INTEGRATION_CALLBACK_KEY`     | 派生 Integration callback secret 的至少 32 UTF-8 bytes 密钥。                  |
 | `OPEN_FLOW_RUN_EVENT_RETENTION_DAYS`     | terminal Run 详细事件的保留天数；默认 `30`。                                   |
 | `OPEN_FLOW_MAX_PENDING_RUNS`             | 全部署尚未 terminal 的 Run 上限；默认 `1000`。                                 |
+| `OPEN_FLOW_MAX_CONCURRENT_RUNS`          | 全部署同时执行的 Run 上限；同一 Project 最多执行一个；默认 `4`。               |
+| `OPEN_FLOW_RUN_TIMEOUT_MS`               | 单个 Run 从开始执行到 terminal 的最长毫秒数；默认 `300000`。                   |
 | `OPEN_FLOW_CALLBACK_REQUESTS_PER_MINUTE` | 每个 Webhook 或 Integration endpoint 的每分钟请求上限；默认 `120`。            |
 
 `OPEN_FLOW_CONNECTOR_ORIGIN` 和 `OPEN_FLOW_CONNECTOR_TOKEN` 必须同时提供或同时省略。内部 runtime origin 与 Browser 使用的 Console origin 相互独立；

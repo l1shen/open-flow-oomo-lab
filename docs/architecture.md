@@ -82,6 +82,9 @@ Run admission 通过 Draft Revision path 或当前 Live Publication identity 固
 Run 在用户代码开始前因固定 Revision、Engine 或 prepare 不可用而失败时，部署必须把该 Run 单独结束为确定失败并继续处理后续工作；单个 poison Run
 不能停止全局调度或在重启后重复阻塞队列。readiness 必须反映部署后台处理是否仍可工作，不能只检查外部依赖。
 
+部署必须限制并行 Run 数量和单个 Run 的总执行时间。同一 Project 的 Run 串行 claim，不同 Project 在全局并发上限内按最早可执行顺序推进，避免一个
+Project 的长 Run 阻塞其他 Project；超过执行期限的 Run 必须确定失败并释放调度槽位。
+
 用户代码只在隔离 realm 中获得目标 closure、固定 platform module 和当前 Task invocation 明确声明的窄 Capability。Capability host 必须校验当前
 Project、Run、Task、invocation、binding 和 Run 状态；Task 或 Run 结束后旧 Capability 必须 fail closed。
 

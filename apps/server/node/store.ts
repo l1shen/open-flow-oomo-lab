@@ -1034,17 +1034,20 @@ export class Store {
     return this.commit(runId, 'canceled', { error: { code: 'run.canceled', message: 'Run canceled.' } })
   }
 
-  claim(): StoredRun | undefined {
+  claim(excludedProjectIds: readonly string[] = []): StoredRun | undefined {
     return this.#transaction(() => {
+      const projectFilter =
+        excludedProjectIds.length == 0 ? '' : `AND (runs.project_id IS NULL OR runs.project_id NOT IN (${excludedProjectIds.map(() => '?').join(', ')}))`
       const claimed = this.#database
         .prepare(
           `SELECT runs.run_id AS runId
            FROM work JOIN runs USING (run_id)
            WHERE runs.status IN ('queued', 'starting')
+             ${projectFilter}
            ORDER BY work.sequence
            LIMIT 1`,
         )
-        .get() as { readonly runId: string } | undefined
+        .get(...excludedProjectIds) as { readonly runId: string } | undefined
       if (claimed == null) return
       this.#database.prepare("UPDATE runs SET status = 'starting' WHERE run_id = ? AND status = 'queued'").run(claimed.runId)
       const row = this.#database
@@ -1113,10 +1116,6 @@ export class Store {
       | { readonly eventsExpiresAt: number | null }
       | undefined
     return row?.eventsExpiresAt != null && row.eventsExpiresAt <= now
-  }
-
-  hasReady(): boolean {
-    return this.#database.prepare("SELECT 1 AS ready FROM work JOIN runs USING (run_id) WHERE runs.status IN ('queued', 'starting') LIMIT 1").get() != null
   }
 
   run(runId: string): RunRecord | undefined {

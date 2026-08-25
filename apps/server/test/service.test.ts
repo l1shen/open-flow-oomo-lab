@@ -273,6 +273,54 @@ describe('Server application service', () => {
     await service.close()
   })
 
+  it('runs different Projects concurrently without overlapping Runs from one Project', async () => {
+    const releases: (() => void)[] = []
+    let invocation = 0
+    const service = ServerService.open(await databaseFile(), undefined, Date.now, {
+      llm: async () => {
+        invocation += 1
+        if (invocation > 2) return { kind: 'completed', value: { answer: 'done' }, version: 1 }
+        return await new Promise((resolve) => {
+          releases.push(() => resolve({ kind: 'completed', value: { answer: 'done' }, version: 1 }))
+        })
+      },
+      maxConcurrentRuns: 2,
+    })
+    const first = await acceptRun(service, { flowId: 'main', idempotencyKey: 'project-a-first', revision: llmFlow(), revisionId: 'project-a' })
+    const second = await acceptRun(service, { flowId: 'main', idempotencyKey: 'project-a-second', revision: llmFlow(), revisionId: 'project-a' })
+    const other = await acceptRun(service, { flowId: 'main', idempotencyKey: 'project-b', revision: llmFlow(), revisionId: 'project-b' })
+    if (first.kind != 'accepted' || second.kind != 'accepted' || other.kind != 'accepted') throw new Error('Concurrent Run setup conflicted.')
+
+    service.start()
+    await Promise.all([waitForStatus(service, first.runId, 'running'), waitForStatus(service, other.runId, 'running')])
+    expect(service.run(second.runId)?.status).toBe('queued')
+    expect(releases).toHaveLength(2)
+
+    for (const release of releases) release()
+    await service.waitForIdle()
+    expect([first.runId, second.runId, other.runId].map((runId) => service.run(runId)?.status)).toEqual(['completed', 'completed', 'completed'])
+    await service.close()
+  })
+
+  it('fails a Run that exceeds its execution deadline', async () => {
+    const service = ServerService.open(await databaseFile(), undefined, Date.now, { runTimeoutMs: 25 })
+    service.start()
+    const accepted = await acceptRun(service, {
+      flowId: 'main',
+      idempotencyKey: 'timeout',
+      revision: hangingFlow(),
+      revisionId: 'revision-timeout',
+    })
+    if (accepted.kind != 'accepted') throw new Error('Timeout Run acceptance conflicted.')
+    await service.waitForIdle()
+
+    expect(service.run(accepted.runId)).toMatchObject({
+      result: { error: { code: 'run.timeout', message: 'The Run exceeded its execution deadline.' } },
+      status: 'failed',
+    })
+    await service.close()
+  })
+
   it('executes LLM Tasks through the deployment host and projects stable host failures', async () => {
     const invocations: { readonly input: unknown; readonly mode: string }[] = []
     const configured = ServerService.open(await databaseFile(), undefined, Date.now, {

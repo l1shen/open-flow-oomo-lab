@@ -37,6 +37,14 @@ async function main(): Promise<void> {
   if (!Number.isSafeInteger(callbackRequestsPerMinute) || callbackRequestsPerMinute <= 0) {
     throw new Error('OPEN_FLOW_CALLBACK_REQUESTS_PER_MINUTE must be a positive safe integer.')
   }
+  const maxConcurrentRuns = Number(process.env.OPEN_FLOW_MAX_CONCURRENT_RUNS ?? '4')
+  if (!Number.isSafeInteger(maxConcurrentRuns) || maxConcurrentRuns <= 0) {
+    throw new Error('OPEN_FLOW_MAX_CONCURRENT_RUNS must be a positive safe integer.')
+  }
+  const runTimeoutMs = Number(process.env.OPEN_FLOW_RUN_TIMEOUT_MS ?? '300000')
+  if (!Number.isSafeInteger(runTimeoutMs) || runTimeoutMs <= 0) {
+    throw new Error('OPEN_FLOW_RUN_TIMEOUT_MS must be a positive safe integer.')
+  }
 
   const connectorOrigin = process.env.OPEN_FLOW_CONNECTOR_ORIGIN
   const connectorToken = process.env.OPEN_FLOW_CONNECTOR_TOKEN
@@ -79,7 +87,7 @@ async function main(): Promise<void> {
     path.join(dataDirectory, 'open-flow.sqlite'),
     connector,
     Date.now,
-    { ...(integration == null ? {} : { integration }), maxPendingRuns, runEventRetentionMs },
+    { ...(integration == null ? {} : { integration }), maxConcurrentRuns, maxPendingRuns, runEventRetentionMs, runTimeoutMs },
     connectorConsoleOrigin,
     logger,
   )

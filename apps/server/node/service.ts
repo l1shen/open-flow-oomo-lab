@@ -66,8 +66,10 @@ interface PollOccurrenceInput {
 export interface ServerRuntime {
   readonly integration?: IntegrationOptions
   readonly llm?: InvokeLlmTask
+  readonly maxConcurrentRuns?: number
   readonly maxPendingRuns?: number
   readonly runEventRetentionMs?: number
+  readonly runTimeoutMs?: number
 }
 
 interface WebhookTarget {
@@ -105,11 +107,8 @@ const maintenanceBatchSize = 100
 const maintenanceIntervalMs = 60_000
 const maintenanceRetryMs = 1_000
 const admissionRetryMs = 1_000
-
-interface ActiveRun {
-  readonly cancellation: AbortController
-  readonly projectId: string | null
-}
+const defaultMaxConcurrentRuns = 4
+const defaultRunTimeoutMs = 5 * 60 * 1_000
 
 class TaskHostError extends Error {
   constructor(
@@ -123,20 +122,23 @@ class TaskHostError extends Error {
 
 export class ServerService {
   readonly control: ControlService
-  readonly #active = new Map<string, ActiveRun>()
+  readonly #active = new Map<string, AbortController>()
   readonly #clock: () => number
   readonly #connector?: ConnectorHost
   readonly #integration: IntegrationRuntime
   readonly #isolatedVm = new IsolatedVmHost()
   readonly #logger: Logger
   readonly #llm?: InvokeLlmTask
+  readonly #maxConcurrentRuns: number
   readonly #pollDefinitions: ReadonlyMap<string, PollDefinition>
   readonly #projectSubscribers = new Map<string, Set<(event: ProjectChangeEvent) => void>>()
+  readonly #runningProjects = new Set<string>()
+  readonly #runTimeoutMs: number
   readonly #store: Store
+  readonly #workers = new Set<Promise<void>>()
   #cronTicking?: Promise<void>
   #cronTimer?: ReturnType<typeof setTimeout>
   #cronRetryAt?: number
-  #draining?: Promise<void>
   #failure?: unknown
   #maintenanceTicking?: Promise<void>
   #maintenanceTimer?: ReturnType<typeof setTimeout>
@@ -157,6 +159,8 @@ export class ServerService {
     this.#connector = connector
     this.#logger = logger.child({ component: 'runtime' })
     this.#llm = runtime.llm
+    this.#maxConcurrentRuns = runtime.maxConcurrentRuns ?? defaultMaxConcurrentRuns
+    this.#runTimeoutMs = runtime.runTimeoutMs ?? defaultRunTimeoutMs
     const pollDefinitions = triggerDefinitions.filter((definition): definition is PollDefinition => definition.snapshot.type == 'poll')
     const integrationDefinitions = triggerDefinitions.filter((definition): definition is IntegrationDefinition => definition.snapshot.type == 'integration')
     this.#pollDefinitions = new Map(pollDefinitions.map((definition) => [definition.snapshot.key, definition]))
@@ -165,7 +169,7 @@ export class ServerService {
     this.control = new ControlService(
       store,
       clock,
-      (runId) => this.#active.get(runId)?.cancellation.abort(new Error('Run canceled.')),
+      (runId) => this.#active.get(runId)?.abort(new Error('Run canceled.')),
       () => this.#wake(),
       (input) => this.publishFlow(input),
       () => {
@@ -207,6 +211,12 @@ export class ServerService {
     }
     if (runtime.maxPendingRuns != null && (!Number.isSafeInteger(runtime.maxPendingRuns) || runtime.maxPendingRuns <= 0)) {
       throw new TypeError('Maximum pending Runs must be a positive safe integer.')
+    }
+    if (runtime.maxConcurrentRuns != null && (!Number.isSafeInteger(runtime.maxConcurrentRuns) || runtime.maxConcurrentRuns <= 0)) {
+      throw new TypeError('Maximum concurrent Runs must be a positive safe integer.')
+    }
+    if (runtime.runTimeoutMs != null && (!Number.isSafeInteger(runtime.runTimeoutMs) || runtime.runTimeoutMs <= 0)) {
+      throw new TypeError('Run timeout must be a positive safe integer number of milliseconds.')
     }
     let consoleOrigin: URL | undefined
     if (connectorConsoleOrigin != null) {
@@ -447,7 +457,7 @@ export class ServerService {
   cancel(runId: string): boolean {
     const committed = this.#store.cancel(runId)
     if (committed) {
-      this.#active.get(runId)?.cancellation.abort(new Error('Run canceled.'))
+      this.#active.get(runId)?.abort(new Error('Run canceled.'))
       this.#logger.info({ category: 'run.canceled', runId }, 'Run canceled.')
     }
     return committed
@@ -627,7 +637,7 @@ export class ServerService {
     await this.#integration.waitForIdle()
     while (this.#pollTicking != null) await this.#pollTicking
     while (this.#maintenanceTicking != null) await this.#maintenanceTicking
-    while (this.#draining != null) await this.#draining
+    while (this.#workers.size > 0) await Promise.all(this.#workers)
     if (this.#failure != null) throw this.#failure
   }
 
@@ -660,7 +670,9 @@ export class ServerService {
     this.#logger.info({ category: 'run.started', flowId: run.flowId, runId: run.runId }, 'Run started.')
 
     const cancellation = new AbortController()
-    this.#active.set(run.runId, { cancellation, projectId: run.projectId })
+    const timeoutReason = new Error('Run exceeded its execution deadline.')
+    const timeout = setTimeout(() => cancellation.abort(timeoutReason), this.#runTimeoutMs)
+    this.#active.set(run.runId, cancellation)
     try {
       const output = await runFlow(prepared.flow, {
         createId: randomUUID,
@@ -687,10 +699,14 @@ export class ServerService {
         )
       }
     } catch (error) {
-      if (this.#store.commit(run.runId, 'failed', { error: { code: 'run.failed', message: 'The Flow could not be completed.' } })) {
+      const timedOut = cancellation.signal.reason === timeoutReason
+      const result = timedOut
+        ? { error: { code: 'run.timeout', message: 'The Run exceeded its execution deadline.' } }
+        : { error: { code: 'run.failed', message: 'The Flow could not be completed.' } }
+      if (this.#store.commit(run.runId, 'failed', result)) {
         this.#logger.error(
           {
-            category: 'run.failed',
+            category: timedOut ? 'run.timed_out' : 'run.failed',
             durationMs: Math.round(performance.now() - startedAt),
             flowId: run.flowId,
             runId: run.runId,
@@ -700,6 +716,7 @@ export class ServerService {
         )
       }
     } finally {
+      clearTimeout(timeout)
       this.#active.delete(run.runId)
     }
   }
@@ -895,14 +912,6 @@ export class ServerService {
     }
   }
 
-  async #drain(): Promise<void> {
-    while (this.#started) {
-      const run = this.#store.claim()
-      if (run == null) return
-      await this.#dispatch(run)
-    }
-  }
-
   async #tickCron(now: number): Promise<void> {
     while (true) {
       const targets = this.#store.triggers.dueCron(now, cronBatchSize)
@@ -1003,9 +1012,9 @@ export class ServerService {
     }
 
     const canceled = this.#store.cancelProjectRuns(projectId, maintenanceBatchSize)
-    for (const runId of canceled) this.#active.get(runId)?.cancellation.abort(new Error('Project retired.'))
+    for (const runId of canceled) this.#active.get(runId)?.abort(new Error('Project retired.'))
     if (canceled.length > 0) return 0
-    if ([...this.#active.values()].some((run) => run.projectId == projectId)) return maintenanceRetryMs
+    if (this.#runningProjects.has(projectId)) return maintenanceRetryMs
     if (this.#store.projectHasIntegrationState(projectId)) return nextDelay
     if (this.#store.deleteProjectRuns(projectId, maintenanceBatchSize) > 0) return 0
     if (!this.#store.deleteProject(projectId)) return nextDelay
@@ -1016,17 +1025,21 @@ export class ServerService {
   }
 
   #wake(): void {
-    if (!this.#started || this.#draining != null || !this.#store.hasReady()) return
-    const draining = this.#drain()
-    this.#draining = draining
-    void draining
-      .catch((error: unknown) => {
-        this.#fail('runtime.drain.failed', error)
-      })
-      .finally(() => {
-        if (this.#draining == draining) this.#draining = undefined
-        if (this.#failure == null) this.#wake()
-      })
+    while (this.#started && this.#failure == null && this.#workers.size < this.#maxConcurrentRuns) {
+      const run = this.#store.claim([...this.#runningProjects])
+      if (run == null) return
+      if (run.projectId != null) this.#runningProjects.add(run.projectId)
+      const worker = this.#dispatch(run)
+        .catch((error: unknown) => {
+          this.#fail('runtime.worker.failed', error)
+        })
+        .finally(() => {
+          this.#workers.delete(worker)
+          if (run.projectId != null) this.#runningProjects.delete(run.projectId)
+          this.#wake()
+        })
+      this.#workers.add(worker)
+    }
   }
 
   #armCron(): void {
