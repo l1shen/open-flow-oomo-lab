@@ -2,7 +2,7 @@ import styles from './IconPicker.module.scss'
 import type { GeneralIconifyData } from '../iconifyContext.tsx'
 import type { IconifyIconProps } from '../IconifyIcon.tsx'
 
-import clsx from 'clsx'
+import { clsx } from 'clsx'
 import { AsyncFzf } from 'fzf'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
