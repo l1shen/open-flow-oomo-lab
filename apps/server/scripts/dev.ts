@@ -2,11 +2,14 @@ import type { ChildProcess } from 'node:child_process'
 
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import path from 'node:path'
 
 const appRoot = path.resolve(import.meta.dirname, '..')
+const developmentStateDirectory = path.join(appRoot, '.open-flow-dev')
+const operatorTokenPath = path.join(developmentStateDirectory, 'operator-token')
 const require = createRequire(import.meta.url)
 const vitePath = path.join(path.dirname(require.resolve('vite/package.json')), 'bin/vite.js')
 const backendPort = Number(process.env.OPEN_FLOW_PORT ?? '3000')
@@ -17,12 +20,14 @@ const configuredOperatorToken = process.env.OPEN_FLOW_TOKEN
 if (configuredOperatorToken != null && Buffer.byteLength(configuredOperatorToken) < 32) {
   throw new Error('OPEN_FLOW_TOKEN must contain at least 32 UTF-8 bytes. Remove it to use a generated development token.')
 }
-const operatorToken = configuredOperatorToken ?? randomBytes(32).toString('base64url')
 
 if (!(await portAvailable(backendPort))) {
   process.stderr.write(`Server API port ${backendPort} is already in use. Stop the existing process or set OPEN_FLOW_PORT.\n`)
   process.exit(1)
 }
+
+const developmentToken = configuredOperatorToken == null ? await loadDevelopmentToken() : { created: false, token: configuredOperatorToken }
+const operatorToken = developmentToken.token
 
 process.stdout.write(
   `Development endpoints:\n  Workbench: http://127.0.0.1:5173 (or the Local URL reported by Vite)\n  Server API: http://127.0.0.1:${backendPort}\n`,
@@ -60,7 +65,10 @@ const backendResult = completed(backend, 'Server backend')
 const frontendResult = completed(frontend, 'Server frontend')
 let interrupted = false
 
-if (configuredOperatorToken == null) process.stdout.write(`Server operator token: ${operatorToken}\n`)
+if (configuredOperatorToken == null) {
+  const action = developmentToken.created ? 'created' : 'reused'
+  process.stdout.write(`Server operator token (${action} at ${path.relative(appRoot, operatorTokenPath)}): ${operatorToken}\n`)
+}
 
 function stop(): void {
   interrupted = true
@@ -89,4 +97,21 @@ async function portAvailable(port: number): Promise<boolean> {
     probe.once('error', () => resolve(false))
     probe.listen(port, '127.0.0.1', () => probe.close((error) => resolve(error == null)))
   })
+}
+
+async function loadDevelopmentToken(): Promise<{ readonly created: boolean; readonly token: string }> {
+  try {
+    const token = (await readFile(operatorTokenPath, 'utf8')).trim()
+    if (Buffer.byteLength(token) < 32) {
+      throw new Error(`Development operator token at ${operatorTokenPath} must contain at least 32 UTF-8 bytes.`)
+    }
+    return { created: false, token }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code != 'ENOENT') throw error
+  }
+
+  await mkdir(developmentStateDirectory, { recursive: true })
+  const token = randomBytes(32).toString('base64url')
+  await writeFile(operatorTokenPath, token, { encoding: 'utf8', mode: 0o600 })
+  return { created: true, token }
 }
