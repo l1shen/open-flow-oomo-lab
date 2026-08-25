@@ -135,6 +135,23 @@ describe('DesignerStore.nodeMiniMapPhase', () => {
   })
 })
 
+describe('DesignerStore graph projection', () => {
+  it('publishes nodes and edges through one snapshot', () => {
+    const setup = createTestSetup()
+    const initial = setup.store.$.renderedRFGraph.value
+    const node = setup.createNode('node' as NodeId)
+
+    setup.nodes.set(node.nodeId, node)
+    const next = setup.store.$.renderedRFGraph.value
+
+    expect(next).not.toBe(initial)
+    expect(next.nodes).toBe(setup.store.$.rfNodes.value)
+    expect(next.edges).toBe(setup.store.$.renderedRFEdges.value)
+    expect(next.nodes).toEqual([node.$.rfNode.value])
+    setup.dispose()
+  })
+})
+
 describe('DesignerStore display mode', () => {
   it('does not persist session display changes in project UI data', () => {
     const setup = createTestSetup()

@@ -266,7 +266,7 @@ describe('FlowDesignerView model synchronization', () => {
     store.dispose()
   })
 
-  it('does not rewrite an unchanged controlled selection on a host rerender', () => {
+  it('does not rewrite an unchanged controlled selection when the host recreates the model', () => {
     const value = model([task([])])
     const view = FlowDesignerView(props(value, { selectedNodeIds: ['target'] })) as React.ReactElement<FlowDesignerProps>
     const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
@@ -274,7 +274,7 @@ describe('FlowDesignerView model synchronization', () => {
     const setSelection = vi.spyOn(node.$$.selected, 'set')
     const replaceNodes = vi.spyOn(view.props.flowDesignerStore.$$.nodes, 'replace')
 
-    FlowDesignerView(props(value, { selectedNodeIds: ['target'] }))
+    FlowDesignerView(props({ ...value }, { selectedNodeIds: ['target'] }))
 
     expect(setSelection).not.toHaveBeenCalled()
     expect(replaceNodes).not.toHaveBeenCalled()
@@ -284,13 +284,34 @@ describe('FlowDesignerView model synchronization', () => {
   it('does not replace Designer maps for a semantically unchanged model object', () => {
     const value = model([task([])])
     const view = FlowDesignerView(props(value)) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
     const replaceNodes = vi.spyOn(view.props.flowDesignerStore.$$.nodes, 'replace')
     const replaceComments = vi.spyOn(view.props.flowDesignerStore.$$.commentNodes!, 'replace')
+    const setPosition = vi.spyOn(node.$$.position, 'set')
+    const setViewport = vi.spyOn(view.props.flowDesignerStore.$$.viewport, 'set')
 
-    FlowDesignerView(props({ ...value }))
+    FlowDesignerView(props({ ...value, nodes: value.nodes.map((item) => ({ ...item })), viewport: { ...value.viewport } }))
 
     expect(replaceNodes).not.toHaveBeenCalled()
     expect(replaceComments).not.toHaveBeenCalled()
+    expect(setPosition).not.toHaveBeenCalled()
+    expect(setViewport).not.toHaveBeenCalled()
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('routes user edits through the latest host callbacks', () => {
+    const previous = vi.fn()
+    const current = vi.fn()
+    const value = model([conditionNode()])
+    const view = FlowDesignerView(props(value, { onChangeCondition: previous })) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    const section = node.findSection<ConditionsSectionStore>(ConditionsSectionStore.TYPE)!
+
+    FlowDesignerView(props({ ...value }, { onChangeCondition: current }))
+    section.renameHandle('matched' as HandleName, 'accepted' as HandleName)
+
+    expect(previous).not.toHaveBeenCalled()
+    expect(current).toHaveBeenCalledOnce()
     view.props.flowDesignerStore.dispose()
   })
 

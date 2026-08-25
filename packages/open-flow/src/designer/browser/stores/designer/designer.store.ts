@@ -143,6 +143,11 @@ export interface OverviewConnectedNodes {
   readonly outputs: ReadonlySet<RFNodeId>
 }
 
+export interface RFGraph {
+  readonly nodes: RFNode[]
+  readonly edges: RenderedRFEdge[]
+}
+
 export interface DesignerStore$$ {
   readonly initialized: Val<boolean>
   readonly editable: Val<boolean>
@@ -175,6 +180,8 @@ export interface DesignerStore$ extends ToReadonly$Group<DesignerStore$$> {
   readonly rfNodes: ReadonlyVal<RFNode[]>
   readonly rfEdges: ReadonlyVal<RFEdge[]>
   readonly renderedRFEdges: ReadonlyVal<RenderedRFEdge[]>
+  readonly rfGraph: ReadonlyVal<RFGraph>
+  readonly renderedRFGraph: ReadonlyVal<RFGraph>
   readonly overviewConnectedNodes: ReadonlyVal<OverviewConnectedNodes>
 
   readonly runStatus: ReadonlyVal<FlowRunStatus>
@@ -371,6 +378,11 @@ export class DesignerStore {
       settingsPanelWidth: this.dispose.add(props.settingsPanelWidth),
     }
 
+    const rfNodes = this.dispose.add(compute((get) => [...(get(commentNodes?.$)?.values() ?? []), ...get(nodes.$).values()].map((node) => get(node.$.rfNode))))
+    const renderedRFEdges = this.dispose.add(compute((get) => (get(this.$$.displayMode) == 'overview' ? get(overviewRFEdges) : get(rfEdges))))
+    const rfGraph = this.dispose.add(compute<RFGraph>((get) => ({ nodes: get(rfNodes), edges: get(rfEdges) })))
+    const renderedRFGraph = this.dispose.add(compute<RFGraph>((get) => ({ nodes: get(rfNodes), edges: get(renderedRFEdges) })))
+
     this.$ = {
       ...this.$$,
       nodes,
@@ -396,9 +408,11 @@ export class DesignerStore {
           return nodeStores
         }),
       ),
-      rfNodes: this.dispose.add(compute((get) => [...(get(commentNodes?.$)?.values() ?? []), ...get(nodes.$).values()].map((node) => get(node.$.rfNode)))),
+      rfNodes,
       rfEdges,
-      renderedRFEdges: this.dispose.add(compute((get) => (get(this.$$.displayMode) == 'overview' ? get(overviewRFEdges) : get(rfEdges)))),
+      renderedRFEdges,
+      rfGraph,
+      renderedRFGraph,
       overviewConnectedNodes: this.dispose.add(
         compute((get) => {
           const inputs = new Set<RFNodeId>()

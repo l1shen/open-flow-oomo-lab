@@ -32,7 +32,7 @@ import type { FlowDisplayMode } from '../../../common/flowDisplay.ts'
 import type { AddNodeType } from '../../base/dragNDrop.ts'
 import type { PartialConnection, RFConnection, RFHandleName, RFNodeId } from '../../base/rfHelpers.ts'
 import type { HandleImpl } from '../../components/handle.tsx'
-import type { IAddHandleOptions, IAddNodeMenuItem, IFromSource, InteractiveMode } from '../../stores/designer/designer.store.ts'
+import type { IAddHandleOptions, IAddNodeMenuItem, IFromSource, InteractiveMode, RFGraph } from '../../stores/designer/designer.store.ts'
 import type { NodeType } from '../../stores/node/constants.ts'
 import type { NodeStore } from '../../stores/node/node.store.ts'
 import type { TaskNodeStore } from '../../stores/node/taskNode.store.ts'
@@ -109,8 +109,7 @@ export interface ReactFlowContainerProps {
   editable: boolean
   nodeTypes?: NodeTypes
   edgeTypes?: EdgeTypes
-  nodes$: ReadonlyVal<RFNode<any>[]>
-  edges$: ReadonlyVal<RFEdge<any>[]>
+  graph$: ReadonlyVal<RFGraph>
   viewport$: Val<Viewport | undefined>
   focused$?: ReadonlyVal<boolean>
   canDeleteNodes?: boolean
@@ -389,8 +388,17 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
   const isMouse = interactiveMode === 'mouse'
   const overview = useVal(props.displayMode$) == 'overview'
 
-  const nodes = useVal(props.nodes$)
-  const edges = useVal(props.edges$)
+  const { nodes, edges: projectedEdges } = useVal(props.graph$)
+  const edgeTopology = useMemo(
+    () => JSON.stringify([overview, projectedEdges.map((edge) => [edge.id, edge.source, edge.sourceHandle, edge.target, edge.targetHandle])]),
+    [overview, projectedEdges],
+  )
+  const [readyEdgeTopology, setReadyEdgeTopology] = useState(() => (projectedEdges.length == 0 ? edgeTopology : ''))
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setReadyEdgeTopology(edgeTopology))
+    return () => cancelAnimationFrame(frame)
+  }, [edgeTopology])
+  const edges = readyEdgeTopology == edgeTopology ? projectedEdges : []
   const nodeIdsRef = useRef<string[]>([])
   nodeIdsRef.current = nodes.map((node) => node.id)
   const displayModeMounted = useRef(false)

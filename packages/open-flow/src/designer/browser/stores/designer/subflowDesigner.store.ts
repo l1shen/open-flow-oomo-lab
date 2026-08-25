@@ -5,7 +5,7 @@ import type { NodeId } from '../../../../schema/index.ts'
 import type { RFNode } from '../../base/rfHelpers.ts'
 import type { DesignerOption as IBasicOption } from '../../components/select.tsx'
 import type { NodeStore } from '../node/node.store.ts'
-import type { DesignerStore$, DesignerStore$$, DesignerStoreProps } from './designer.store.ts'
+import type { DesignerStore$, DesignerStore$$, DesignerStoreProps, RFGraph } from './designer.store.ts'
 
 import { compute, val } from 'value-enhancer'
 import { applyNodeChanges } from '../../base/rfHelpers.ts'
@@ -88,11 +88,17 @@ export class SubflowDesignerStore extends DesignerStore {
       nodeViewport: this.dispose.add(val()),
     } satisfies Partial<SubflowDesignerStore$$>)
 
+    const rfNodes = this.dispose.add(this.deriveRFNodes(this.$.rfNodes, this.$$.viewMode, props))
+    const rfEdges = this.dispose.add(this.deriveRFEdges(this.$.rfEdges, this.$$.viewMode))
+    const renderedRFEdges = this.dispose.add(this.deriveRFEdges(this.$.renderedRFEdges, this.$$.viewMode))
+
     Object.assign(this.$, {
       viewMode: this.$$.viewMode,
-      rfNodes: this.dispose.add(this.deriveRFNodes(this.$.rfNodes, this.$$.viewMode, props)),
-      rfEdges: this.dispose.add(this.deriveRFEdges(this.$.rfEdges, this.$$.viewMode)),
-      renderedRFEdges: this.dispose.add(this.deriveRFEdges(this.$.renderedRFEdges, this.$$.viewMode)),
+      rfNodes,
+      rfEdges,
+      renderedRFEdges,
+      rfGraph: this.dispose.add(compute<RFGraph>((get) => ({ nodes: get(rfNodes), edges: get(rfEdges) }))),
+      renderedRFGraph: this.dispose.add(compute<RFGraph>((get) => ({ nodes: get(rfNodes), edges: get(renderedRFEdges) }))),
       nodeMiniMapPhase: this.dispose.add(this.deriveNodeMiniMapPhase(this.$.nodeMiniMapPhase, this.$$.viewMode)),
       forwardPreviewOptions: this.dispose.add(this.deriveForwardPreviewOptions(this.$.nodes, props.display$)),
     } satisfies Partial<SubflowDesignerStore$>)

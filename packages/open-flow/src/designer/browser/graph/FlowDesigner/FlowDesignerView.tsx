@@ -386,11 +386,10 @@ class FlowDesignerViewAdapter {
   readonly store: FlowDesignerStore
 
   #addItems: readonly FlowDesignerViewAddItem[]
-  #callbacks: ViewCallbacks
+  readonly #callbacks: ViewCallbacks
   #disconnectTimer: ReturnType<typeof setTimeout> | undefined
   #entries = new Map<string, NodeEntry>()
   #language: Val<string>
-  #model: FlowDesignerViewModel
   #modelPositions = new Map<string, FlowDesignerViewPosition>()
   #modelViewport: FlowDesignerViewViewport | undefined
   #pendingDisconnects = new Map<string, FlowDesignerViewEdge>()
@@ -401,7 +400,6 @@ class FlowDesignerViewAdapter {
     this.#addItems = addItems
     this.#callbacks = callbacks
     this.#language = val(language)
-    this.#model = model
 
     const nodes = reactiveMap<NodeId, NodeStore>(null, { onDeleted: dispose })
     const commentNodes = reactiveMap<NodeId, CommentNodeStore>(null, { onDeleted: dispose })
@@ -507,7 +505,7 @@ class FlowDesignerViewAdapter {
     for (const edge of edges) this.#callbacks.onDisconnect(edge)
   }
 
-  update(
+  reconcile(
     model: FlowDesignerViewModel,
     editable: boolean,
     language: string,
@@ -516,19 +514,15 @@ class FlowDesignerViewAdapter {
     callbacks: ViewCallbacks,
   ): void {
     this.#addItems = addItems
-    this.#callbacks = callbacks
+    Object.assign(this.#callbacks, callbacks)
     const editableChanged = this.store.$.editable.value != editable
     if (editableChanged) this.store.$$.editable.set(editable)
     if (this.#language.value != language) this.#language.set(language)
-    const modelChanged = this.#model !== model || editableChanged
-    if (modelChanged) {
-      this.#syncModel(model)
-      this.#model = model
-    }
     const selected = new Set(selectedNodeIds)
     const selectionChanged = selected.size != this.#selectedNodeIds.size || [...selected].some((nodeId) => !this.#selectedNodeIds.has(nodeId))
     this.#selectedNodeIds = selected
-    if (modelChanged || selectionChanged) {
+    this.#syncModel(model)
+    if (selectionChanged) {
       for (const [nodeId, entry] of this.#entries) {
         const value = selected.has(nodeId)
         if (entry.store.$.selected.value != value) entry.store.$$.selected.set(value)
@@ -576,7 +570,8 @@ class FlowDesignerViewAdapter {
   }
 
   #syncModel(model: FlowDesignerViewModel): void {
-    this.#runStatus.set(model.runStatus == 'running' ? FLOW_RUN_STATUS.Running : FLOW_RUN_STATUS.Idle)
+    const runStatus = model.runStatus == 'running' ? FLOW_RUN_STATUS.Running : FLOW_RUN_STATUS.Idle
+    if (this.#runStatus.value != runStatus) this.#runStatus.set(runStatus)
     if (
       this.#modelViewport == null ||
       this.#modelViewport.x != model.viewport.x ||
@@ -597,11 +592,13 @@ class FlowDesignerViewAdapter {
       const { position, ...content } = node
       const contentKey = JSON.stringify([content, outputHandles])
       let entry = this.#entries.get(node.id)
+      let created = false
       if (entry?.kind != node.kind) entry = undefined
       if (entry?.kind != 'comment' && entry?.editable != this.store.$.editable.value) entry = undefined
       if (node.kind == 'comment') {
         if (entry?.kind != 'comment') {
-          entry = createCommentNodeEntry(node, contentKey, this.store.designerUIStore, this.store, this.#callbacks.onChangeComment)
+          entry = createCommentNodeEntry(node, contentKey, this.store.designerUIStore, this.store, this.#callbacks)
+          created = true
         } else {
           if (entry.contentKey != contentKey) entry = updateCommentNodeEntry(entry, node, contentKey)
           const previousPosition = this.#modelPositions.get(node.id)
@@ -610,27 +607,15 @@ class FlowDesignerViewAdapter {
         nextComments.set(node.id as NodeId, entry.store)
       } else if (entry == null) {
         this.store.designerUIStore.setNodeUIData(node.id as NodeId, { rfNode: { position } })
-        entry = createNodeEntry(
-          node,
-          outputHandles,
-          contentKey,
-          this.store.designerUIStore,
-          this.store,
-          this.#callbacks.onChangeCondition,
-          this.#callbacks.onChangeNodeDescription,
-          this.#callbacks.onChangeInput,
-          this.#callbacks.onChangeTaskPorts,
-          this.#callbacks.onChangeTriggerConfig,
-          this.#callbacks.onChangeTriggerSchedule,
-          this.#callbacks.onChangeWebhook,
-          this.#callbacks.onChangeValue,
-        )
+        entry = createNodeEntry(node, outputHandles, contentKey, this.store.designerUIStore, this.store, this.#callbacks)
+        created = true
       } else {
         if (entry.kind == 'comment') throw new Error('Unexpected Comment node entry.')
         if (entry.contentKey != contentKey) entry = updateNodeEntry(entry, node, outputHandles, contentKey)
         const previousPosition = this.#modelPositions.get(node.id)
         if (previousPosition == null || previousPosition.x != position.x || previousPosition.y != position.y) entry.store.$$.position.set(position)
       }
+      if (created && this.#selectedNodeIds.has(node.id)) entry.store.$$.selected.set(true)
       nextEntries.set(node.id, entry)
       if (entry.kind != 'comment') nextStores.set(node.id as NodeId, entry.store)
       nextPositions.set(node.id, position)
@@ -798,7 +783,7 @@ function createCommentNodeEntry(
   contentKey: string,
   designerUIStore: DesignerUIStore,
   designerStore: FlowDesignerStore,
-  onChangeComment: FlowDesignerViewProps['onChangeComment'],
+  callbacks: ViewCallbacks,
 ): CommentNodeEntry {
   designerUIStore.setCommentNodeUIData(node.id as NodeId, {
     content: node.content,
@@ -829,7 +814,7 @@ function createCommentNodeEntry(
         width: '100%',
       })
       const input = () => content$.set(editor.value)
-      const save = () => onChangeComment?.(node.id, { content: content$.value ?? '', title: store.$$.title.value ?? 'Comment' })
+      const save = () => callbacks.onChangeComment?.(node.id, { content: content$.value ?? '', title: store.$$.title.value ?? 'Comment' })
       editor.addEventListener('input', input)
       editor.addEventListener('blur', save)
       container.append(editor)
@@ -848,7 +833,7 @@ function createCommentNodeEntry(
   store.dispose.add(store.$.content.reaction(renderPreview))
   store.dispose.add(
     store.$$.title.reaction((title) => {
-      if (!entry.syncing) onChangeComment?.(node.id, { content: store.$$.content.value ?? '', title: title ?? 'Comment' })
+      if (!entry.syncing) callbacks.onChangeComment?.(node.id, { content: store.$$.content.value ?? '', title: title ?? 'Comment' })
     }, true),
   )
   store.dispose.add([dark, preview])
@@ -869,14 +854,7 @@ function createNodeEntry(
   contentKey: string,
   designerUIStore: DesignerUIStore,
   designerStore: FlowDesignerStore,
-  onChangeCondition: FlowDesignerViewProps['onChangeCondition'],
-  onChangeNodeDescription: FlowDesignerViewProps['onChangeNodeDescription'],
-  onChangeInput: FlowDesignerViewProps['onChangeInput'],
-  onChangeTaskPorts: FlowDesignerViewProps['onChangeTaskPorts'],
-  onChangeTriggerConfig: FlowDesignerViewProps['onChangeTriggerConfig'],
-  onChangeTriggerSchedule: FlowDesignerViewProps['onChangeTriggerSchedule'],
-  onChangeWebhook: FlowDesignerViewProps['onChangeWebhook'],
-  onChangeValue: FlowDesignerViewProps['onChangeValue'],
+  callbacks: ViewCallbacks,
 ): SemanticNodeEntry {
   const nodeInputsFrom = inputsFrom(node)
   const values: NodeValues = {
@@ -914,7 +892,7 @@ function createNodeEntry(
       if (!values.syncingInput && designerStore.$.editable.value) {
         for (const handle of new Set([...previousInputValues.keys(), ...inputValues.keys()])) {
           if (previousInputValues.has(handle) == inputValues.has(handle) && Object.is(previousInputValues.get(handle), inputValues.get(handle))) continue
-          onChangeInput?.(node.id, handle, inputValues.get(handle))
+          callbacks.onChangeInput?.(node.id, handle, inputValues.get(handle))
         }
       }
       previousInputValues = inputValues
@@ -923,10 +901,10 @@ function createNodeEntry(
   const diagnosticSection = createDiagnosticSection(values.diagnostics)
   const duplicateNode = (offset?: FlowDesignerViewPosition) => designerStore.onDuplicate?.([node.id as NodeId], offset)
   const changeDescription =
-    onChangeNodeDescription == null
+    callbacks.onChangeNodeDescription == null
       ? undefined
       : (description: string | undefined) => {
-          if (designerStore.$.editable.value) onChangeNodeDescription(node.id, description)
+          if (designerStore.$.editable.value) callbacks.onChangeNodeDescription?.(node.id, description)
         }
   const commonDisplay = {
     icon: values.icon,
@@ -961,7 +939,7 @@ function createNodeEntry(
       })
       const notifyChange = () => {
         if (values.syncingCondition || !designerStore.$.editable.value) return
-        onChangeCondition?.(node.id, conditionChange(values))
+        callbacks.onChangeCondition?.(node.id, conditionChange(values))
       }
       store = new ConditionNodeStore(node.id as NodeId, {
         changeDescription,
@@ -1018,7 +996,7 @@ function createNodeEntry(
       if (node.editablePorts) {
         const changePorts = () => {
           if (values.syncingPorts || !designerStore.$.editable.value) return
-          onChangeTaskPorts?.(node.id, taskInputs(values.inputDefs.value), taskOutputs(values.outputDefs.value))
+          callbacks.onChangeTaskPorts?.(node.id, taskInputs(values.inputDefs.value), taskOutputs(values.outputDefs.value))
         }
         store.dispose.add(values.inputDefs.reaction(changePorts, true))
         store.dispose.add(values.outputDefs.reaction(changePorts, true))
@@ -1039,22 +1017,22 @@ function createNodeEntry(
       store = new TriggerNodeStore(node.id as NodeId, {
         changeDescription,
         changeConfig:
-          onChangeTriggerConfig == null
+          callbacks.onChangeTriggerConfig == null
             ? undefined
             : (name, value) => {
-                if (designerStore.$.editable.value) onChangeTriggerConfig(node.id, name, value)
+                if (designerStore.$.editable.value) callbacks.onChangeTriggerConfig?.(node.id, name, value)
               },
         changeSchedule:
-          onChangeTriggerSchedule == null
+          callbacks.onChangeTriggerSchedule == null
             ? undefined
             : (schedule) => {
-                if (designerStore.$.editable.value) onChangeTriggerSchedule(node.id, schedule)
+                if (designerStore.$.editable.value) callbacks.onChangeTriggerSchedule?.(node.id, schedule)
               },
         changeWebhook:
-          onChangeWebhook == null
+          callbacks.onChangeWebhook == null
             ? undefined
             : (webhook) => {
-                if (designerStore.$.editable.value) onChangeWebhook(node.id, webhook)
+                if (designerStore.$.editable.value) callbacks.onChangeWebhook?.(node.id, webhook)
               },
         display$: {
           ...commonDisplay,
@@ -1091,7 +1069,7 @@ function createNodeEntry(
       store.dispose.add(
         valueSection.$.valueHandleDefs.reaction((nextDefs) => {
           if (values.syncingValue || !designerStore.$.editable.value) return
-          onChangeValue?.(
+          callbacks.onChangeValue?.(
             node.id,
             (nextDefs ?? []).map((def) =>
               Object.assign(
@@ -1237,7 +1215,7 @@ export function FlowDesignerView(props: FlowDesignerViewProps): ReactElement {
 
   useEffect(() => () => adapter.dispose(), [adapter])
   useLayoutEffect(() => {
-    adapter.update(props.model, props.editable, props.language ?? 'en', props.addItems, props.selectedNodeIds, callbacksFromProps(props))
+    adapter.reconcile(props.model, props.editable, props.language ?? 'en', props.addItems, props.selectedNodeIds, callbacksFromProps(props))
   }, [adapter, props])
   useEffect(() => {
     if (props.focusNodeRequest != null) {
