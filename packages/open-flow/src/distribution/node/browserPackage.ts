@@ -18,15 +18,15 @@ const connectorProxyEntryPath = 'src/connector/common/proxy.ts'
 const controlApiEntryPath = 'src/control/common/api.ts'
 const controlApiConformanceEntryPath = 'src/control/common/conformance.ts'
 const controlApiErrorsEntryPath = 'src/control/common/errors.ts'
-const projectNotificationsEntryPath = 'src/control/common/projectNotifications.ts'
+const flowNotificationsEntryPath = 'src/control/common/flowNotifications.ts'
 const cronTriggerEntryPath = 'src/trigger/common/cron.ts'
 const integrationTriggerEntryPath = 'src/trigger/common/integration.ts'
 const pollTriggerEntryPath = 'src/trigger/common/poll.ts'
 const providerTriggersEntryPath = 'src/trigger/providers/definitions.ts'
-const projectAuthoringEntryPath = 'src/project/common/authoring.ts'
-const projectChangeEntryPath = 'src/project/common/change.ts'
-const projectEncodingEntryPath = 'src/project/common/encoding.ts'
-const projectSemanticsEntryPath = 'src/project/common/semantics.ts'
+const flowAuthoringEntryPath = 'src/flow/common/authoring.ts'
+const flowChangeEntryPath = 'src/flow/common/change.ts'
+const flowEncodingEntryPath = 'src/flow/common/encoding.ts'
+const flowSemanticsEntryPath = 'src/flow/common/semantics.ts'
 const runLifecycleEntryPath = 'src/execution/common/runLifecycle.ts'
 const runEventsEntryPath = 'src/execution/common/events.ts'
 const runtimeContractEntryPath = 'src/execution/common/runtime.ts'
@@ -50,16 +50,16 @@ export async function buildBrowserPackage(options: BuildBrowserPackageOptions): 
   await buildRuntime(options, commonOutputPath, runLifecycleEntryPath, 'run-lifecycle', false)
   await buildRuntime(options, commonOutputPath, runEventsEntryPath, 'run-events', false)
   await buildRuntime(options, commonOutputPath, runtimeContractEntryPath, 'runtime-contract', false)
-  await buildRuntime(options, commonOutputPath, projectEncodingEntryPath, 'project-encoding', false)
-  await buildRuntime(options, commonOutputPath, projectSemanticsEntryPath, 'project-semantics', false)
+  await buildRuntime(options, commonOutputPath, flowEncodingEntryPath, 'flow-encoding', false)
+  await buildRuntime(options, commonOutputPath, flowSemanticsEntryPath, 'flow-semantics', false)
   await buildRuntime(options, commonOutputPath, schedulerEntryPath, 'scheduler', false)
   await buildRuntime(options, commonOutputPath, cronTriggerEntryPath, 'cron-trigger', false)
   await buildRuntime(options, commonOutputPath, integrationTriggerEntryPath, 'integration-trigger', false)
   await buildRuntime(options, commonOutputPath, pollTriggerEntryPath, 'poll-trigger', false)
   await buildRuntime(options, commonOutputPath, providerTriggersEntryPath, 'provider-triggers', false)
   await buildRuntime(options, commonOutputPath, webhookTriggerEntryPath, 'webhook-trigger', false)
-  await buildRuntime(options, browserOutputPath, projectChangeEntryPath, 'project-change', true)
-  await buildRuntime(options, browserOutputPath, projectAuthoringEntryPath, 'project-authoring', false)
+  await buildRuntime(options, browserOutputPath, flowChangeEntryPath, 'flow-change', true)
+  await buildRuntime(options, browserOutputPath, flowAuthoringEntryPath, 'flow-authoring', false)
   await buildRuntime(options, browserOutputPath, workbenchEntryPath, 'workbench', false)
   await writeDeclarations(options, browserOutputPath, commonOutputPath)
 }
@@ -167,9 +167,9 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
         path.join(options.sourceRoot, controlApiEntryPath),
         path.join(options.sourceRoot, controlApiConformanceEntryPath),
         path.join(options.sourceRoot, controlApiErrorsEntryPath),
-        path.join(options.sourceRoot, projectNotificationsEntryPath),
-        path.join(options.sourceRoot, projectEncodingEntryPath),
-        path.join(options.sourceRoot, projectSemanticsEntryPath),
+        path.join(options.sourceRoot, flowNotificationsEntryPath),
+        path.join(options.sourceRoot, flowEncodingEntryPath),
+        path.join(options.sourceRoot, flowSemanticsEntryPath),
         path.join(options.sourceRoot, runEventsEntryPath),
         path.join(options.sourceRoot, runLifecycleEntryPath),
         path.join(options.sourceRoot, runtimeContractEntryPath),
@@ -179,8 +179,8 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
         path.join(options.sourceRoot, pollTriggerEntryPath),
         path.join(options.sourceRoot, providerTriggersEntryPath),
         path.join(options.sourceRoot, webhookTriggerEntryPath),
-        path.join(options.sourceRoot, projectAuthoringEntryPath),
-        path.join(options.sourceRoot, projectChangeEntryPath),
+        path.join(options.sourceRoot, flowAuthoringEntryPath),
+        path.join(options.sourceRoot, flowChangeEntryPath),
         path.join(options.sourceRoot, workbenchEntryPath),
       ],
       { cwd: options.sourceRoot },
@@ -189,86 +189,80 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
     const workbenchStyleImport = "import './styles.css';\n"
     if (!workbenchDeclaration.startsWith(workbenchStyleImport)) throw new Error('Workbench declaration did not contain the expected style import.')
     const workbenchContract = (await readFile(path.join(declarationRoot, 'workbench/browser/runtime/contract.d.ts'), 'utf8')).replaceAll(
-      "'../../../control/common/projectNotifications.ts'",
-      "'./project-notifications.js'",
+      "'../../../control/common/flowNotifications.ts'",
+      "'./flow-notifications.js'",
     )
-    const projectNotificationsDeclaration = await readFile(path.join(declarationRoot, 'control/common/projectNotifications.d.ts'), 'utf8')
-    const projectAuthoringDeclaration = (await readFile(path.join(declarationRoot, 'project/common/authoring.d.ts'), 'utf8'))
-      .replaceAll("'./edgeChanges.ts'", "'./project-authoring-edge.js'")
-      .replaceAll("'./flowChanges.ts'", "'./project-authoring-flow.js'")
-      .replaceAll("'./moduleChanges.ts'", "'./project-authoring-module.js'")
-      .replaceAll("'./nodeChanges.ts'", "'./project-authoring-node.js'")
-    const projectAuthoringEdgeDeclaration = (await readFile(path.join(declarationRoot, 'project/common/edgeChanges.d.ts'), 'utf8')).replaceAll(
+    const flowNotificationsDeclaration = await readFile(path.join(declarationRoot, 'control/common/flowNotifications.d.ts'), 'utf8')
+    const flowAuthoringDeclaration = (await readFile(path.join(declarationRoot, 'flow/common/authoring.d.ts'), 'utf8'))
+      .replaceAll("'./edgeChanges.ts'", "'./flow-authoring-edge.js'")
+      .replaceAll("'./moduleChanges.ts'", "'./flow-authoring-module.js'")
+      .replaceAll("'./nodeChanges.ts'", "'./flow-authoring-node.js'")
+    const flowAuthoringEdgeDeclaration = (await readFile(path.join(declarationRoot, 'flow/common/edgeChanges.d.ts'), 'utf8')).replaceAll(
       "'./change.ts'",
-      "'./project-change.js'",
+      "'./flow-change.js'",
     )
-    const projectAuthoringFlowDeclaration = (await readFile(path.join(declarationRoot, 'project/common/flowChanges.d.ts'), 'utf8')).replaceAll(
+    const flowAuthoringModuleDeclaration = (await readFile(path.join(declarationRoot, 'flow/common/moduleChanges.d.ts'), 'utf8')).replaceAll(
       "'./change.ts'",
-      "'./project-change.js'",
+      "'./flow-change.js'",
     )
-    const projectAuthoringModuleDeclaration = (await readFile(path.join(declarationRoot, 'project/common/moduleChanges.d.ts'), 'utf8')).replaceAll(
+    const flowAuthoringNodeDeclaration = (await readFile(path.join(declarationRoot, 'flow/common/nodeChanges.d.ts'), 'utf8')).replaceAll(
       "'./change.ts'",
-      "'./project-change.js'",
+      "'./flow-change.js'",
     )
-    const projectAuthoringNodeDeclaration = (await readFile(path.join(declarationRoot, 'project/common/nodeChanges.d.ts'), 'utf8')).replaceAll(
-      "'./change.ts'",
-      "'./project-change.js'",
-    )
-    const projectChangeDeclaration = await readFile(path.join(declarationRoot, 'project/common/change.d.ts'), 'utf8')
+    const flowChangeDeclaration = await readFile(path.join(declarationRoot, 'flow/common/change.d.ts'), 'utf8')
     const connectorActionDeclaration = await readFile(path.join(declarationRoot, 'connector/common/actionSchema.d.ts'), 'utf8')
     const connectorProxyDeclaration = await readFile(path.join(declarationRoot, 'connector/common/proxy.d.ts'), 'utf8')
     const controlApiDeclaration = (await readFile(path.join(declarationRoot, 'control/common/api.d.ts'), 'utf8'))
       .replaceAll("'../../execution/common/runLifecycle.ts'", "'./run-lifecycle.js'")
-      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+      .replaceAll("'../../flow/common/change.ts'", "'../browser/flow-change.js'")
       .replaceAll("'./errors.ts'", "'./control-api-errors.js'")
-      .replaceAll("'./projectNotifications.ts'", "'./project-notifications.js'")
+      .replaceAll("'./flowNotifications.ts'", "'./flow-notifications.js'")
     const controlApiConformanceDeclaration = await readFile(path.join(declarationRoot, 'control/common/conformance.d.ts'), 'utf8')
     const controlApiErrorsDeclaration = await readFile(path.join(declarationRoot, 'control/common/errors.d.ts'), 'utf8')
-    const projectEncodingDeclaration = await readFile(path.join(declarationRoot, 'project/common/encoding.d.ts'), 'utf8')
-    const projectSemanticsDeclaration = (await readFile(path.join(declarationRoot, 'project/common/semantics.d.ts'), 'utf8'))
+    const flowEncodingDeclaration = await readFile(path.join(declarationRoot, 'flow/common/encoding.d.ts'), 'utf8')
+    const flowSemanticsDeclaration = (await readFile(path.join(declarationRoot, 'flow/common/semantics.d.ts'), 'utf8'))
       .replaceAll("'../../execution/common/engineContract.ts'", "'./engine-contract.js'")
       .replaceAll("'../../execution/common/runtime.ts'", "'./runtime-contract.js'")
     const runLifecycleDeclaration = await readFile(path.join(declarationRoot, 'execution/common/runLifecycle.d.ts'), 'utf8')
     const runEventsDeclaration = await readFile(path.join(declarationRoot, 'execution/common/events.d.ts'), 'utf8')
     const engineContractDeclaration = await readFile(path.join(declarationRoot, 'execution/common/engineContract.d.ts'), 'utf8')
     const runtimeContractDeclaration = (await readFile(path.join(declarationRoot, 'execution/common/runtime.d.ts'), 'utf8'))
-      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+      .replaceAll("'../../flow/common/change.ts'", "'../browser/flow-change.js'")
       .replaceAll("'./engineContract.ts'", "'./engine-contract.js'")
     const schedulerDeclaration = (await readFile(path.join(declarationRoot, 'execution/common/scheduler.d.ts'), 'utf8'))
-      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
-      .replaceAll("'../../project/common/semantics.ts'", "'./project-semantics.js'")
+      .replaceAll("'../../flow/common/change.ts'", "'../browser/flow-change.js'")
+      .replaceAll("'../../flow/common/semantics.ts'", "'./flow-semantics.js'")
     const cronTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/cron.d.ts'), 'utf8')).replaceAll(
-      "'../../project/common/change.ts'",
-      "'../browser/project-change.js'",
+      "'../../flow/common/change.ts'",
+      "'../browser/flow-change.js'",
     )
     const integrationTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/integration.d.ts'), 'utf8'))
       .replaceAll("'../../connector/common/proxy.ts'", "'./connector-proxy.js'")
-      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+      .replaceAll("'../../flow/common/change.ts'", "'../browser/flow-change.js'")
     const pollTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/poll.d.ts'), 'utf8'))
       .replaceAll("'../../connector/common/proxy.ts'", "'./connector-proxy.js'")
-      .replaceAll("'../../project/common/change.ts'", "'../browser/project-change.js'")
+      .replaceAll("'../../flow/common/change.ts'", "'../browser/flow-change.js'")
     const providerTriggersDeclaration = (await readFile(path.join(declarationRoot, 'trigger/providers/definitions.d.ts'), 'utf8'))
       .replaceAll("'../common/integration.ts'", "'./integration-trigger.js'")
       .replaceAll("'../common/poll.ts'", "'./poll-trigger.js'")
     const webhookTriggerDeclaration = (await readFile(path.join(declarationRoot, 'trigger/common/webhook.d.ts'), 'utf8')).replaceAll(
-      "'../../project/common/change.ts'",
-      "'../browser/project-change.js'",
+      "'../../flow/common/change.ts'",
+      "'../browser/flow-change.js'",
     )
     await Promise.all([
-      writeFile(path.join(browserOutputPath, 'project-authoring.d.ts'), projectAuthoringDeclaration),
-      writeFile(path.join(browserOutputPath, 'project-authoring-edge.d.ts'), projectAuthoringEdgeDeclaration),
-      writeFile(path.join(browserOutputPath, 'project-authoring-flow.d.ts'), projectAuthoringFlowDeclaration),
-      writeFile(path.join(browserOutputPath, 'project-authoring-module.d.ts'), projectAuthoringModuleDeclaration),
-      writeFile(path.join(browserOutputPath, 'project-authoring-node.d.ts'), projectAuthoringNodeDeclaration),
-      writeFile(path.join(browserOutputPath, 'project-change.d.ts'), projectChangeDeclaration),
-      writeFile(path.join(commonOutputPath, 'project-encoding.d.ts'), projectEncodingDeclaration),
-      writeFile(path.join(commonOutputPath, 'project-semantics.d.ts'), projectSemanticsDeclaration),
+      writeFile(path.join(browserOutputPath, 'flow-authoring.d.ts'), flowAuthoringDeclaration),
+      writeFile(path.join(browserOutputPath, 'flow-authoring-edge.d.ts'), flowAuthoringEdgeDeclaration),
+      writeFile(path.join(browserOutputPath, 'flow-authoring-module.d.ts'), flowAuthoringModuleDeclaration),
+      writeFile(path.join(browserOutputPath, 'flow-authoring-node.d.ts'), flowAuthoringNodeDeclaration),
+      writeFile(path.join(browserOutputPath, 'flow-change.d.ts'), flowChangeDeclaration),
+      writeFile(path.join(commonOutputPath, 'flow-encoding.d.ts'), flowEncodingDeclaration),
+      writeFile(path.join(commonOutputPath, 'flow-semantics.d.ts'), flowSemanticsDeclaration),
       writeFile(
         path.join(browserOutputPath, 'workbench.d.ts'),
         workbenchDeclaration.slice(workbenchStyleImport.length).replaceAll("'./contract.ts'", "'./workbench-contract.js'"),
       ),
       writeFile(path.join(browserOutputPath, 'workbench-contract.d.ts'), workbenchContract),
-      writeFile(path.join(browserOutputPath, 'project-notifications.d.ts'), projectNotificationsDeclaration),
+      writeFile(path.join(browserOutputPath, 'flow-notifications.d.ts'), flowNotificationsDeclaration),
       writeFile(path.join(browserOutputPath, 'workbench.css.d.ts'), 'export {}\n'),
       writeFile(path.join(commonOutputPath, 'run-lifecycle.d.ts'), runLifecycleDeclaration),
       writeFile(path.join(commonOutputPath, 'run-events.d.ts'), runEventsDeclaration),
@@ -279,7 +273,7 @@ async function writeDeclarations(options: BuildBrowserPackageOptions, browserOut
       writeFile(path.join(commonOutputPath, 'connector-proxy.d.ts'), connectorProxyDeclaration),
       writeFile(path.join(commonOutputPath, 'control-api.d.ts'), controlApiDeclaration),
       writeFile(path.join(commonOutputPath, 'control-api-errors.d.ts'), controlApiErrorsDeclaration),
-      writeFile(path.join(commonOutputPath, 'project-notifications.d.ts'), projectNotificationsDeclaration),
+      writeFile(path.join(commonOutputPath, 'flow-notifications.d.ts'), flowNotificationsDeclaration),
       writeFile(path.join(commonOutputPath, 'control-api-conformance.d.ts'), controlApiConformanceDeclaration),
       writeFile(path.join(commonOutputPath, 'cron-trigger.d.ts'), cronTriggerDeclaration),
       writeFile(path.join(commonOutputPath, 'integration-trigger.d.ts'), integrationTriggerDeclaration),

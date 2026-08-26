@@ -1,7 +1,7 @@
 import type { I18n } from 'val-i18n'
-import type { Settings as NodeSettings, TriggerSettings } from '../../../../project/common/nodeChanges.ts'
-import type { WorkbenchClient, Draft, DraftSync, Flow, JsonValue, Project, TriggerSchedule } from '../api.ts'
-import type { ProjectChangeEvent } from '../contract.ts'
+import type { Settings as NodeSettings, TriggerSettings } from '../../../../flow/common/nodeChanges.ts'
+import type { WorkbenchClient, Draft, DraftSync, Flow, JsonValue, Live, TriggerSchedule } from '../api.ts'
+import type { FlowChangeEvent } from '../contract.ts'
 import type { AddNodeOption } from '../designer/addNodeOptions.ts'
 import type { DiagnosticItem } from '../designer/diagnostics.ts'
 import type {
@@ -9,12 +9,12 @@ import type {
   CodeTaskPorts,
   DesignerTarget,
   NodeClipboard,
-  ProjectChanges,
+  FlowChanges,
   SubflowSettings,
   TaskSettings,
   ValueSettings,
   WebhookSettings,
-} from '../designer/projectChanges.ts'
+} from '../designer/flowChanges.ts'
 import type { RevisionView } from '../revisionView.ts'
 import type { DesignerEdge, DesignerGraph, DesignerViewport, Point } from '../workspace.ts'
 import type { DraftChangeContext } from './draftChanges.ts'
@@ -23,23 +23,21 @@ import type { PresentationUpdate } from './presentationChanges.ts'
 import type { SetNotice } from './workbenchNotice.ts'
 import type { ModuleEditorDraft, Workspace$, WorkspaceState } from './workspaceModel.ts'
 
-import { connect as connectProjectNodes, disconnect as disconnectProjectNodes } from '../../../../project/common/edgeChanges.ts'
-import { deleteFlow as deleteProjectFlow, renameFlow as renameProjectFlow } from '../../../../project/common/flowChanges.ts'
-import { imports as moduleImports, replaceSource as replaceModuleSource } from '../../../../project/common/moduleChanges.ts'
+import { connect as connectFlowNodes, disconnect as disconnectFlowNodes } from '../../../../flow/common/edgeChanges.ts'
+import { imports as moduleImports, replaceSource as replaceModuleSource } from '../../../../flow/common/moduleChanges.ts'
 import {
   setConnectorConnection as changeConnectorConnection,
   setTriggerConnection as changeTriggerConnection,
   updateTrigger,
   updateTriggerConfig,
   updateTriggerSchedule,
-} from '../../../../project/common/nodeChanges.ts'
+} from '../../../../flow/common/nodeChanges.ts'
 import { addNodeIntent } from '../designer/addNodeOptions.ts'
-import { diagnosticFlow } from '../designer/diagnostics.ts'
 import {
-  addNode as addProjectNode,
-  applyProjectChanges,
+  addNode as addFlowNode,
+  applyFlowChanges,
   copyNodes,
-  createResource as createProjectResource,
+  createResource as createFlowResource,
   deleteSelection,
   pasteNodes,
   setInputValue as changeInputValue,
@@ -51,15 +49,15 @@ import {
   updateTask,
   updateValue,
   updateWebhook,
-} from '../designer/projectChanges.ts'
+} from '../designer/flowChanges.ts'
 import { remoteChangeTargets } from '../designer/remoteChangeTargets.ts'
 import { createI18n } from '../i18n.ts'
 import { revisionView } from '../revisionView.ts'
-import { commentIds, designerGraph, initialFlow, removeComments, setComment, setFlowViewport, setNodePositions } from '../workspace.ts'
-import { advanceFlowSummaries, DraftChanges } from './draftChanges.ts'
+import { commentIds, designerGraph, removeComments, setComment, setFlowViewport, setNodePositions } from '../workspace.ts'
+import { DraftChanges } from './draftChanges.ts'
+import { FlowCatalog } from './flowCatalog.ts'
 import { Latest } from './latest.ts'
 import { PresentationChanges } from './presentationChanges.ts'
-import { ProjectCatalog } from './projectCatalog.ts'
 import { errorNotice } from './workbenchNotice.ts'
 import { moduleEditorStatus, selectedModuleEditor, WorkspaceModel } from './workspaceModel.ts'
 
@@ -81,29 +79,14 @@ interface ReconciledRevision {
   readonly target?: DesignerTarget
 }
 
-function reconcileTarget(
-  revision: RevisionView,
-  flows: readonly Flow[],
-  previousFlows: readonly Flow[],
-  target: DesignerTarget | undefined,
-): DesignerTarget | undefined {
+function reconcileTarget(revision: RevisionView, target: DesignerTarget | undefined): DesignerTarget | undefined {
   if (target == null) return
-  if (target.kind == 'subflow') {
-    if (revision.subflow(target.id) != null) return target
-    const flow = initialFlow(flows, null)
-    return flow == null ? undefined : { id: flow.flowId, kind: 'flow' }
-  }
-  if (revision.flow(target.id) != null) return target
+  return target.kind == 'flow' || revision.subflow(target.id) != null ? target : { kind: 'flow' }
+}
 
-  const draftIds = new Set(revision.flowIds)
-  const previousDraftIds = previousFlows.filter((flow) => flow.draft != null).map((flow) => flow.flowId)
-  const index = previousDraftIds.indexOf(target.id)
-  const candidates = index < 0 ? previousDraftIds : [...previousDraftIds.slice(index + 1), ...previousDraftIds.slice(0, index).toReversed()]
-  const flowId =
-    candidates.find((candidate) => draftIds.has(candidate)) ??
-    flows.find((flow) => flow.draft != null && draftIds.has(flow.flowId))?.flowId ??
-    draftIds.values().next().value
-  return flowId == null ? undefined : { id: flowId, kind: 'flow' }
+function sameTarget(left: DesignerTarget | undefined, right: DesignerTarget | undefined): boolean {
+  if (left?.kind != right?.kind) return false
+  return left?.kind != 'subflow' || (right?.kind == 'subflow' && left.id == right.id)
 }
 
 export class WorkspaceStore {
@@ -113,8 +96,8 @@ export class WorkspaceStore {
   readonly #i18n: I18n
   readonly #identity: () => string
   readonly #presentationChanges: PresentationChanges
-  readonly #projects: ProjectCatalog
-  readonly #runCreated: (event: Extract<ProjectChangeEvent, { readonly kind: 'run.created' }>) => void
+  readonly #flows: FlowCatalog
+  readonly #runCreated: (event: Extract<FlowChangeEvent, { readonly kind: 'run.created' }>) => void
   readonly #setNotice: SetNotice
   readonly #model: WorkspaceModel
   #clipboard?: Clipboard
@@ -123,7 +106,7 @@ export class WorkspaceStore {
   #draftReveal?: {
     readonly current: Current
     readonly generation: number
-    readonly projectId: string
+    readonly flowId: string
     readonly target: DesignerTarget
     readonly targets: Set<string>
     timer: ReturnType<typeof globalThis.setTimeout>
@@ -135,7 +118,8 @@ export class WorkspaceStore {
   #disposed = false
   #draftSyncQueued = false
   #nodeFocusId = 0
-  #stopProjectWatch?: () => void
+  #stopCatalogWatch?: () => void
+  #stopFlowWatch?: () => void
   public readonly $: Workspace$
 
   public constructor(
@@ -143,17 +127,17 @@ export class WorkspaceStore {
     setNotice: SetNotice,
     identity: () => string = () => crypto.randomUUID(),
     i18n: I18n = createI18n(),
-    runCreated: (event: Extract<ProjectChangeEvent, { readonly kind: 'run.created' }>) => void = () => {},
+    runCreated: (event: Extract<FlowChangeEvent, { readonly kind: 'run.created' }>) => void = () => {},
   ) {
     this.#client = client
     this.#setNotice = setNotice
     this.#identity = identity
     this.#i18n = i18n
     this.#runCreated = runCreated
-    this.#projects = new ProjectCatalog(client, setNotice, i18n)
-    this.#model = new WorkspaceModel(i18n, this.#projects)
+    this.#flows = new FlowCatalog(client, setNotice, i18n)
+    this.#model = new WorkspaceModel(i18n, this.#flows)
     this.#draftChanges = new DraftChanges(client, setNotice, i18n, {
-      apply: (draft, flows, previousFlows, preserveDiagnostics) => this.#applyProjectedDraft(draft, flows, previousFlows, preserveDiagnostics),
+      apply: (draft, preserveDiagnostics) => this.#applyProjectedDraft(draft, preserveDiagnostics),
       beforeChange: (manageBusy) => {
         this.#cancelDraftReveal()
         this.#draftRevealInvalidation = false
@@ -168,8 +152,7 @@ export class WorkspaceStore {
       finishChanges: () => {
         if (!this.#disposed && this.#model.value.busy == 'designer') this.#set({ busy: undefined })
       },
-      flows: () => this.#model.value.flows,
-      headChanged: (projectId, revisionId) => this.#advanceProjectHead(projectId, revisionId),
+      headChanged: (flowId, revisionId) => this.#advanceFlowHead(flowId, revisionId),
       recover: (context) => this.#syncDraftHead(context, true),
     })
     this.#presentationChanges = new PresentationChanges(client, setNotice, (presentation) => this.#set({ presentation }), i18n)
@@ -181,33 +164,30 @@ export class WorkspaceStore {
     this.#disposed = true
     this.#draftSession.invalidate()
     this.#presentationChanges.dispose()
-    this.#stopProjectWatch?.()
+    this.#stopCatalogWatch?.()
+    this.#stopFlowWatch?.()
     this.#model.dispose()
-    this.#projects.dispose()
+    this.#flows.dispose()
   }
 
-  public async start(projectId?: string, flowId?: string): Promise<void> {
-    if (projectId != null) {
-      await this.selectProject(projectId, flowId)
-      return
-    }
-    if (!(await this.selectProject(undefined))) return
-    if (this.#projects.loaded && !this.#projects.$.failed.value) return
-    await this.reloadProjects()
+  public async start(flowId?: string): Promise<void> {
+    this.#stopCatalogWatch ??= this.#client.watchFlowCatalog(() => void this.reloadFlows())
+    await this.reloadFlows()
+    await this.selectFlow(flowId)
   }
 
-  public async reloadProjects(): Promise<void> {
-    await this.#projects.reload()
+  public async reloadFlows(): Promise<void> {
+    await this.#flows.reload()
   }
 
-  public async loadMoreProjects(): Promise<void> {
-    await this.#projects.loadMore()
+  public async loadMoreFlows(): Promise<void> {
+    await this.#flows.loadMore()
   }
 
-  public async selectProject(projectId: string | undefined, flowId?: string): Promise<boolean> {
+  public async selectFlow(flowId: string | undefined): Promise<boolean> {
     if (!this.#allowModuleNavigation()) return false
     this.#cancelDraftReveal()
-    const current = this.#projects.beginSelection()
+    const current = this.#flows.beginSelection()
     this.#draftSession.invalidate()
     this.#draftChanges.reset()
     this.#presentationChanges.reset()
@@ -215,49 +195,47 @@ export class WorkspaceStore {
     this.#draftRevealInvalidation = false
     this.#draftUpdateNotice = false
     this.#draftSyncQueued = false
-    this.#stopProjectWatch?.()
-    this.#stopProjectWatch = undefined
+    this.#stopFlowWatch?.()
+    this.#stopFlowWatch = undefined
     this.#set({
       checkLoading: false,
       diagnosticFocus: undefined,
       diagnostics: undefined,
       draft: undefined,
-      flows: [],
+      live: undefined,
       moduleEditor: undefined,
       nodeFocus: undefined,
       presentation: undefined,
-      projectId,
+      flowId,
       selectedNodeIds: [],
-      target: flowId == null ? undefined : { id: flowId, kind: 'flow' },
+      target: flowId == null ? undefined : { kind: 'flow' },
       workspaceLoadFailed: false,
-      workspaceLoading: projectId != null,
+      workspaceLoading: flowId != null,
     })
-    if (projectId == null) return true
+    if (flowId == null) return true
     try {
-      const knownProject = this.#projects.project(projectId)
-      const [project, draft, flows, presentation] = await Promise.all([
-        knownProject ?? this.#client.getProject(projectId),
-        this.#client.getDraft(projectId),
-        this.#client.listFlows(projectId),
-        this.#client.getPresentation(projectId),
+      const knownFlow = this.#flows.flow(flowId)
+      const [flow, draft, live, presentation] = await Promise.all([
+        knownFlow ?? this.#client.getFlow(flowId),
+        this.#client.getDraft(flowId),
+        this.#client.getLive(flowId),
+        this.#client.getPresentation(flowId),
       ])
       if (!current()) return false
-      const routedFlow = flowId == null ? undefined : flows.find((flow) => flow.flowId == flowId)
-      const target = routedFlow == null ? undefined : { id: routedFlow.flowId, kind: 'flow' as const }
       this.#draftChanges.reset(draft)
       this.#presentationChanges.reset(presentation)
-      this.#projects.include(project)
+      this.#flows.include(flow)
       this.#set({
         draft,
-        flows,
+        live,
         presentation,
-        target,
+        target: { kind: 'flow' },
         workspaceLoadFailed: false,
         workspaceLoading: false,
       })
       void this.#checkTarget()
-      this.#stopProjectWatch = this.#client.watchProject(
-        projectId,
+      this.#stopFlowWatch = this.#client.watchFlow(
+        flowId,
         (revisionId) => {
           if (!this.#disposed && revisionId != this.#draftChanges.committed?.revisionId) void this.#refreshDraft(revisionId)
         },
@@ -305,12 +283,12 @@ export class WorkspaceStore {
     return true
   }
 
-  public async createProject(name: string): Promise<Project | undefined> {
+  public async createFlow(name: string): Promise<Flow | undefined> {
     if (!this.#allowModuleNavigation()) return
-    this.#set({ busy: 'project' })
+    this.#set({ busy: 'flow' })
     this.#setNotice(undefined)
     try {
-      return await this.#projects.create(name)
+      return await this.#flows.create(name)
     } catch (error) {
       if (!this.#disposed) this.#setNotice(errorNotice(error, this.#i18n.t))
     } finally {
@@ -318,17 +296,17 @@ export class WorkspaceStore {
     }
   }
 
-  public async deleteProject(projectId: string): Promise<boolean> {
+  public async deleteFlow(flowId: string): Promise<boolean> {
     if (!this.#allowModuleNavigation()) return false
-    const project = this.#projects.project(projectId)
-    if (project == null || project.status == 'retiring') return false
-    this.#set({ busy: 'project' })
+    const flow = this.#flows.flow(flowId)
+    if (flow == null || flow.status == 'retiring') return false
+    this.#set({ busy: 'flow' })
     this.#setNotice(undefined)
     try {
-      await this.#client.deleteProject(projectId)
+      await this.#client.deleteFlow(flowId)
       if (this.#disposed) return false
-      this.#projects.remove(projectId)
-      this.#setNotice({ kind: 'success', message: this.#i18n.t('notice.projectDeleteAccepted', { name: project.name }) })
+      this.#flows.remove(flowId)
+      this.#setNotice({ kind: 'success', message: this.#i18n.t('notice.flowDeleteAccepted', { name: flow.name }) })
       return true
     } catch (error) {
       if (!this.#disposed) this.#setNotice(errorNotice(error, this.#i18n.t))
@@ -338,16 +316,16 @@ export class WorkspaceStore {
     }
   }
 
-  public async createResource(kind: DesignerTarget['kind'], name: string): Promise<boolean> {
+  public async createResource(name: string): Promise<boolean> {
     if (!this.#allowModuleNavigation()) return false
     if (this.#model.value.draft == null) return false
     const id = this.#identity()
     this.#set({ busy: 'resource' })
     this.#setNotice(undefined)
-    const changed = await this.#changeDraft(createProjectResource(kind, id, name), false)
+    const changed = await this.#changeDraft(createFlowResource(id, name), false)
     this.#set({ busy: undefined })
     if (changed == null) return false
-    this.selectTarget({ id, kind })
+    this.selectTarget({ id, kind: 'subflow' })
     this.#setNotice({
       kind: 'success',
       message: this.#i18n.t('notice.createdInDraft', { name }),
@@ -356,34 +334,24 @@ export class WorkspaceStore {
   }
 
   public async renameFlow(flowId: string, name: string): Promise<boolean> {
-    const flow = this.$.revision.value?.flow(flowId)
+    const flow = this.#flows.flow(flowId)
     const nextName = name.trim()
     if (flow == null || nextName.length == 0) return false
     if (flow.name == nextName) return true
-    this.#set({ busy: 'resource' })
+    this.#set({ busy: 'flow' })
     this.#setNotice(undefined)
-    const changed = await this.#changeDraft(renameProjectFlow(flowId, nextName), false)
+    let changed: Flow | undefined
+    try {
+      changed = await this.#client.renameFlow(flowId, nextName)
+      if (changed != null) this.#flows.include(changed)
+    } catch (error) {
+      if (!this.#disposed) this.#setNotice(errorNotice(error, this.#i18n.t))
+    }
     this.#set({ busy: undefined })
     if (changed == null) return false
     this.#setNotice({
       kind: 'success',
       message: this.#i18n.t('notice.flowRenamed', { name: nextName }),
-    })
-    return true
-  }
-
-  public async deleteFlow(flowId: string): Promise<boolean> {
-    const flow = this.#model.value.flows.find((candidate) => candidate.flowId == flowId)
-    if (flow?.draft == null) return false
-    if (this.#model.value.target?.kind == 'flow' && this.#model.value.target.id == flowId && !this.#allowModuleNavigation()) return false
-    this.#set({ busy: 'resource' })
-    this.#setNotice(undefined)
-    const changed = await this.#changeDraft(deleteProjectFlow(flowId), false)
-    this.#set({ busy: undefined })
-    if (changed == null) return false
-    this.#setNotice({
-      kind: 'success',
-      message: this.#i18n.t('notice.flowDeleted', { name: flow.draft.name }),
     })
     return true
   }
@@ -398,10 +366,10 @@ export class WorkspaceStore {
     const revision = revisionView(draft)
     const intent = addNodeIntent(option, revision, target, this.#i18n.t)
     if (intent == null) return
-    const nodeChanges = addProjectNode(revision, target, nodeId, intent, this.#identity)
+    const nodeChanges = addFlowNode(revision, target, nodeId, intent, this.#identity)
     if (nodeChanges == null) return
     const changes =
-      connection == null ? nodeChanges : [...nodeChanges, ...connectProjectNodes(applyProjectChanges(draft, nodeChanges).content, target, connection(nodeId))]
+      connection == null ? nodeChanges : [...nodeChanges, ...connectFlowNodes(applyFlowChanges(draft, nodeChanges).content, target, connection(nodeId))]
     const change = this.#changeDraft(changes)
     this.selectNodes([nodeId])
     const move = this.moveNodes({ [nodeId]: position })
@@ -414,7 +382,7 @@ export class WorkspaceStore {
     const revision = this.$.revision.value
     const target = this.#model.value.target
     if (revision == null || target == null) return
-    const changes = connectProjectNodes(revision.revision.content, target, edge)
+    const changes = connectFlowNodes(revision.revision.content, target, edge)
     if (changes.length > 0) await this.#changeDraft(changes)
   }
 
@@ -422,7 +390,7 @@ export class WorkspaceStore {
     const revision = this.$.revision.value
     const target = this.#model.value.target
     if (revision == null || target == null) return
-    const changes = disconnectProjectNodes(revision.revision.content, target, edge)
+    const changes = disconnectFlowNodes(revision.revision.content, target, edge)
     if (changes.length > 0) await this.#changeDraft(changes)
   }
 
@@ -683,11 +651,11 @@ export class WorkspaceStore {
   }
 
   public async refreshFlows(): Promise<void> {
-    const projectId = this.#model.value.projectId
-    if (projectId == null) return
-    const current = this.#projects.capture()
-    const flows = await this.#client.listFlows(projectId)
-    if (current() && projectId == this.#model.value.projectId) this.#set({ flows })
+    await this.reloadFlows()
+  }
+
+  public updateLive(live: Live): void {
+    if (live.flowId == this.#model.value.flowId) this.#set({ live })
   }
 
   public locateNode(nodeId: string): boolean {
@@ -732,21 +700,20 @@ export class WorkspaceStore {
     return nodeId
   }
 
-  async #changeDraft(changes: ProjectChanges, manageBusy = true): Promise<Draft | undefined> {
-    const projectId = this.#model.value.projectId
+  async #changeDraft(changes: FlowChanges, manageBusy = true): Promise<Draft | undefined> {
+    const flowId = this.#model.value.flowId
     const draft = this.#model.value.draft
-    if (projectId == null || draft == null) return
-    return await this.#draftChanges.change({ current: this.#draftSession.capture(), projectId }, draft, changes, manageBusy)
+    if (flowId == null || draft == null) return
+    return await this.#draftChanges.change({ current: this.#draftSession.capture(), flowId }, draft, changes, manageBusy)
   }
 
-  #applyProjectedDraft(draft: Draft, flows: readonly Flow[], previousFlows: readonly Flow[], preserveDiagnostics = false): RevisionView {
+  #applyProjectedDraft(draft: Draft, preserveDiagnostics = false): RevisionView {
     const previousDraft = this.#model.value.draft
-    const { revision, selectedNodeIds, target } = this.#reconcileRevision(draft, flows, previousFlows)
+    const { revision, selectedNodeIds, target } = this.#reconcileRevision(draft)
     const currentEditor = this.#model.value.moduleEditor
     this.#set({
       diagnostics: preserveDiagnostics ? this.#model.value.diagnostics : undefined,
       draft,
-      flows,
       moduleEditor:
         currentEditor != null && previousDraft != null && moduleEditorStatus(previousDraft, currentEditor) != 'saved'
           ? currentEditor
@@ -759,43 +726,37 @@ export class WorkspaceStore {
 
   async #changePresentation(update: PresentationUpdate): Promise<void> {
     if (this.#disposed) return
-    const projectId = this.#model.value.projectId
+    const flowId = this.#model.value.flowId
     const presentation = this.#model.value.presentation
-    if (projectId != null && presentation != null) await this.#presentationChanges.change(projectId, presentation, this.#projects.capture(), update)
+    if (flowId != null && presentation != null) await this.#presentationChanges.change(flowId, presentation, this.#flows.capture(), update)
   }
 
   async #checkTarget(): Promise<void> {
     if (this.#disposed) return
-    const projectId = this.#model.value.projectId
+    const flowId = this.#model.value.flowId
     const draft = this.#model.value.draft
     const target = this.#model.value.target
-    if (projectId == null || draft == null || target == null) {
+    if (flowId == null || draft == null || target == null) {
       if (target == null) this.#set({ checkLoading: false, diagnostics: undefined })
-      return
-    }
-    const flowId = diagnosticFlow(revisionView(draft), target)
-    if (flowId == null) {
-      this.#set({ checkLoading: false, diagnostics: undefined })
       return
     }
     this.#set({ checkLoading: true, diagnosticFocus: undefined })
     try {
-      const diagnostics = await this.#client.checkFlow(projectId, draft.revisionId, flowId)
-      if (!this.#disposed && projectId == this.#model.value.projectId && draft.revisionId == this.#model.value.draft?.revisionId) this.#set({ diagnostics })
+      const diagnostics = await this.#client.checkFlow(flowId, draft.revisionId)
+      if (!this.#disposed && flowId == this.#model.value.flowId && draft.revisionId == this.#model.value.draft?.revisionId) this.#set({ diagnostics })
     } catch (error) {
-      if (!this.#disposed && projectId == this.#model.value.projectId && draft.revisionId == this.#model.value.draft?.revisionId) {
+      if (!this.#disposed && flowId == this.#model.value.flowId && draft.revisionId == this.#model.value.draft?.revisionId) {
         this.#setNotice(errorNotice(error, this.#i18n.t))
       }
     } finally {
-      if (!this.#disposed && projectId == this.#model.value.projectId && draft.revisionId == this.#model.value.draft?.revisionId)
-        this.#set({ checkLoading: false })
+      if (!this.#disposed && flowId == this.#model.value.flowId && draft.revisionId == this.#model.value.draft?.revisionId) this.#set({ checkLoading: false })
     }
   }
 
   async #refreshDraft(revisionId?: string): Promise<void> {
     if (this.#disposed) return
-    const projectId = this.#model.value.projectId
-    if (projectId == null) return
+    const flowId = this.#model.value.flowId
+    if (flowId == null) return
     this.#draftInvalidation += 1
     if (revisionId != null) {
       this.#draftUpdateNotice = true
@@ -803,7 +764,7 @@ export class WorkspaceStore {
     }
     if (this.#draftSyncQueued) return
     this.#draftSyncQueued = true
-    const context = { current: this.#draftSession.capture(), projectId }
+    const context = { current: this.#draftSession.capture(), flowId }
     await this.#draftChanges.enqueue(async () => {
       let generation: number
       do {
@@ -831,14 +792,14 @@ export class WorkspaceStore {
       const base = this.#draftChanges.committed
       if (base == null) return false
 
-      let synced = await this.#client.syncDraft(context.projectId, base.revisionId)
+      let synced = await this.#client.syncDraft(context.flowId, base.revisionId)
       if (!this.#isDraftChangeCurrent(context)) return false
       if (synced.kind == 'changes' && synced.revisions.length == 0) return true
       let committed: Draft
       try {
         committed = this.#materializeDraftSync(base, synced)
       } catch {
-        synced = await this.#client.syncDraft(context.projectId)
+        synced = await this.#client.syncDraft(context.flowId)
         if (!this.#isDraftChangeCurrent(context)) return false
         committed = this.#materializeDraftSync(base, synced)
       }
@@ -855,15 +816,9 @@ export class WorkspaceStore {
           : undefined
       if (synced.kind == 'snapshot') this.#cancelDraftReveal()
 
-      const previousFlows = this.#model.value.flows
-      const flows = advanceFlowSummaries(previousFlows, synced.draftFlows, committed)
-      const diagnostics = this.#model.value.diagnostics
-      const preserveDiagnostics =
-        this.#draftChanges.pendingCount == 0 &&
-        diagnostics != null &&
-        flows.find((flow) => flow.flowId == diagnostics.flowId)?.draft?.closureDigest == diagnostics.closureDigest
-      const preserveModuleEditor = this.#applyExternalDraft(committed, flows, preserveDiagnostics)
-      this.#advanceProjectHead(context.projectId, committed.revisionId)
+      const preserveDiagnostics = false
+      const preserveModuleEditor = this.#applyExternalDraft(committed, preserveDiagnostics)
+      this.#advanceFlowHead(context.flowId, committed.revisionId)
       if (
         synced.kind == 'changes' &&
         synced.revisions.length > 0 &&
@@ -892,7 +847,7 @@ export class WorkspaceStore {
     let draft = base
     for (const change of sync.revisions) {
       if (change.revision.parentRevisionId != draft.revisionId) throw new Error('Invalid Draft revision chain.')
-      draft = { ...change.revision, content: applyProjectChanges(draft, change.operations).content }
+      draft = { ...change.revision, content: applyFlowChanges(draft, change.operations).content }
     }
     return draft
   }
@@ -900,11 +855,11 @@ export class WorkspaceStore {
   #queueDraftReveal(context: DraftChangeContext, target: DesignerTarget, targets: ReadonlySet<string>, generation: number): void {
     const state = this.#model.value
     if (!this.#isDraftChangeCurrent(context) || generation != this.#draftRevealGeneration) return
-    if (state.target?.kind != target.kind || state.target.id != target.id) return
+    if (!sameTarget(state.target, target)) return
 
     const pending = this.#draftReveal
     if (pending != null) {
-      if (pending.projectId != context.projectId || pending.target.kind != target.kind || pending.target.id != target.id) {
+      if (pending.flowId != context.flowId || !sameTarget(pending.target, target)) {
         this.#cancelDraftReveal()
         return
       }
@@ -918,7 +873,7 @@ export class WorkspaceStore {
     this.#draftReveal = {
       current: context.current,
       generation,
-      projectId: context.projectId,
+      flowId: context.flowId,
       target,
       targets: new Set(targets),
       timer: globalThis.setTimeout(() => this.#finishDraftReveal(), draftRevealDelayMs),
@@ -932,7 +887,7 @@ export class WorkspaceStore {
     if (reveal == null || !reveal.current() || reveal.generation != this.#draftRevealGeneration) return
 
     const state = this.#model.value
-    if (state.projectId != reveal.projectId || state.target?.kind != reveal.target.kind || state.target.id != reveal.target.id) return
+    if (state.flowId != reveal.flowId || !sameTarget(state.target, reveal.target)) return
     if (state.selectedNodeIds.length > 0) return
     const viewport = this.#designer().viewport
     if (viewport.x != reveal.viewport.x || viewport.y != reveal.viewport.y || viewport.zoom != reveal.viewport.zoom) return
@@ -949,8 +904,8 @@ export class WorkspaceStore {
     this.#draftReveal = undefined
   }
 
-  #advanceProjectHead(projectId: string, revisionId: string): void {
-    this.#projects.advanceHead(projectId, revisionId)
+  #advanceFlowHead(flowId: string, revisionId: string): void {
+    this.#flows.advanceHead(flowId, revisionId)
   }
 
   #designer(): DesignerGraph {
@@ -968,30 +923,23 @@ export class WorkspaceStore {
     return false
   }
 
-  #reconcileRevision(draft: Draft, flows: readonly Flow[], previousFlows: readonly Flow[]): ReconciledRevision {
+  #reconcileRevision(draft: Draft): ReconciledRevision {
     const revision = revisionView(draft)
-    const target = reconcileTarget(revision, flows, previousFlows, this.#model.value.target)
+    const target = reconcileTarget(revision, this.#model.value.target)
     const selectedNodeIds = this.#model.value.selectedNodeIds.filter((nodeId) => target != null && revision.selection(target, nodeId) != null)
     return { revision, selectedNodeIds, target }
   }
 
-  #applyExternalDraft(committed: Draft, flows: readonly Flow[], preserveDiagnostics: boolean): boolean {
+  #applyExternalDraft(committed: Draft, preserveDiagnostics: boolean): boolean {
     this.#draftChanges.replaceCommitted(committed)
     const draft = this.#draftChanges.project(committed)
     const editor = this.#model.value.moduleEditor
     const preserveModuleEditor = editor != null && moduleEditorStatus(this.#model.value.draft, editor) != 'saved'
-    const previousFlows = this.#model.value.flows
-    const reconciled = this.#reconcileRevision(draft, flows, previousFlows)
-    const previousFlowIds = new Set(previousFlows.map((flow) => flow.flowId))
-    const createdFlows =
-      this.#model.value.target == null
-        ? flows.filter((flow) => flow.draft != null && reconciled.revision.flow(flow.flowId) != null && !previousFlowIds.has(flow.flowId))
-        : []
-    const target = createdFlows.length == 1 ? { id: createdFlows[0]!.flowId, kind: 'flow' as const } : reconciled.target
+    const reconciled = this.#reconcileRevision(draft)
+    const target = reconciled.target
     this.#set({
       diagnostics: preserveDiagnostics ? this.#model.value.diagnostics : undefined,
       draft,
-      flows,
       moduleEditor: this.#moduleEditorAfterExternalDraft(reconciled.revision, target, reconciled.selectedNodeIds),
       selectedNodeIds: reconciled.selectedNodeIds,
       target,
@@ -1012,7 +960,7 @@ export class WorkspaceStore {
   }
 
   #isDraftChangeCurrent(context: DraftChangeContext): boolean {
-    return !this.#disposed && context.projectId == this.#model.value.projectId && context.current()
+    return !this.#disposed && context.flowId == this.#model.value.flowId && context.current()
   }
 
   #set(patch: Partial<WorkspaceState>): void {

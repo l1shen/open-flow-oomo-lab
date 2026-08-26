@@ -1,4 +1,4 @@
-import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { RevisionContent } from '@oomol-lab/open-flow/flow-change'
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -25,31 +25,26 @@ function fullFlow(value = 2): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              value: {
-                concurrency: 1,
-                inputs: {},
-                kind: 'value',
-                values: { value: { ...port, value } },
-              },
-              increment: {
-                concurrency: 1,
-                inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'value', output: 'value' }] } },
-                kind: 'task',
-                task: { inputs: { value: port }, moduleId: 'increment', name: 'Increment', outputs: { value: port } },
-              },
-              nested: {
-                concurrency: 1,
-                inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'increment', output: 'value' }] } },
-                kind: 'subflow',
-                subflowId: 'double',
-              },
-            },
+      graph: {
+        nodes: {
+          value: {
+            concurrency: 1,
+            inputs: {},
+            kind: 'value',
+            values: { value: { ...port, value } },
           },
-          name: 'Main',
+          increment: {
+            concurrency: 1,
+            inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'value', output: 'value' }] } },
+            kind: 'task',
+            task: { inputs: { value: port }, moduleId: 'increment', name: 'Increment', outputs: { value: port } },
+          },
+          nested: {
+            concurrency: 1,
+            inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'increment', output: 'value' }] } },
+            kind: 'subflow',
+            subflowId: 'double',
+          },
         },
       },
       subflows: {
@@ -83,19 +78,14 @@ function hangingFlow(): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              task: {
-                concurrency: 1,
-                inputs: {},
-                kind: 'task',
-                task: { inputs: {}, moduleId: 'main', name: 'Main', outputs: {} },
-              },
-            },
+      graph: {
+        nodes: {
+          task: {
+            concurrency: 1,
+            inputs: {},
+            kind: 'task',
+            task: { inputs: {}, moduleId: 'main', name: 'Main', outputs: {} },
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -110,19 +100,14 @@ function llmFlow(): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              llm: {
-                concurrency: 1,
-                inputs: { prompt: { kind: 'value', value: 'Hello' } },
-                kind: 'task',
-                taskId: 'llm',
-              },
-            },
+      graph: {
+        nodes: {
+          llm: {
+            concurrency: 1,
+            inputs: { prompt: { kind: 'value', value: 'Hello' } },
+            kind: 'task',
+            taskId: 'llm',
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -273,7 +258,7 @@ describe('Server application service', () => {
     await service.close()
   })
 
-  it('runs different Projects concurrently without overlapping Runs from one Project', async () => {
+  it('runs different Flows concurrently without overlapping Runs from one Flow', async () => {
     const releases: (() => void)[] = []
     let invocation = 0
     const service = ServerService.open(await databaseFile(), undefined, Date.now, {
@@ -286,9 +271,9 @@ describe('Server application service', () => {
       },
       maxConcurrentRuns: 2,
     })
-    const first = await acceptRun(service, { flowId: 'main', idempotencyKey: 'project-a-first', revision: llmFlow(), revisionId: 'project-a' })
-    const second = await acceptRun(service, { flowId: 'main', idempotencyKey: 'project-a-second', revision: llmFlow(), revisionId: 'project-a' })
-    const other = await acceptRun(service, { flowId: 'main', idempotencyKey: 'project-b', revision: llmFlow(), revisionId: 'project-b' })
+    const first = await acceptRun(service, { flowId: 'main', idempotencyKey: 'revision-a-first', revision: llmFlow(), revisionId: 'revision-a' })
+    const second = await acceptRun(service, { flowId: 'main', idempotencyKey: 'revision-a-second', revision: llmFlow(), revisionId: 'revision-a' })
+    const other = await acceptRun(service, { flowId: 'main', idempotencyKey: 'revision-b', revision: llmFlow(), revisionId: 'revision-b' })
     if (first.kind != 'accepted' || second.kind != 'accepted' || other.kind != 'accepted') throw new Error('Concurrent Run setup conflicted.')
 
     service.start()

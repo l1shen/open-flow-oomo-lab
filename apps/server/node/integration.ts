@@ -1,4 +1,4 @@
-import type { IntegrationBodyFormat, IntegrationEndpointDeclaration, JsonValue } from '@oomol-lab/open-flow/project-change'
+import type { IntegrationBodyFormat, IntegrationEndpointDeclaration, JsonValue } from '@oomol-lab/open-flow/flow-change'
 import type { Logger } from 'pino'
 
 import { maximumIntegrationBodyBytes } from '@oomol-lab/open-flow/integration-trigger'

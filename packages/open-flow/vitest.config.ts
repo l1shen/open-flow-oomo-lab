@@ -8,8 +8,8 @@ export default defineConfig({
       include: [
         'src/execution/common/events.ts',
         'src/execution/common/scheduler.ts',
-        'src/project/common/change.ts',
-        'src/project/common/encoding.ts',
+        'src/flow/common/change.ts',
+        'src/flow/common/encoding.ts',
         'src/trigger/providers/google-drive/changes.ts',
         'src/trigger/providers/slack/on-message-posted.ts',
         'src/trigger/providers/telegram/on-update.ts',

@@ -156,12 +156,12 @@
       margin-top: 24px;
     }
 
-    .project-columns,
+    .flow-columns,
     .flow-columns {
       grid-template-columns: minmax(0, 1fr) 104px;
     }
 
-    .project-columns > :nth-child(2),
+    .flow-columns > :nth-child(2),
     .flow-columns > :nth-child(2) {
       display: none;
     }

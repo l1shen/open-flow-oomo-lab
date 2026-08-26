@@ -1,5 +1,5 @@
 import type { ConnectorProxy, ConnectorProxyRequest, ConnectorProxyResult } from '../src/connector/common/proxy.ts'
-import type { JsonValue } from '../src/project/common/change.ts'
+import type { JsonValue } from '../src/flow/common/change.ts'
 import type {
   IntegrationDefinition,
   IntegrationReceiveContext,

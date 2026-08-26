@@ -10,7 +10,7 @@ export type PresentationUpdate = (value: Readonly<Record<string, JsonValue>>) =>
 
 interface PendingChange {
   readonly current: Current
-  readonly projectId: string
+  readonly flowId: string
   readonly update: PresentationUpdate
 }
 
@@ -41,11 +41,11 @@ export class PresentationChanges {
     this.#pending = []
   }
 
-  public async change(projectId: string, presentation: Presentation, current: Current, update: PresentationUpdate): Promise<void> {
+  public async change(flowId: string, presentation: Presentation, current: Current, update: PresentationUpdate): Promise<void> {
     if (this.#disposed || this.#committed == null) return
     const value = update(presentation.value)
     if (value === presentation.value) return
-    const pending = { current, projectId, update }
+    const pending = { current, flowId, update }
     this.#pending.push(pending)
     this.#setPresentation({ ...presentation, value })
     this.#changes = this.#changes.then(async () => {
@@ -57,14 +57,14 @@ export class PresentationChanges {
         return
       }
       try {
-        const saved = await this.#client.updatePresentation(projectId, committed.revision, nextValue)
+        const saved = await this.#client.updatePresentation(flowId, committed.revision, nextValue)
         if (this.#disposed || !current()) return
         this.#finish(pending, saved)
       } catch (error) {
         if (this.#disposed || !current()) return
-        if (error instanceof ApiError && error.code == 'project.presentation-conflict') {
+        if (error instanceof ApiError && error.code == 'flow.presentation-conflict') {
           try {
-            const latest = await this.#client.getPresentation(projectId)
+            const latest = await this.#client.getPresentation(flowId)
             if (this.#disposed || !current()) return
             this.#finish(pending, latest)
             this.#setNotice({

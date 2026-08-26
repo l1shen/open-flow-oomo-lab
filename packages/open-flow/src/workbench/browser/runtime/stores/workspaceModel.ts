@@ -1,18 +1,18 @@
 import type { I18n } from 'val-i18n'
 import type { ReadonlyVal, Val } from 'value-enhancer'
-import type { Diagnostic, Draft, Flow, FlowCheck, Presentation, Project } from '../api.ts'
+import type { Diagnostic, Draft, Flow, FlowCheck, Live, Presentation } from '../api.ts'
 import type { AddNodeOption } from '../designer/addNodeOptions.ts'
 import type { DiagnosticFocus, DiagnosticItem } from '../designer/diagnostics.ts'
-import type { DesignerTarget } from '../designer/projectChanges.ts'
+import type { DesignerTarget } from '../designer/flowChanges.ts'
 import type { ResolvedSelection, RevisionView } from '../revisionView.ts'
-import type { ProjectCatalog } from './projectCatalog.ts'
+import type { FlowCatalog } from './flowCatalog.ts'
 
 import { compute, derive, val } from 'value-enhancer'
 import { deriveAddNodeOptions } from '../designer/addNodeOptions.ts'
 import { diagnosticItems, deriveInspectorDiagnostics } from '../designer/diagnostics.ts'
 import { revisionView } from '../revisionView.ts'
 
-export type WorkspaceBusy = 'designer' | 'resource' | 'project'
+export type WorkspaceBusy = 'designer' | 'flow' | 'resource'
 export type WorkspaceStatus = 'loading' | 'noDraft' | 'saved' | 'saving'
 export type ModuleEditorStatus = 'dirty' | 'failed' | 'saved' | 'saving'
 
@@ -39,11 +39,11 @@ export interface WorkspaceState {
   readonly diagnosticFocus?: DiagnosticFocus
   readonly diagnostics?: FlowCheck
   readonly draft?: Draft
-  readonly flows: readonly Flow[]
+  readonly flowId?: string
+  readonly live?: Live
   readonly moduleEditor?: ModuleEditorDraft
   readonly nodeFocus?: NodeFocus
   readonly presentation?: Presentation
-  readonly projectId?: string
   readonly selectedNodeIds: readonly string[]
   readonly target?: DesignerTarget
   readonly workspaceLoadFailed: boolean
@@ -63,21 +63,21 @@ export interface Workspace$ {
   readonly diagnosticFocus: ReadonlyVal<DiagnosticFocus | undefined>
   readonly diagnosticItems: ReadonlyVal<readonly DiagnosticItem[]>
   readonly draft: ReadonlyVal<Draft | undefined>
+  readonly flow: ReadonlyVal<Flow | undefined>
+  readonly flowId: ReadonlyVal<string | undefined>
+  readonly flowLoadFailed: ReadonlyVal<boolean>
+  readonly flowLoadMoreFailed: ReadonlyVal<boolean>
+  readonly flowLoading: ReadonlyVal<boolean>
+  readonly flowLoadingMore: ReadonlyVal<boolean>
+  readonly flowNextCursor: ReadonlyVal<string | undefined>
+  readonly flowTotal: ReadonlyVal<number | undefined>
   readonly flows: ReadonlyVal<readonly Flow[]>
   readonly inspectorDiagnostics: ReadonlyVal<readonly Diagnostic[]>
+  readonly live: ReadonlyVal<Live | undefined>
   readonly moduleDiagnostics: ReadonlyVal<readonly Diagnostic[]>
   readonly moduleEditor: ReadonlyVal<ModuleEditor | undefined>
   readonly nodeFocus: ReadonlyVal<NodeFocus | undefined>
   readonly presentation: ReadonlyVal<Presentation | undefined>
-  readonly project: ReadonlyVal<Project | undefined>
-  readonly projectId: ReadonlyVal<string | undefined>
-  readonly projectLoadFailed: ReadonlyVal<boolean>
-  readonly projectLoadMoreFailed: ReadonlyVal<boolean>
-  readonly projectLoading: ReadonlyVal<boolean>
-  readonly projectLoadingMore: ReadonlyVal<boolean>
-  readonly projectNextCursor: ReadonlyVal<string | undefined>
-  readonly projectTotal: ReadonlyVal<number | undefined>
-  readonly projects: ReadonlyVal<readonly Project[]>
   readonly revision: ReadonlyVal<RevisionView | undefined>
   readonly selection: ReadonlyVal<ResolvedSelection | undefined>
   readonly selectedNodeIds: ReadonlyVal<readonly string[]>
@@ -91,7 +91,6 @@ export interface Workspace$ {
 
 const initialState: WorkspaceState = {
   checkLoading: false,
-  flows: [],
   selectedNodeIds: [],
   workspaceLoadFailed: false,
   workspaceLoading: false,
@@ -128,16 +127,15 @@ export function selectedModuleEditor(
 export class WorkspaceModel {
   readonly #revisionContext: ReadonlyVal<RevisionContext>
   readonly #state: Val<WorkspaceState> = val(initialState)
-  readonly #projectValues: ReadonlySet<ReadonlyVal<unknown>>
+  readonly #catalogValues: ReadonlySet<ReadonlyVal<unknown>>
   public readonly $: Workspace$
 
-  public constructor(i18n: I18n, projects: ProjectCatalog) {
+  public constructor(i18n: I18n, flows: FlowCatalog) {
     const busy = derive(this.#state, (state) => state.busy)
     const checkLoading = derive(this.#state, (state) => state.checkLoading)
     const diagnosticFocus = derive(this.#state, (state) => state.diagnosticFocus)
     const diagnostics = derive(this.#state, (state) => state.diagnostics)
     const draft = derive(this.#state, (state) => state.draft)
-    const flows = derive(this.#state, (state) => state.flows)
     const moduleEditor = derive(this.#state, (state) => {
       if (state.moduleEditor == null) return
       const { phase: _phase, ...editor } = state.moduleEditor
@@ -148,7 +146,8 @@ export class WorkspaceModel {
     })
     const nodeFocus = derive(this.#state, (state) => state.nodeFocus)
     const presentation = derive(this.#state, (state) => state.presentation)
-    const projectId = derive(this.#state, (state) => state.projectId)
+    const flowId = derive(this.#state, (state) => state.flowId)
+    const live = derive(this.#state, (state) => state.live)
     const revision = derive(this.#state, (state) => (state.draft == null ? undefined : revisionView(state.draft)))
     const selectedNodeIds = derive(this.#state, (state) => state.selectedNodeIds)
     const target = derive(this.#state, (state) => state.target)
@@ -181,10 +180,22 @@ export class WorkspaceModel {
       ),
       diagnostics,
       draft,
-      flows,
+      flow: compute((get) => {
+        const selectedFlowId = get(flowId)
+        return selectedFlowId == null ? undefined : get(flows.$.flows).find((flow) => flow.flowId == selectedFlowId)
+      }),
+      flowId,
+      flowLoadFailed: flows.$.failed,
+      flowLoadMoreFailed: flows.$.loadMoreFailed,
+      flowLoading: flows.$.loading,
+      flowLoadingMore: flows.$.loadingMore,
+      flowNextCursor: flows.$.nextCursor,
+      flowTotal: flows.$.total,
+      flows: flows.$.flows,
       inspectorDiagnostics: derive(this.#state, (state) =>
         deriveInspectorDiagnostics(state.draft == null ? undefined : revisionView(state.draft), state.target, state.diagnostics, selection.value),
       ),
+      live,
       moduleDiagnostics: derive(this.#state, (state) => {
         const moduleId = state.moduleEditor?.moduleId
         return moduleId == null ? [] : (state.diagnostics?.diagnostics.filter((diagnostic) => diagnostic.path.startsWith(`/modules/${moduleId}/source`)) ?? [])
@@ -192,36 +203,23 @@ export class WorkspaceModel {
       moduleEditor,
       nodeFocus,
       presentation,
-      project: compute((get) => {
-        const selectedProjectId = get(projectId)
-        return selectedProjectId == null ? undefined : get(projects.$.projects).find((project) => project.projectId == selectedProjectId)
-      }),
-      projectId,
-      projectLoadFailed: projects.$.failed,
-      projectLoadMoreFailed: projects.$.loadMoreFailed,
-      projectLoading: projects.$.loading,
-      projectLoadingMore: projects.$.loadingMore,
-      projectNextCursor: projects.$.nextCursor,
-      projectTotal: projects.$.total,
-      projects: projects.$.projects,
       revision,
       selection,
       selectedNodeIds,
       status: derive(this.#state, status),
       target,
-      targetFlow: derive(this.#state, (state) =>
-        state.target?.kind == 'flow' ? state.flows.find((candidate) => candidate.flowId == state.target?.id) : undefined,
-      ),
+      targetFlow: compute((get) => (get(target)?.kind == 'flow' ? get(flows.$.flows).find((flow) => flow.flowId == get(flowId)) : undefined)),
       targetName: derive(this.#state, (state) => {
         if (state.target == null) return
+        if (state.target.kind == 'flow') return flows.flow(state.flowId ?? '')?.name
         if (state.draft == null) return state.target.id
         const currentRevision = revisionView(state.draft)
-        return (state.target.kind == 'flow' ? currentRevision.flow(state.target.id)?.name : currentRevision.subflow(state.target.id)?.name) ?? state.target.id
+        return currentRevision.subflow(state.target.id)?.name ?? state.target.id
       }),
       workspaceLoadFailed,
       workspaceLoading,
     }
-    this.#projectValues = new Set(Object.values(projects.$))
+    this.#catalogValues = new Set(Object.values(flows.$))
   }
 
   public get value(): WorkspaceState {
@@ -234,7 +232,7 @@ export class WorkspaceModel {
 
   public dispose(): void {
     for (const value of Object.values(this.$)) {
-      if (!this.#projectValues.has(value)) value.dispose()
+      if (!this.#catalogValues.has(value)) value.dispose()
     }
     this.#revisionContext.dispose()
     this.#state.dispose()

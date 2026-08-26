@@ -1,5 +1,5 @@
 import type { ConnectorProxyResult } from '../../../connector/common/proxy.ts'
-import type { JsonValue, TriggerKeySnapshot } from '../../../project/common/change.ts'
+import type { JsonValue, TriggerKeySnapshot } from '../../../flow/common/change.ts'
 import type { PollContext, PollDefinition, PollEvent, PollResult } from '../../common/poll.ts'
 
 import { PermanentPollError, PollConnectionError, TransientPollError } from '../../common/poll.ts'

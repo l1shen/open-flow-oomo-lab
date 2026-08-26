@@ -1,7 +1,7 @@
 # Command Artifact v2 分发合同
 
 本文定义 Open Flow 交付给 `oo flow` 宿主的 immutable Command Artifact、入口 host contract 和验证规则。产品边界以
-[产品与架构边界](../architecture.md)为准。Command Artifact 是 CLI 的代码分发载体，不包含 Workbench、Server 或本地 Project 实现。
+[产品与架构边界](../architecture.md)为准。Command Artifact 是 CLI 的代码分发载体，不包含 Workbench、Server 或本地持久化实现。
 其可编辑源码、构建、验证和发布入口只属于 `packages/command`；`packages/open-flow` 只提供 Command 消费的公开产品 API。
 
 ## 版本与发布记录
@@ -71,9 +71,7 @@ export const commandArtifactVersion = 2
 
 interface OpenFlowCommandHost {
   readonly cloudRequest: (path: string, init?: RequestInit) => Promise<Response>
-  readonly getWorkbenchUrl: (projectId: string, flowId?: string) => Promise<string>
-  readonly getProject: () => Promise<string | undefined>
-  readonly setProject: (projectId: string) => Promise<void>
+  readonly getWorkbenchUrl: (flowId?: string) => Promise<string>
   readonly language?: 'en' | 'zh-CN'
 }
 
@@ -82,7 +80,7 @@ export function runOpenFlowCommand(args: readonly string[], host: OpenFlowComman
 
 `args` 是删除 `oo flow` 前缀后的参数，返回值是 `0..255` 的整数 exit code，entry 不调用 `process.exit()`。`cloudRequest` 只能请求当前
 deployment 的 `/v1/` Control API path，不是通用 authenticated fetch；`getWorkbenchUrl` 只返回当前 deployment 的正式 Workbench deep
-link。环境变量和 `--project` 是单次调用 override，不能静默写回另一个 account 或 deployment scope。
+link。Artifact 不保存 Flow 或 deployment 选择，也不从当前工作目录推断资源 scope。
 
 Artifact 与宿主在同一个受信任 Bun process 中运行，不构成 JavaScript sandbox。宿主负责注入当前身份，并拒绝跨 origin、非 Control API
 path 和 Artifact 伪造的授权 header。Artifact 不能直连 Connector、Provider 或 Cloud 返回的任意 URL。
@@ -114,8 +112,8 @@ Cache 使用独立 namespace：
 - 两次 clean build 的 archive bytes 完全一致；
 - archive exact file set、manifest 和每个文件 digest；
 - 解压后的 entry 可以 import；
-- fake host 完成主要读取、选择、创建和校验命令；
-- 不同 cwd 读取相同远端 Project 时得到相同结果；
+- fake host 完成主要 Flow 读取、创建和校验命令；
+- 不同 cwd 读取相同远端 Flow 时得到相同结果；
 - 宿主拒绝跨 origin/path，并覆盖伪造的身份 header；
 - 旧 cache namespace 不会被当前 loader 执行。
 

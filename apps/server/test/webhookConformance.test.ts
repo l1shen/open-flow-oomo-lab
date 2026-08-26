@@ -1,4 +1,4 @@
-import type { JsonValue, RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { JsonValue, RevisionContent } from '@oomol-lab/open-flow/flow-change'
 import type { WebhookConformanceFixture, WebhookConformanceHarness } from '@oomol-lab/open-flow/webhook-trigger'
 
 import { webhookConformanceCases } from '@oomol-lab/open-flow/webhook-trigger'
@@ -21,22 +21,17 @@ function revision(fixture: WebhookConformanceFixture, enabled = true): RevisionC
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: enabled
-              ? {
-                  webhook: {
-                    inputsDef: fixture.inputsDef,
-                    kind: 'webhook',
-                    name: 'Incoming webhook',
-                    ...(fixture.options == null ? {} : { options: fixture.options }),
-                  },
-                }
-              : {},
-          },
-          name: 'Main',
-        },
+      graph: {
+        nodes: enabled
+          ? {
+              webhook: {
+                inputsDef: fixture.inputsDef,
+                kind: 'webhook',
+                name: 'Incoming webhook',
+                ...(fixture.options == null ? {} : { options: fixture.options }),
+              },
+            }
+          : {},
       },
       subflows: {},
       tasks: {},
@@ -55,13 +50,12 @@ async function createHarness(fixture: WebhookConformanceFixture): Promise<Webhoo
     expectedLivePublicationId: null,
     flowId: 'main',
     idempotencyKey: next('publish'),
-    projectId: 'project-a',
     revision: revision(fixture),
     revisionId,
   })
   if (published.kind != 'published') throw new Error('Initial conformance Publication unexpectedly conflicted.')
   let publicationId = published.publicationId
-  const endpointId = service.webhookEndpoint('project-a', 'main', 'webhook')
+  const endpointId = service.webhookEndpoint('main', 'webhook')
   if (endpointId == null) throw new Error('Server conformance endpoint was not created.')
   const app = createServerApp(service)
 
@@ -94,7 +88,6 @@ async function createHarness(fixture: WebhookConformanceFixture): Promise<Webhoo
         expectedLivePublicationId: publicationId,
         flowId: 'main',
         idempotencyKey: next('publish'),
-        projectId: 'project-a',
         revision: revision(fixture),
         revisionId,
       })
@@ -110,7 +103,6 @@ async function createHarness(fixture: WebhookConformanceFixture): Promise<Webhoo
         expectedLivePublicationId: publicationId,
         flowId: 'main',
         idempotencyKey: next('publish'),
-        projectId: 'project-a',
         revision: revision(fixture, false),
         revisionId,
       })

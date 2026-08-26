@@ -1,6 +1,6 @@
-import type { ProjectChangeEvent } from '../../../control/common/projectNotifications.ts'
+import type { FlowCatalogEvent, FlowChangeEvent } from '../../../control/common/flowNotifications.ts'
 
-export type { ProjectChangeEvent } from '../../../control/common/projectNotifications.ts'
+export type { FlowCatalogEvent, FlowChangeEvent } from '../../../control/common/flowNotifications.ts'
 
 export type WorkbenchLanguage = 'en' | 'zh-CN'
 export type WorkbenchTheme = 'dark' | 'light'
@@ -15,12 +15,12 @@ export interface WorkbenchHost {
   notify(notification: WorkbenchNotification | undefined): void
   openExternalPage(resolveUrl: () => Promise<string>): Promise<boolean>
   request(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
-  subscribeProject(projectId: string, listener: (event?: ProjectChangeEvent) => void): () => void
+  subscribeFlow(flowId: string, listener: (event?: FlowChangeEvent) => void): () => void
+  subscribeFlowCatalog(listener: (event?: FlowCatalogEvent) => void): () => void
 }
 
 export interface WorkbenchLocation {
   readonly flowId?: string
-  readonly projectId?: string
   readonly view: WorkbenchView
 }
 

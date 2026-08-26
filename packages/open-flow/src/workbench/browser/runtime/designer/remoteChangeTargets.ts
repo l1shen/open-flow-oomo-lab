@@ -1,9 +1,9 @@
 import type { GraphNode } from '../api.ts'
 import type { RevisionView } from '../revisionView.ts'
-import type { DesignerTarget, ProjectChanges } from './projectChanges.ts'
+import type { DesignerTarget, FlowChanges } from './flowChanges.ts'
 
 function sameTarget(left: DesignerTarget, right: DesignerTarget): boolean {
-  return left.kind == right.kind && left.id == right.id
+  return left.kind == right.kind && (left.kind != 'subflow' || (right.kind == 'subflow' && left.id == right.id))
 }
 
 function addMatchingNodes(targets: Set<string>, revision: RevisionView, target: DesignerTarget, matches: (node: GraphNode) => boolean): void {
@@ -12,7 +12,7 @@ function addMatchingNodes(targets: Set<string>, revision: RevisionView, target: 
   }
 }
 
-export function remoteChangeTargets(before: RevisionView, after: RevisionView, target: DesignerTarget, operations: ProjectChanges): ReadonlySet<string> {
+export function remoteChangeTargets(before: RevisionView, after: RevisionView, target: DesignerTarget, operations: FlowChanges): ReadonlySet<string> {
   const targets = new Set<string>()
   for (const operation of operations) {
     switch (operation.kind) {
@@ -36,9 +36,6 @@ export function remoteChangeTargets(before: RevisionView, after: RevisionView, t
       case 'binding.create':
       case 'binding.delete':
       case 'binding.replace':
-      case 'flow.create':
-      case 'flow.delete':
-      case 'flow.rename':
       case 'graph.edge.connect':
       case 'graph.edge.disconnect':
       case 'graph.node.delete':

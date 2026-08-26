@@ -1,5 +1,5 @@
 import type { CronConformanceFixture, CronConformanceHarness } from '@oomol-lab/open-flow/cron-trigger'
-import type { JsonValue, RevisionContent, TriggerSchedule } from '@oomol-lab/open-flow/project-change'
+import type { JsonValue, RevisionContent, TriggerSchedule } from '@oomol-lab/open-flow/flow-change'
 
 import { cronConformanceCases } from '@oomol-lab/open-flow/cron-trigger'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -20,22 +20,17 @@ function revision(rules?: readonly TriggerSchedule[]): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes:
-              rules == null
-                ? {}
-                : {
-                    scheduled: {
-                      cronTimes: rules,
-                      kind: 'cron',
-                      name: 'Scheduled trigger',
-                    },
-                  },
-          },
-          name: 'Main',
-        },
+      graph: {
+        nodes:
+          rules == null
+            ? {}
+            : {
+                scheduled: {
+                  cronTimes: rules,
+                  kind: 'cron',
+                  name: 'Scheduled trigger',
+                },
+              },
       },
       subflows: {},
       tasks: {},
@@ -55,7 +50,6 @@ async function createHarness(fixture: CronConformanceFixture): Promise<CronConfo
     expectedLivePublicationId: null,
     flowId: 'main',
     idempotencyKey: next('publish'),
-    projectId: 'project-a',
     revision: revision(fixture.rules),
     revisionId,
   })
@@ -91,7 +85,6 @@ async function createHarness(fixture: CronConformanceFixture): Promise<CronConfo
         expectedLivePublicationId: publicationId,
         flowId: 'main',
         idempotencyKey: next('publish'),
-        projectId: 'project-a',
         revision: revision(rules),
         revisionId,
       })
@@ -105,7 +98,6 @@ async function createHarness(fixture: CronConformanceFixture): Promise<CronConfo
         expectedLivePublicationId: publicationId,
         flowId: 'main',
         idempotencyKey: next('publish'),
-        projectId: 'project-a',
         revision: revision(),
         revisionId,
       })

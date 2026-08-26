@@ -1,5 +1,5 @@
+import type { JsonValue, RevisionContent, TriggerSchedule } from '@oomol-lab/open-flow/flow-change'
 import type { PollConformanceFixture, PollConformanceHarness, PollDefinition, PollResult } from '@oomol-lab/open-flow/poll-trigger'
-import type { JsonValue, RevisionContent, TriggerSchedule } from '@oomol-lab/open-flow/project-change'
 
 import { nextTriggerScheduledAt, scheduledTriggerOccurrenceId } from '@oomol-lab/open-flow/cron-trigger'
 import { pollConformanceCases } from '@oomol-lab/open-flow/poll-trigger'
@@ -49,35 +49,30 @@ function revision(config: Readonly<Record<string, JsonValue>>, connectionId: str
   return {
     document: {
       bindings: enabled ? { connection: { kind: 'connection', target: connectionId } } : {},
-      flows: {
-        main: {
-          graph: {
-            nodes: enabled
-              ? {
-                  poll: {
-                    bindingId: 'connection',
-                    config,
-                    definition: snapshot,
-                    kind: 'poll',
-                    name: 'Poll conformance trigger',
-                    pollTimes: rules,
-                  },
-                  task: {
-                    concurrency: 1,
-                    inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'poll', output: 'payload' }] } },
-                    kind: 'task',
-                    task: {
-                      inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
-                      moduleId: 'module-main',
-                      name: 'Main',
-                      outputs: {},
-                    },
-                  },
-                }
-              : {},
-          },
-          name: 'Main',
-        },
+      graph: {
+        nodes: enabled
+          ? {
+              poll: {
+                bindingId: 'connection',
+                config,
+                definition: snapshot,
+                kind: 'poll',
+                name: 'Poll conformance trigger',
+                pollTimes: rules,
+              },
+              task: {
+                concurrency: 1,
+                inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'poll', output: 'payload' }] } },
+                kind: 'task',
+                task: {
+                  inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
+                  moduleId: 'module-main',
+                  name: 'Main',
+                  outputs: {},
+                },
+              },
+            }
+          : {},
       },
       subflows: {},
       tasks: {},
@@ -114,7 +109,6 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
     expectedLivePublicationId: null,
     flowId: 'main',
     idempotencyKey: next('publish'),
-    projectId: 'project-main',
     revision: revision(config, connectionId, fixture.rules),
     revisionId: next('revision'),
   })
@@ -136,7 +130,6 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
         expectedLivePublicationId: publicationId,
         flowId: 'main',
         idempotencyKey: next('publish'),
-        projectId: 'project-main',
         revision: revision(config, connectionId, fixture.rules),
         revisionId: next('revision'),
       })
@@ -154,7 +147,6 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
         expectedLivePublicationId: publicationId,
         flowId: 'main',
         idempotencyKey: next('publish'),
-        projectId: 'project-main',
         revision: revision(config, connectionId, fixture.rules, false),
         revisionId: next('revision'),
       })
@@ -163,7 +155,7 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
       active = false
     },
     async state() {
-      const state = service.pollState('project-main', 'main', 'poll')
+      const state = service.pollState('main', 'poll')
       if (state == null || (state.health != 'healthy' && state.health != 'initializing')) {
         throw new Error('Server Poll conformance binding has an unexpected state.')
       }
@@ -185,7 +177,7 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
       now = Date.parse(at)
       if (!active || nextAt > now) return
       staged = [...pages]
-      const state = service.pollState('project-main', 'main', 'poll')
+      const state = service.pollState('main', 'poll')
       if (state == null) throw new Error('Server Poll conformance binding disappeared.')
       const scheduledAt = new Date(nextAt).toISOString()
       lastOccurrence = {

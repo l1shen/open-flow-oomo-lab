@@ -76,7 +76,7 @@ function Panel({ onStarted, request, store }: Props & { readonly request: RunInp
           <div>
             <strong id="run-input-title">{t('runInput.title')}</strong>
             <span>
-              {request.flow.draft?.name ?? request.flow.flowId} · {t(request.source == 'draft' ? 'run.sourceDraft' : 'run.sourceLive')}
+              {request.flow.name} · {t(request.source == 'draft' ? 'run.sourceDraft' : 'run.sourceLive')}
             </span>
           </div>
           <Button aria-label={t('runInput.close')} disabled={starting} onClick={close} size="icon-sm" type="button" variant="ghost">

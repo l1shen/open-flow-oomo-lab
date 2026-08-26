@@ -1,4 +1,4 @@
-import type { JsonValue } from '@oomol-lab/open-flow/project-change'
+import type { JsonValue } from '@oomol-lab/open-flow/flow-change'
 import type { RunAcceptance } from '@oomol-lab/open-flow/run-lifecycle'
 import type { DatabaseSync } from 'node:sqlite'
 
@@ -31,7 +31,6 @@ export interface StoredTriggerBinding {
   readonly kind: 'cron' | 'integration' | 'poll' | 'webhook'
   readonly lastErrorCode: string | null
   readonly operatorState: 'active' | 'paused'
-  readonly projectId: string
   readonly runtimeVersion: number
   readonly triggerNodeId: string
   readonly updatedAt: number
@@ -43,7 +42,6 @@ interface StoredWebhookTarget {
   readonly endpointId: string
   readonly engineContract: string
   readonly flowId: string
-  readonly projectId: string
   readonly publicationId: string
   readonly revisionDigest: string
   readonly revisionId: string
@@ -60,7 +58,6 @@ export interface StoredCronTarget {
   readonly flowId: string
   readonly modelVersion: number
   readonly nextAt: number
-  readonly projectId: string
   readonly publicationId: string
   readonly revisionDigest: string
   readonly revisionId: string
@@ -87,7 +84,6 @@ export interface StoredPollTarget {
   readonly health: Extract<PollHealth, 'healthy' | 'initializing'>
   readonly modelVersion: number
   readonly nextAt: number
-  readonly projectId: string
   readonly publicationId: string
   readonly revisionDigest: string
   readonly revisionId: string
@@ -104,7 +100,6 @@ export interface StoredPollTestTarget {
   readonly connectionId: string
   readonly content: string
   readonly flowId: string
-  readonly projectId: string
   readonly publicationId: string
   readonly revisionDigest: string
   readonly revisionId: string
@@ -144,7 +139,6 @@ export interface StoredIntegrationBinding {
   readonly endpointId: string
   readonly flowId: string
   readonly health: IntegrationHealth
-  readonly projectId: string
   readonly runtimeVersion: number
   readonly triggerJson: string
   readonly triggerNodeId: string
@@ -175,7 +169,6 @@ interface TriggerOccurrence {
 export type TriggerOccurrenceInput = TriggerOccurrence & {
   readonly closureDigest: string
   readonly modelVersion: number
-  readonly projectId: string
   readonly publicationId: string
   readonly source: 'trigger'
 }
@@ -197,7 +190,7 @@ export class TriggerStore {
     this.#transaction = transaction
   }
 
-  listTriggerBindings(projectId: string, flowId: string): readonly StoredTriggerBinding[] {
+  listTriggerBindings(flowId: string): readonly StoredTriggerBinding[] {
     return this.#database
       .prepare(
         `SELECT * FROM (
@@ -210,52 +203,50 @@ export class TriggerStore {
                   'webhook' AS kind,
                   NULL AS lastErrorCode,
                   bindings.operator_state AS operatorState,
-                  bindings.project_id AS projectId,
                   bindings.runtime_version AS runtimeVersion,
                   bindings.trigger_node_id AS triggerNodeId,
                   bindings.updated_at AS updatedAt
            FROM webhook_bindings AS bindings
            LEFT JOIN publications ON publications.publication_id = bindings.current_publication_id
-           WHERE bindings.project_id = ? AND bindings.flow_id = ?
+           WHERE bindings.flow_id = ?
            UNION ALL
            SELECT bindings.binding_id, bindings.current_publication_id, publications.revision_id,
                   NULL, bindings.flow_id, 'healthy', 'cron', NULL, bindings.operator_state,
-                  bindings.project_id, bindings.runtime_version, bindings.trigger_node_id, bindings.updated_at
+                  bindings.runtime_version, bindings.trigger_node_id, bindings.updated_at
            FROM cron_bindings AS bindings
            LEFT JOIN publications ON publications.publication_id = bindings.current_publication_id
-           WHERE bindings.project_id = ? AND bindings.flow_id = ?
+           WHERE bindings.flow_id = ?
            UNION ALL
            SELECT bindings.binding_id, bindings.current_publication_id, publications.revision_id,
                   NULL, bindings.flow_id, bindings.health, 'poll', bindings.last_error_code, bindings.operator_state,
-                  bindings.project_id, bindings.runtime_version, bindings.trigger_node_id, bindings.updated_at
+                  bindings.runtime_version, bindings.trigger_node_id, bindings.updated_at
            FROM poll_bindings AS bindings
            LEFT JOIN publications ON publications.publication_id = bindings.current_publication_id
-           WHERE bindings.project_id = ? AND bindings.flow_id = ?
+           WHERE bindings.flow_id = ?
            UNION ALL
            SELECT bindings.binding_id, bindings.current_publication_id, publications.revision_id,
                   NULL, bindings.flow_id, bindings.health, 'integration', bindings.last_error_code, bindings.operator_state,
-                  bindings.project_id, bindings.runtime_version, bindings.trigger_node_id, bindings.updated_at
+                  bindings.runtime_version, bindings.trigger_node_id, bindings.updated_at
            FROM integration_bindings AS bindings
            LEFT JOIN publications ON publications.publication_id = bindings.current_publication_id
-           WHERE bindings.project_id = ? AND bindings.flow_id = ?
+           WHERE bindings.flow_id = ?
          ) ORDER BY triggerNodeId`,
       )
-      .all(projectId, flowId, projectId, flowId, projectId, flowId, projectId, flowId) as unknown as readonly StoredTriggerBinding[]
+      .all(flowId, flowId, flowId, flowId) as unknown as readonly StoredTriggerBinding[]
   }
 
-  triggerBinding(projectId: string, flowId: string, triggerNodeId: string): StoredTriggerBinding | undefined {
-    return this.listTriggerBindings(projectId, flowId).find((binding) => binding.triggerNodeId == triggerNodeId)
+  triggerBinding(flowId: string, triggerNodeId: string): StoredTriggerBinding | undefined {
+    return this.listTriggerBindings(flowId).find((binding) => binding.triggerNodeId == triggerNodeId)
   }
 
   setTriggerOperatorState(
-    projectId: string,
     flowId: string,
     triggerNodeId: string,
     operatorState: StoredTriggerBinding['operatorState'],
     updatedAt: number,
   ): StoredTriggerBinding | undefined {
     return this.#transaction(() => {
-      const current = this.triggerBinding(projectId, flowId, triggerNodeId)
+      const current = this.triggerBinding(flowId, triggerNodeId)
       if (current?.currentPublicationId == null) return
       if (current.operatorState == operatorState) return current
       switch (current.kind) {
@@ -300,7 +291,7 @@ export class TriggerStore {
       }
       this.#insertTriggerActivity(current.bindingId, operatorState == 'paused' ? 'operator.paused' : 'operator.resumed', updatedAt)
       this.#pruneTriggerActivities(updatedAt, 100)
-      return this.triggerBinding(projectId, flowId, triggerNodeId)
+      return this.triggerBinding(flowId, triggerNodeId)
     })
   }
 
@@ -343,7 +334,6 @@ export class TriggerStore {
     readonly modelVersion: number
     readonly occurrenceId: string
     readonly payload: JsonValue
-    readonly projectId: string
     readonly publicationId: string
     readonly requestDigest: string
     readonly revisionDigest: string
@@ -358,13 +348,11 @@ export class TriggerStore {
           `SELECT 1 AS current
            FROM webhook_bindings AS bindings
            JOIN flow_live
-             ON flow_live.project_id = bindings.project_id
-            AND flow_live.flow_id = bindings.flow_id
+             ON flow_live.flow_id = bindings.flow_id
             AND flow_live.publication_id = bindings.current_publication_id
            JOIN publications
              ON publications.publication_id = bindings.current_publication_id
            WHERE bindings.endpoint_id = ?
-             AND bindings.project_id = ?
              AND bindings.flow_id = ?
              AND bindings.trigger_node_id = ?
              AND bindings.current_publication_id = ?
@@ -379,7 +367,6 @@ export class TriggerStore {
         )
         .get(
           input.endpointId,
-          input.projectId,
           input.flowId,
           input.triggerNodeId,
           input.publicationId,
@@ -413,13 +400,11 @@ export class TriggerStore {
           `SELECT 1 AS current
            FROM cron_bindings AS bindings
            JOIN flow_live
-             ON flow_live.project_id = bindings.project_id
-            AND flow_live.flow_id = bindings.flow_id
+             ON flow_live.flow_id = bindings.flow_id
             AND flow_live.publication_id = bindings.current_publication_id
            JOIN publications
              ON publications.publication_id = bindings.current_publication_id
            WHERE bindings.binding_id = ?
-             AND bindings.project_id = ?
              AND bindings.flow_id = ?
              AND bindings.trigger_node_id = ?
              AND bindings.current_publication_id = ?
@@ -436,7 +421,6 @@ export class TriggerStore {
         )
         .get(
           input.bindingId,
-          input.projectId,
           input.flowId,
           input.triggerNodeId,
           input.publicationId,
@@ -460,7 +444,6 @@ export class TriggerStore {
         modelVersion: input.modelVersion,
         occurrenceId: input.occurrenceId,
         payload: { scheduledAt },
-        projectId: input.projectId,
         publicationId: input.publicationId,
         requestDigest: input.requestDigest,
         revisionDigest: input.revisionDigest,
@@ -488,14 +471,12 @@ export class TriggerStore {
           `SELECT 1
            FROM integration_bindings AS bindings
            JOIN flow_live
-             ON flow_live.project_id = bindings.project_id
-            AND flow_live.flow_id = bindings.flow_id
+             ON flow_live.flow_id = bindings.flow_id
             AND flow_live.publication_id = bindings.current_publication_id
            JOIN publications
              ON publications.publication_id = bindings.current_publication_id
            WHERE bindings.binding_id = ?
              AND bindings.endpoint_id = ?
-             AND bindings.project_id = ?
              AND bindings.flow_id = ?
              AND bindings.trigger_node_id = ?
              AND bindings.current_publication_id = ?
@@ -513,7 +494,6 @@ export class TriggerStore {
         .get(
           input.bindingId,
           input.endpointId,
-          input.projectId,
           input.flowId,
           input.triggerNodeId,
           input.currentPublicationId,
@@ -535,7 +515,6 @@ export class TriggerStore {
         modelVersion: input.modelVersion,
         occurrenceId: input.occurrenceId,
         payload: input.payload,
-        projectId: input.projectId,
         publicationId: input.currentPublicationId,
         requestDigest: input.requestDigest,
         revisionDigest: input.revisionDigest,
@@ -587,8 +566,7 @@ export class TriggerStore {
   dueIntegrations(now: number, limit: number): readonly StoredIntegrationBinding[] {
     return this.#database
       .prepare(
-        `SELECT binding_id AS bindingId, endpoint_id AS endpointId, project_id AS projectId,
-                flow_id AS flowId, trigger_node_id AS triggerNodeId,
+        `SELECT binding_id AS bindingId, endpoint_id AS endpointId, flow_id AS flowId, trigger_node_id AS triggerNodeId,
                 current_publication_id AS currentPublicationId, runtime_version AS runtimeVersion,
                 trigger_json AS triggerJson, connection_id AS connectionId, health
          FROM integration_bindings AS bindings
@@ -644,16 +622,15 @@ export class TriggerStore {
     })
   }
 
-  integrationBinding(projectId: string, flowId: string, triggerNodeId: string): StoredIntegrationBinding | undefined {
+  integrationBinding(flowId: string, triggerNodeId: string): StoredIntegrationBinding | undefined {
     return this.#database
       .prepare(
-        `SELECT binding_id AS bindingId, endpoint_id AS endpointId, project_id AS projectId,
-                flow_id AS flowId, trigger_node_id AS triggerNodeId,
+        `SELECT binding_id AS bindingId, endpoint_id AS endpointId, flow_id AS flowId, trigger_node_id AS triggerNodeId,
                 current_publication_id AS currentPublicationId, runtime_version AS runtimeVersion,
                 trigger_json AS triggerJson, connection_id AS connectionId, health
-         FROM integration_bindings WHERE project_id = ? AND flow_id = ? AND trigger_node_id = ?`,
+         FROM integration_bindings WHERE flow_id = ? AND trigger_node_id = ?`,
       )
-      .get(projectId, flowId, triggerNodeId) as StoredIntegrationBinding | undefined
+      .get(flowId, triggerNodeId) as StoredIntegrationBinding | undefined
   }
 
   integrationState(bindingId: string): StoredIntegrationState | undefined {
@@ -671,8 +648,7 @@ export class TriggerStore {
   integrationTarget(endpointId: string): StoredIntegrationTarget | undefined {
     const row = this.#database
       .prepare(
-        `SELECT bindings.binding_id AS bindingId, bindings.endpoint_id AS endpointId,
-                bindings.project_id AS projectId, bindings.flow_id AS flowId,
+        `SELECT bindings.binding_id AS bindingId, bindings.endpoint_id AS endpointId, bindings.flow_id AS flowId,
                 bindings.trigger_node_id AS triggerNodeId,
                 bindings.current_publication_id AS currentPublicationId,
                 bindings.runtime_version AS runtimeVersion, bindings.trigger_json AS triggerJson,
@@ -687,8 +663,7 @@ export class TriggerStore {
                 states.reconcile_at AS stateReconcileAt, states.updated_at AS stateUpdatedAt
          FROM integration_bindings AS bindings
          JOIN flow_live
-           ON flow_live.project_id = bindings.project_id
-          AND flow_live.flow_id = bindings.flow_id
+           ON flow_live.flow_id = bindings.flow_id
           AND flow_live.publication_id = bindings.current_publication_id
          JOIN publications ON publications.publication_id = bindings.current_publication_id
          JOIN revisions ON revisions.revision_id = publications.revision_id
@@ -838,8 +813,7 @@ export class TriggerStore {
              AND (active_claim_id IS NULL OR active_lease_expires_at <= ?)
              AND EXISTS (
                SELECT 1 FROM flow_live
-               WHERE project_id = poll_bindings.project_id
-                 AND flow_id = poll_bindings.flow_id
+               WHERE flow_id = poll_bindings.flow_id
                  AND publication_id = poll_bindings.current_publication_id
              )`,
         )
@@ -893,8 +867,7 @@ export class TriggerStore {
           `SELECT bindings.last_error_code AS lastErrorCode
            FROM poll_bindings AS bindings
            JOIN flow_live
-             ON flow_live.project_id = bindings.project_id
-            AND flow_live.flow_id = bindings.flow_id
+             ON flow_live.flow_id = bindings.flow_id
             AND flow_live.publication_id = bindings.current_publication_id
            JOIN publications
              ON publications.publication_id = bindings.current_publication_id
@@ -942,7 +915,6 @@ export class TriggerStore {
           modelVersion: input.target.modelVersion,
           occurrenceId: input.claimId,
           payload: input.payload,
-          projectId: input.target.projectId,
           publicationId: input.target.publicationId,
           requestDigest: input.requestDigest,
           revisionDigest: input.target.revisionDigest,
@@ -1093,8 +1065,7 @@ export class TriggerStore {
          ) AS nextAt
          FROM poll_bindings AS bindings
          JOIN flow_live
-           ON flow_live.project_id = bindings.project_id
-          AND flow_live.flow_id = bindings.flow_id
+           ON flow_live.flow_id = bindings.flow_id
           AND flow_live.publication_id = bindings.current_publication_id
          WHERE bindings.health IN ('healthy', 'initializing')
            AND bindings.operator_state = 'active'`,
@@ -1103,13 +1074,13 @@ export class TriggerStore {
     return row.nextAt ?? undefined
   }
 
-  pollState(projectId: string, flowId: string, triggerNodeId: string): PollState | undefined {
+  pollState(flowId: string, triggerNodeId: string): PollState | undefined {
     const row = this.#database
       .prepare(
         `SELECT binding_id AS bindingId, checkpoint_json AS checkpointJson, health, runtime_version AS runtimeVersion
-         FROM poll_bindings WHERE project_id = ? AND flow_id = ? AND trigger_node_id = ?`,
+         FROM poll_bindings WHERE flow_id = ? AND trigger_node_id = ?`,
       )
-      .get(projectId, flowId, triggerNodeId) as
+      .get(flowId, triggerNodeId) as
       | { readonly bindingId: string; readonly checkpointJson: string; readonly health: PollHealth; readonly runtimeVersion: number }
       | undefined
     return row == null
@@ -1121,11 +1092,10 @@ export class TriggerStore {
     return this.#pollTargets('AND bindings.binding_id = ? AND bindings.runtime_version = ?', bindingId, runtimeVersion)[0]
   }
 
-  pollTestTarget(projectId: string, flowId: string, triggerNodeId: string): StoredPollTestTarget | undefined {
+  pollTestTarget(flowId: string, triggerNodeId: string): StoredPollTestTarget | undefined {
     const row = this.#database
       .prepare(
         `SELECT bindings.binding_id AS bindingId,
-                bindings.project_id AS projectId,
                 bindings.flow_id AS flowId,
                 bindings.trigger_node_id AS triggerNodeId,
                 bindings.runtime_version AS runtimeVersion,
@@ -1139,15 +1109,14 @@ export class TriggerStore {
                 revisions.content
          FROM poll_bindings AS bindings
          JOIN flow_live
-           ON flow_live.project_id = bindings.project_id
-          AND flow_live.flow_id = bindings.flow_id
+           ON flow_live.flow_id = bindings.flow_id
           AND flow_live.publication_id = bindings.current_publication_id
          JOIN publications ON publications.publication_id = bindings.current_publication_id
          JOIN revisions ON revisions.revision_id = publications.revision_id
-         WHERE bindings.project_id = ? AND bindings.flow_id = ? AND bindings.trigger_node_id = ?
+         WHERE bindings.flow_id = ? AND bindings.trigger_node_id = ?
            AND bindings.trigger_json IS NOT NULL AND bindings.connection_id IS NOT NULL`,
       )
-      .get(projectId, flowId, triggerNodeId) as (Omit<StoredPollTestTarget, 'checkpoint'> & { readonly checkpointJson: string }) | undefined
+      .get(flowId, triggerNodeId) as (Omit<StoredPollTestTarget, 'checkpoint'> & { readonly checkpointJson: string }) | undefined
     if (row == null) return
     const { checkpointJson, ...target } = row
     return { ...target, checkpoint: JSON.parse(checkpointJson) as JsonValue }
@@ -1178,7 +1147,6 @@ export class TriggerStore {
       .prepare(
         `SELECT
            bindings.binding_id AS bindingId,
-           bindings.project_id AS projectId,
            bindings.flow_id AS flowId,
            bindings.trigger_node_id AS triggerNodeId,
            bindings.runtime_version AS runtimeVersion,
@@ -1194,8 +1162,7 @@ export class TriggerStore {
            revisions.content
          FROM cron_bindings AS bindings
          JOIN flow_live
-           ON flow_live.project_id = bindings.project_id
-          AND flow_live.flow_id = bindings.flow_id
+           ON flow_live.flow_id = bindings.flow_id
           AND flow_live.publication_id = bindings.current_publication_id
          JOIN publications
            ON publications.publication_id = bindings.current_publication_id
@@ -1217,8 +1184,7 @@ export class TriggerStore {
         `SELECT MIN(bindings.next_at) AS nextAt
          FROM cron_bindings AS bindings
          JOIN flow_live
-           ON flow_live.project_id = bindings.project_id
-          AND flow_live.flow_id = bindings.flow_id
+           ON flow_live.flow_id = bindings.flow_id
           AND flow_live.publication_id = bindings.current_publication_id
          WHERE bindings.trigger_json IS NOT NULL
            AND bindings.schedule_json IS NOT NULL
@@ -1233,7 +1199,6 @@ export class TriggerStore {
       .prepare(
         `SELECT
            bindings.endpoint_id AS endpointId,
-           bindings.project_id AS projectId,
            bindings.flow_id AS flowId,
            bindings.trigger_node_id AS triggerNodeId,
            bindings.runtime_version AS runtimeVersion,
@@ -1246,8 +1211,7 @@ export class TriggerStore {
            revisions.content
          FROM webhook_bindings AS bindings
          JOIN flow_live
-           ON flow_live.project_id = bindings.project_id
-          AND flow_live.flow_id = bindings.flow_id
+           ON flow_live.flow_id = bindings.flow_id
           AND flow_live.publication_id = bindings.current_publication_id
          JOIN publications
            ON publications.publication_id = bindings.current_publication_id
@@ -1260,19 +1224,18 @@ export class TriggerStore {
       .get(endpointId) as StoredWebhookTarget | undefined
   }
 
-  webhookEndpoint(projectId: string, flowId: string, triggerNodeId: string): string | undefined {
+  webhookEndpoint(flowId: string, triggerNodeId: string): string | undefined {
     return (
       this.#database
         .prepare(
           `SELECT bindings.endpoint_id AS endpointId
            FROM webhook_bindings AS bindings
            JOIN flow_live
-             ON flow_live.project_id = bindings.project_id
-            AND flow_live.flow_id = bindings.flow_id
+             ON flow_live.flow_id = bindings.flow_id
             AND flow_live.publication_id = bindings.current_publication_id
-           WHERE bindings.project_id = ? AND bindings.flow_id = ? AND bindings.trigger_node_id = ?`,
+           WHERE bindings.flow_id = ? AND bindings.trigger_node_id = ?`,
         )
-        .get(projectId, flowId, triggerNodeId) as { readonly endpointId: string } | undefined
+        .get(flowId, triggerNodeId) as { readonly endpointId: string } | undefined
     )?.endpointId
   }
 
@@ -1281,7 +1244,6 @@ export class TriggerStore {
       .prepare(
         `SELECT
            bindings.binding_id AS bindingId,
-           bindings.project_id AS projectId,
            bindings.flow_id AS flowId,
            bindings.trigger_node_id AS triggerNodeId,
            bindings.runtime_version AS runtimeVersion,
@@ -1302,8 +1264,7 @@ export class TriggerStore {
            revisions.content
          FROM poll_bindings AS bindings
          JOIN flow_live
-           ON flow_live.project_id = bindings.project_id
-          AND flow_live.flow_id = bindings.flow_id
+           ON flow_live.flow_id = bindings.flow_id
           AND flow_live.publication_id = bindings.current_publication_id
          JOIN publications
            ON publications.publication_id = bindings.current_publication_id

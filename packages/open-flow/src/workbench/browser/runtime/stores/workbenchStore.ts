@@ -1,9 +1,9 @@
 import type { I18n } from 'val-i18n'
 import type { ReadonlyVal, Val } from 'value-enhancer'
 import type { WorkbenchClient, Draft, Run, RunEvent } from '../api.ts'
-import type { ProjectChangeEvent, WorkbenchHost, WorkbenchPreferences } from '../contract.ts'
+import type { FlowChangeEvent, WorkbenchHost, WorkbenchPreferences } from '../contract.ts'
 import type { AddNodeOption } from '../designer/addNodeOptions.ts'
-import type { DesignerTarget } from '../designer/projectChanges.ts'
+import type { DesignerTarget } from '../designer/flowChanges.ts'
 import type { DesignerEdge, DesignerNode, DesignerGraph, Point } from '../workspace.ts'
 import type { Notice } from './workbenchNotice.ts'
 import type { WorkspaceBusy } from './workspaceModel.ts'
@@ -47,13 +47,13 @@ function indexRunEventNodes(
   events: readonly RunEvent[],
   nodes: ReadonlyMap<string, DesignerNode>,
 ): ReadonlyMap<number, string> {
-  if (draft == null || target?.kind != 'flow' || run?.revisionId != draft.revisionId || run.flowId != target.id) return new Map()
-  const scopeId = events.find((event) => event.kind == 'run.started' && event.payload.flowId == target.id)?.payload.scopeId
+  if (draft == null || target?.kind != 'flow' || run?.revisionId != draft.revisionId || run.flowId != draft.flowId) return new Map()
+  const scopeId = events.find((event) => event.kind == 'run.started' && event.payload.flowId == draft.flowId)?.payload.scopeId
   if (typeof scopeId != 'string') return new Map()
   return new Map(
     events.flatMap((event) => {
       const nodeId = event.payload.nodeId
-      return event.payload.scopeId == scopeId && event.payload.flowId == target.id && typeof nodeId == 'string' && nodes.has(nodeId)
+      return event.payload.scopeId == scopeId && event.payload.flowId == draft.flowId && typeof nodeId == 'string' && nodes.has(nodeId)
         ? [[event.sequence, nodeId] as const]
         : []
     }),
@@ -96,12 +96,12 @@ export class WorkbenchStore {
     this.publications = new PublicationStore(client, this.workspace, setNotice, identity, i18n)
     this.runRequests = new RunRequestStore(client, this.runs, setNotice, i18n, identity)
     const designerCache = new Map<string, { readonly graph: DesignerGraph; readonly inputs: readonly unknown[] }>()
-    let designerProjectId: string | undefined
+    let designerFlowId: string | undefined
     const designer = compute((get) => {
       const draft = get(this.workspace.$.draft)
-      if (designerProjectId != draft?.projectId) {
+      if (designerFlowId != draft?.flowId) {
         designerCache.clear()
-        designerProjectId = draft?.projectId
+        designerFlowId = draft?.flowId
       }
       const target = get(this.workspace.$.target)
       const presentation = get(this.workspace.$.presentation)?.value
@@ -111,7 +111,7 @@ export class WorkbenchStore {
       const t = get(i18n.t$)
       const run = get(this.runs.$.run)
       const events = get(this.runs.$.events)
-      const key = target == null ? '' : `${target.kind}:${target.id}`
+      const key = target == null ? '' : target.kind == 'flow' ? 'flow' : `subflow:${target.id}`
       const inputs = [
         ...designerRevisionInputs(draft, target),
         presentation == null || target == null ? undefined : targetPresentation(presentation, target),
@@ -165,29 +165,29 @@ export class WorkbenchStore {
     this.workspace.dispose()
   }
 
-  public async start(projectId?: string, flowId?: string): Promise<void> {
+  public async start(flowId?: string): Promise<void> {
     this.#externalRuns.invalidate()
     this.connectors.reset()
     this.triggers.reset()
     this.publications.reset()
     this.runRequests.reset()
     this.runs.reset()
-    await this.workspace.start(projectId, flowId)
+    await this.workspace.start(flowId)
   }
 
-  public async retryProjects(): Promise<void> {
-    await this.workspace.reloadProjects()
+  public async retryFlows(): Promise<void> {
+    await this.workspace.reloadFlows()
   }
 
   public dismissNotice(): void {
     if (!this.#disposed) this.#notice.set(undefined)
   }
 
-  public async selectProject(projectId: string | undefined, flowId?: string): Promise<boolean> {
+  public async selectFlow(flowId: string | undefined): Promise<boolean> {
     if (this.#disposed) return false
     this.#externalRuns.invalidate()
     this.#notice.set(undefined)
-    if (!(await this.workspace.selectProject(projectId, flowId))) return false
+    if (!(await this.workspace.selectFlow(flowId))) return false
     this.connectors.reset()
     this.triggers.reset()
     this.publications.reset()
@@ -196,11 +196,11 @@ export class WorkbenchStore {
     return true
   }
 
-  public async createProject(name: string): Promise<boolean> {
-    const project = await this.workspace.createProject(name)
-    if (this.#disposed || project == null) return false
-    await this.selectProject(project.projectId)
-    if (!this.#disposed) this.#notice.set({ kind: 'success', message: this.#i18n.t('notice.created', { name: project.name }) })
+  public async createFlow(name: string): Promise<boolean> {
+    const flow = await this.workspace.createFlow(name)
+    if (this.#disposed || flow == null) return false
+    await this.selectFlow(flow.flowId)
+    if (!this.#disposed) this.#notice.set({ kind: 'success', message: this.#i18n.t('notice.created', { name: flow.name }) })
     return true
   }
 
@@ -261,29 +261,21 @@ export class WorkbenchStore {
   }
 
   public async requestDraftRun() {
-    const projectId = this.workspace.$.projectId.value
     const flow = this.workspace.$.targetFlow.value
     const draft = this.workspace.$.draft.value
-    if (projectId == null || flow == null || draft == null) return 'unavailable' as const
-    return await this.runRequests.requestDraft(projectId, flow, draft)
+    if (flow == null || draft == null) return 'unavailable' as const
+    return await this.runRequests.requestDraft(flow, draft)
   }
 
   public async requestLiveRun() {
-    const projectId = this.workspace.$.projectId.value
     const flow = this.workspace.$.targetFlow.value
-    if (projectId == null || flow == null) return 'unavailable' as const
-    return await this.runRequests.requestLive(projectId, flow)
+    if (flow == null) return 'unavailable' as const
+    return await this.runRequests.requestLive(flow)
   }
 
-  async #followExternalRun(client: Pick<WorkbenchClient, 'getRun'>, event: Extract<ProjectChangeEvent, { readonly kind: 'run.created' }>): Promise<void> {
+  async #followExternalRun(client: Pick<WorkbenchClient, 'getRun'>, event: Extract<FlowChangeEvent, { readonly kind: 'run.created' }>): Promise<void> {
     const target = this.workspace.$.target.value
-    if (
-      this.#disposed ||
-      this.runRequests.$.submitting.value != null ||
-      this.workspace.$.projectId.value != event.projectId ||
-      target?.kind != 'flow' ||
-      target.id != event.flowId
-    ) {
+    if (this.#disposed || this.runRequests.$.submitting.value != null || target?.kind != 'flow' || this.workspace.$.flowId.value != event.flowId) {
       return
     }
     const current = this.#externalRuns.begin()
@@ -293,10 +285,8 @@ export class WorkbenchStore {
       if (
         !current() ||
         this.#disposed ||
-        this.workspace.$.projectId.value != event.projectId ||
         latestTarget?.kind != 'flow' ||
-        latestTarget.id != event.flowId ||
-        run.projectId != event.projectId ||
+        this.workspace.$.flowId.value != event.flowId ||
         run.flowId != event.flowId ||
         run.runId != event.runId
       ) {

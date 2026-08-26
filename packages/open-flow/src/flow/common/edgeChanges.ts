@@ -27,5 +27,5 @@ export function disconnect(content: RevisionContent, target: GraphTarget, edge: 
 }
 
 function graph(content: RevisionContent, target: GraphTarget) {
-  return target.kind == 'flow' ? content.document.flows[target.id]?.graph : content.document.subflows[target.id]?.graph
+  return target.kind == 'flow' ? content.document.graph : content.document.subflows[target.id]?.graph
 }

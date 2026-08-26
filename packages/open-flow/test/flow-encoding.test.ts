@@ -1,7 +1,7 @@
-import type { JsonValue, RevisionContent } from '../src/project/common/change.ts'
+import type { JsonValue, RevisionContent } from '../src/flow/common/change.ts'
 
 import { describe, expect, it } from 'vitest'
-import { canonicalJsonBytes, digestBytes, encodeRevision } from '../src/project/common/encoding.ts'
+import { canonicalJsonBytes, digestBytes, encodeRevision } from '../src/flow/common/encoding.ts'
 
 const decoder = new TextDecoder()
 const port = { jsonSchema: { type: 'number' }, nullable: false } as const
@@ -34,7 +34,7 @@ function revision(reverse = false): RevisionContent {
   return {
     document: {
       bindings: { secret: { kind: 'secret', target: 'secret-main' } },
-      flows: { main: { graph: { nodes: reverse ? { value: nodes.value, condition: nodes.condition } : nodes }, name: 'Main' } },
+      graph: { nodes: reverse ? { value: nodes.value, condition: nodes.condition } : nodes },
       subflows: {
         child: {
           graph: { nodes: {} },
@@ -78,7 +78,7 @@ describe('canonical JSON', () => {
   })
 })
 
-describe('Project Revision encoding', () => {
+describe('Flow Revision encoding', () => {
   it('encodes a complete Revision independently of record insertion order', async () => {
     const first = encodeRevision(revision())
     const second = encodeRevision(revision(true))
@@ -87,26 +87,23 @@ describe('Project Revision encoding', () => {
     expect(JSON.parse(decoder.decode(first))).toMatchObject({
       document: {
         bindings: { secret: { kind: 'secret', target: 'secret-main' } },
-        flows: { main: { graph: { nodes: { condition: {}, value: {} } }, name: 'Main' } },
+        graph: { nodes: { condition: {}, value: {} } },
         subflows: { child: { name: 'Child' } },
         tasks: { managed: { executor: { kind: 'llm', mode: 'json' }, name: 'LLM' } },
       },
-      kind: 'open-flow-project-revision',
+      kind: 'open-flow-flow-revision',
       modelVersion: 1,
       modules: { helper: { imports: [] }, main: { imports: ['helper'] } },
       version: 1,
     })
-    await expect(digestBytes(first)).resolves.toBe('sha256:a0f33bbdc2c1d4c46d6dfd9e94c94ccd761cd373b46adffa0290455c4af0a377')
+    await expect(digestBytes(first)).resolves.toBe('sha256:76e065ba87fb8f0d7666f61f0b9989cf36f750f0867a6dc2b3e51d632134b008')
   })
 
   it('changes the encoded Revision when workflow semantics change', () => {
     const source = revision()
     const changed: RevisionContent = {
       ...source,
-      document: {
-        ...source.document,
-        flows: { ...source.document.flows, main: { ...source.document.flows.main!, name: 'Renamed' } },
-      },
+      document: { ...source.document, graph: { nodes: { ...source.document.graph.nodes, added: { concurrency: 1, inputs: {}, kind: 'value', values: {} } } } },
     }
 
     expect(encodeRevision(changed)).not.toEqual(encodeRevision(source))

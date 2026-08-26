@@ -121,7 +121,7 @@ Resource Browser 的 Button、Input、InputGroup、Select、Empty、Skeleton 和
 invalid 视觉。`resource-browser.css` 只负责页面、列表、行和确认区的业务布局；不要重新为共享 Input、Button、Select 或 Dialog 定义高度、padding、border、
 颜色、hover 或 disabled opacity。
 
-整行 Project/Flow 选择器可以保留 grid、最小高度、padding 和分隔线，但 hover 由 `Button variant="ghost"` 负责。行内更多操作使用 `aria-expanded` 表达展开
+整行 Flow 选择器可以保留 grid、最小高度、padding 和分隔线，但 hover 由 `Button variant="ghost"` 负责。行内更多操作使用 `aria-expanded` 表达展开
 状态，不要同时伪装成 pressed toggle。跨 feature 的 `.workspace-*` selector 必须留在 `workspace.css`。
 
 共享 Dialog 必须拥有 Overlay、Content、Header、Footer、Title、Description、动画和 reduced-motion 视觉，同时保留局部 `container` 参数，让 Portal 继承当前
@@ -163,7 +163,7 @@ complementary 的分裂状态。Diagnostics、Run Input 和 overlay Context Pane
 
 Workbench 的浏览器能力基线是 ES modules、CSS custom properties、CSS container queries、`ResizeObserver` 和 dynamic viewport units。响应式语义与布局都以
 Workbench container 为准，不维护并行的 viewport fallback。`ResizeObserver` 缺失时必须保留初始容器测量且不能抛错，但宿主后续改变容器宽度时无法同步 React overlay 语义；
-需要支持这类旧 WebView 的宿主必须提供等价能力。应用构建必须保持 Run input editor、Carbon/Twemoji collection 和 Markdown renderer 在 Project/Flow browser 初始路由之外，
+需要支持这类旧 WebView 的宿主必须提供等价能力。应用构建必须保持 Run input editor、Carbon/Twemoji collection 和 Markdown renderer 在 Flow browser 初始路由之外，
 并通过构建期预算阻止可选编辑能力重新进入初始 JavaScript。
 
 ## Designer 键盘与图标控件
@@ -186,6 +186,6 @@ Workbench Button 内的 typed SVG Icon 不传 `size`；Button 的 default/sm/xs/
 Designer Label 只负责表单标签与 tooltip，不提供通用 `onClick`。Iframe Preview 由 iframe 自己的 focus 激活并始终提供 title，不在包装 div 上模拟交互。JSON Viewer 的
 展开图标、字段、括号与折叠摘要都使用原生 button；只有主展开按钮进入 Tab 顺序，冗余鼠标目标使用 `tabIndex=-1`，不要重新使用带 `role="button"` 的 span。
 
-Workbench Host 通过必需的 `hrefFor(WorkbenchLocation)` 拥有 URL 序列化。Project、Flow 与 Breadcrumb 使用 Base UI Button `render={<a href />}` 和
+Workbench Host 通过必需的 `hrefFor(WorkbenchLocation)` 拥有 URL 序列化。Flow 与 Breadcrumb 使用 Base UI Button `render={<a href />}` 和
 `nativeButton={false}` 输出真实链接；普通主键点击由 `followWorkbenchLink` 拦截后走 NavigationStore，modified click、非主键和已处理事件保留浏览器默认行为。不要把
 URL-changing action 回退为只有 `onClick` 的 Button。

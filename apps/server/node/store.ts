@@ -1,4 +1,4 @@
-import type { JsonValue } from '@oomol-lab/open-flow/project-change'
+import type { JsonValue } from '@oomol-lab/open-flow/flow-change'
 import type { ProjectedRunEvent } from '@oomol-lab/open-flow/run-events'
 import type { RunStatus, RunTerminalStatus } from '@oomol-lab/open-flow/run-lifecycle'
 import type { FlowRunOptions, TriggerSeed } from '@oomol-lab/open-flow/scheduler'
@@ -31,28 +31,28 @@ export interface RunRecord {
   readonly status: RunStatus
 }
 
-export interface StoredProject {
+export interface StoredFlow {
   readonly createRequestDigest: string
   readonly createdAt: number
   readonly draftRevisionId: string
   readonly name: string
-  readonly projectId: string
+  readonly flowId: string
   readonly status: 'active' | 'retiring'
   readonly updatedAt: number
 }
 
-export interface StoredProjectRevision {
+export interface StoredFlowRevision {
   readonly actorId: string
   readonly content: string
   readonly createdAt: number
   readonly digest: string
   readonly parentRevisionId: string | null
-  readonly projectId: string
+  readonly flowId: string
   readonly revisionId: string
 }
 
 export interface StoredPresentation {
-  readonly projectId: string
+  readonly flowId: string
   readonly revision: number
   readonly updatedAt: number
   readonly value: Readonly<Record<string, JsonValue>>
@@ -66,7 +66,6 @@ export interface StoredPublication {
   readonly flowId: string
   readonly modelVersion: number
   readonly operation: 'publish' | 'rollback'
-  readonly projectId: string
   readonly publicationId: string
   readonly revisionDigest: string
   readonly revisionId: string
@@ -91,7 +90,6 @@ export interface StoredControlRun {
   readonly modelVersion: number
   readonly occurrenceId: string | null
   readonly publicationId: string | null
-  readonly projectId: string
   readonly result?: unknown
   readonly revisionDigest: string
   readonly revisionId: string
@@ -111,7 +109,6 @@ export interface StoredControlEvent {
 }
 
 interface StoredRunRequest {
-  readonly projectId: string | null
   readonly requestDigest: string
   readonly runId: string
   readonly source: 'draft' | 'live' | 'trigger' | null
@@ -126,7 +123,6 @@ const publicationColumns = `
   publications.flow_id AS flowId,
   publications.model_version AS modelVersion,
   publications.operation,
-  publications.project_id AS projectId,
   publications.publication_id AS publicationId,
   publications.revision_digest AS revisionDigest,
   publications.revision_id AS revisionId,
@@ -138,7 +134,6 @@ export interface StoredRun {
   readonly engineDigest: string
   readonly flowId: string
   readonly inputs: RunInputs
-  readonly projectId: string | null
   readonly revisionDigest: string
   readonly runId: string
   readonly trigger?: TriggerSeed
@@ -177,116 +172,118 @@ export class Store {
     this.#recoverRunning()
   }
 
-  createProject(input: {
+  createFlow(input: {
     readonly actorId: string
     readonly content: string
     readonly createdAt: number
     readonly digest: string
     readonly idempotencyKey: string
     readonly name: string
-    readonly projectId: string
+    readonly flowId: string
     readonly requestDigest: string
     readonly revisionId: string
-  }): { readonly created: boolean; readonly project: StoredProject } | { readonly kind: 'conflict' } {
+  }): { readonly created: boolean; readonly flow: StoredFlow } | { readonly kind: 'conflict' } {
     return this.#transaction(() => {
       const existing = this.#database
-        .prepare('SELECT project_id AS projectId, create_request_digest AS requestDigest FROM projects WHERE create_idempotency_key = ?')
-        .get(input.idempotencyKey) as { readonly projectId: string; readonly requestDigest: string } | undefined
+        .prepare('SELECT flow_id AS flowId, create_request_digest AS requestDigest FROM flows WHERE create_idempotency_key = ?')
+        .get(input.idempotencyKey) as { readonly flowId: string; readonly requestDigest: string } | undefined
       if (existing != null) {
         if (existing.requestDigest != input.requestDigest) return { kind: 'conflict' }
-        return { created: false, project: this.#project(existing.projectId)! }
+        return { created: false, flow: this.#flow(existing.flowId)! }
       }
 
       this.#ensureRevision({ content: input.content, revisionDigest: input.digest, revisionId: input.revisionId })
       this.#database
-        .prepare('INSERT INTO project_revisions (revision_id, project_id, parent_revision_id, actor_id, created_at) VALUES (?, ?, NULL, ?, ?)')
-        .run(input.revisionId, input.projectId, input.actorId, input.createdAt)
+        .prepare('INSERT INTO flow_revisions (revision_id, flow_id, parent_revision_id, actor_id, created_at) VALUES (?, ?, NULL, ?, ?)')
+        .run(input.revisionId, input.flowId, input.actorId, input.createdAt)
       this.#database
         .prepare(
-          `INSERT INTO projects (
-             project_id, name, status, draft_revision_id, create_idempotency_key,
+          `INSERT INTO flows (
+             flow_id, name, status, draft_revision_id, create_idempotency_key,
              create_request_digest, created_at, updated_at
            ) VALUES (?, ?, 'active', ?, ?, ?, ?, ?)`,
         )
-        .run(input.projectId, input.name, input.revisionId, input.idempotencyKey, input.requestDigest, input.createdAt, input.createdAt)
-      this.#database
-        .prepare("INSERT INTO project_presentations (project_id, revision, value, updated_at) VALUES (?, 1, '{}', ?)")
-        .run(input.projectId, input.createdAt)
-      return { created: true, project: this.#project(input.projectId)! }
+        .run(input.flowId, input.name, input.revisionId, input.idempotencyKey, input.requestDigest, input.createdAt, input.createdAt)
+      this.#database.prepare("INSERT INTO flow_presentations (flow_id, revision, value, updated_at) VALUES (?, 1, '{}', ?)").run(input.flowId, input.createdAt)
+      return { created: true, flow: this.#flow(input.flowId)! }
     })
   }
 
-  listProjects(
+  listFlows(
     limit: number,
-    after?: { readonly createdAt: number; readonly projectId: string },
+    after?: { readonly createdAt: number; readonly flowId: string },
     includeTotal = false,
-  ): { readonly projects: readonly StoredProject[]; readonly total?: number } {
+  ): { readonly flows: readonly StoredFlow[]; readonly total?: number } {
     const columns = `create_request_digest AS createRequestDigest, created_at AS createdAt,
-                     draft_revision_id AS draftRevisionId, name, project_id AS projectId, status, updated_at AS updatedAt`
-    const projects =
+                     draft_revision_id AS draftRevisionId, name, flow_id AS flowId, status, updated_at AS updatedAt`
+    const flows =
       after == null
-        ? (this.#database.prepare(`SELECT ${columns} FROM projects ORDER BY created_at, project_id LIMIT ?`).all(limit) as unknown as StoredProject[])
+        ? (this.#database.prepare(`SELECT ${columns} FROM flows ORDER BY created_at, flow_id LIMIT ?`).all(limit) as unknown as StoredFlow[])
         : (this.#database
             .prepare(
-              `SELECT ${columns} FROM projects
-               WHERE created_at > ? OR (created_at = ? AND project_id > ?)
-               ORDER BY created_at, project_id LIMIT ?`,
+              `SELECT ${columns} FROM flows
+               WHERE created_at > ? OR (created_at = ? AND flow_id > ?)
+               ORDER BY created_at, flow_id LIMIT ?`,
             )
-            .all(after.createdAt, after.createdAt, after.projectId, limit) as unknown as StoredProject[])
-    if (!includeTotal) return { projects }
-    const total = (this.#database.prepare('SELECT COUNT(*) AS total FROM projects').get() as { readonly total: number }).total
-    return { projects, total }
+            .all(after.createdAt, after.createdAt, after.flowId, limit) as unknown as StoredFlow[])
+    if (!includeTotal) return { flows }
+    const total = (this.#database.prepare('SELECT COUNT(*) AS total FROM flows').get() as { readonly total: number }).total
+    return { flows, total }
   }
 
-  project(projectId: string): StoredProject | undefined {
-    return this.#project(projectId)
+  flow(flowId: string): StoredFlow | undefined {
+    return this.#flow(flowId)
   }
 
-  retireProject(projectId: string, updatedAt: number): StoredProject | undefined {
+  renameFlow(flowId: string, name: string, updatedAt: number): StoredFlow | undefined {
+    this.#database.prepare("UPDATE flows SET name = ?, updated_at = ? WHERE flow_id = ? AND status = 'active'").run(name, updatedAt, flowId)
+    return this.#flow(flowId)
+  }
+
+  retireFlow(flowId: string, updatedAt: number): StoredFlow | undefined {
     return this.#transaction(() => {
-      const project = this.#project(projectId)
-      if (project == null) return
-      if (project.status == 'retiring') {
-        this.#database.prepare('UPDATE projects SET deletion_requested_at = COALESCE(deletion_requested_at, ?) WHERE project_id = ?').run(updatedAt, projectId)
-        return this.#project(projectId)
+      const flow = this.#flow(flowId)
+      if (flow == null) return
+      if (flow.status == 'retiring') {
+        this.#database.prepare('UPDATE flows SET deletion_requested_at = COALESCE(deletion_requested_at, ?) WHERE flow_id = ?').run(updatedAt, flowId)
+        return this.#flow(flowId)
       }
       this.#database
-        .prepare("UPDATE projects SET status = 'retiring', updated_at = ?, deletion_requested_at = ? WHERE project_id = ?")
-        .run(updatedAt, updatedAt, projectId)
-      const live = this.#database.prepare('SELECT flow_id AS flowId FROM flow_live WHERE project_id = ?').all(projectId) as { readonly flowId: string }[]
-      for (const { flowId } of live) this.#retireFlow(projectId, flowId, updatedAt)
-      return this.#project(projectId)
+        .prepare("UPDATE flows SET status = 'retiring', updated_at = ?, deletion_requested_at = ? WHERE flow_id = ?")
+        .run(updatedAt, updatedAt, flowId)
+      this.#retireFlow(flowId, updatedAt)
+      return this.#flow(flowId)
     })
   }
 
-  claimRetiringProject(attemptedAt: number): string | undefined {
+  claimRetiringFlow(attemptedAt: number): string | undefined {
     return this.#transaction(() => {
-      const projectId = (
+      const flowId = (
         this.#database
           .prepare(
-            `SELECT project_id AS projectId FROM projects
+            `SELECT flow_id AS flowId FROM flows
            WHERE status = 'retiring'
-           ORDER BY COALESCE(deletion_attempted_at, deletion_requested_at), deletion_requested_at, project_id
+           ORDER BY COALESCE(deletion_attempted_at, deletion_requested_at), deletion_requested_at, flow_id
            LIMIT 1`,
           )
-          .get() as { readonly projectId: string } | undefined
-      )?.projectId
-      if (projectId != null) {
-        this.#database.prepare("UPDATE projects SET deletion_attempted_at = ? WHERE project_id = ? AND status = 'retiring'").run(attemptedAt, projectId)
+          .get() as { readonly flowId: string } | undefined
+      )?.flowId
+      if (flowId != null) {
+        this.#database.prepare("UPDATE flows SET deletion_attempted_at = ? WHERE flow_id = ? AND status = 'retiring'").run(attemptedAt, flowId)
       }
-      return projectId
+      return flowId
     })
   }
 
-  cancelProjectRuns(projectId: string, limit: number): readonly string[] {
+  cancelFlowRuns(flowId: string, limit: number): readonly string[] {
     return this.#transaction(() => {
       const runs = this.#database
         .prepare(
           `SELECT run_id AS runId FROM runs
-           WHERE project_id = ? AND status IN ('queued', 'starting', 'running')
+           WHERE flow_id = ? AND status IN ('queued', 'starting', 'running')
            ORDER BY created_at, run_id LIMIT ?`,
         )
-        .all(projectId, limit) as { readonly runId: string }[]
+        .all(flowId, limit) as { readonly runId: string }[]
       const result = { error: { code: 'run.canceled', message: 'Run canceled.' } }
       const finishedAt = this.#clock()
       for (const { runId } of runs) {
@@ -296,23 +293,23 @@ export class Store {
     })
   }
 
-  projectHasIntegrationState(projectId: string): boolean {
+  flowHasIntegrationState(flowId: string): boolean {
     return (
       this.#database
         .prepare(
           `SELECT 1 FROM integration_states
            JOIN integration_bindings USING (binding_id)
-           WHERE integration_bindings.project_id = ? LIMIT 1`,
+           WHERE integration_bindings.flow_id = ? LIMIT 1`,
         )
-        .get(projectId) != null
+        .get(flowId) != null
     )
   }
 
-  deleteProjectRuns(projectId: string, limit: number): number {
+  deleteFlowRuns(flowId: string, limit: number): number {
     return this.#transaction(() => {
-      const runs = this.#database
-        .prepare('SELECT run_id AS runId FROM runs WHERE project_id = ? ORDER BY created_at, run_id LIMIT ?')
-        .all(projectId, limit) as { readonly runId: string }[]
+      const runs = this.#database.prepare('SELECT run_id AS runId FROM runs WHERE flow_id = ? ORDER BY created_at, run_id LIMIT ?').all(flowId, limit) as {
+        readonly runId: string
+      }[]
       for (const { runId } of runs) {
         this.#database.prepare('DELETE FROM webhook_admissions WHERE run_id = ?').run(runId)
         this.#database.prepare('DELETE FROM cron_admissions WHERE run_id = ?').run(runId)
@@ -329,35 +326,33 @@ export class Store {
     })
   }
 
-  deleteProject(projectId: string): boolean {
+  deleteFlow(flowId: string): boolean {
     return this.#transaction(() => {
-      const project = this.#database.prepare("SELECT 1 FROM projects WHERE project_id = ? AND status = 'retiring'").get(projectId)
-      if (project == null || this.#database.prepare('SELECT 1 FROM runs WHERE project_id = ? LIMIT 1').get(projectId) != null) return false
+      const flow = this.#database.prepare("SELECT 1 FROM flows WHERE flow_id = ? AND status = 'retiring'").get(flowId)
+      if (flow == null || this.#database.prepare('SELECT 1 FROM runs WHERE flow_id = ? LIMIT 1').get(flowId) != null) return false
 
       this.#database
         .prepare(
           `DELETE FROM trigger_activities WHERE binding_id IN (
-             SELECT endpoint_id FROM webhook_bindings WHERE project_id = ?
-             UNION SELECT binding_id FROM cron_bindings WHERE project_id = ?
-             UNION SELECT binding_id FROM poll_bindings WHERE project_id = ?
-             UNION SELECT binding_id FROM integration_bindings WHERE project_id = ?
+             SELECT endpoint_id FROM webhook_bindings WHERE flow_id = ?
+             UNION SELECT binding_id FROM cron_bindings WHERE flow_id = ?
+             UNION SELECT binding_id FROM poll_bindings WHERE flow_id = ?
+             UNION SELECT binding_id FROM integration_bindings WHERE flow_id = ?
            )`,
         )
-        .run(projectId, projectId, projectId, projectId)
-      this.#database.prepare('DELETE FROM poll_claims WHERE binding_id IN (SELECT binding_id FROM poll_bindings WHERE project_id = ?)').run(projectId)
-      this.#database.prepare('DELETE FROM poll_event_dedupe WHERE binding_id IN (SELECT binding_id FROM poll_bindings WHERE project_id = ?)').run(projectId)
-      this.#database
-        .prepare('DELETE FROM integration_states WHERE binding_id IN (SELECT binding_id FROM integration_bindings WHERE project_id = ?)')
-        .run(projectId)
-      this.#database.prepare('DELETE FROM webhook_bindings WHERE project_id = ?').run(projectId)
-      this.#database.prepare('DELETE FROM cron_bindings WHERE project_id = ?').run(projectId)
-      this.#database.prepare('DELETE FROM poll_bindings WHERE project_id = ?').run(projectId)
-      this.#database.prepare('DELETE FROM integration_bindings WHERE project_id = ?').run(projectId)
-      this.#database.prepare('DELETE FROM flow_live WHERE project_id = ?').run(projectId)
-      this.#database.prepare('DELETE FROM publications WHERE project_id = ?').run(projectId)
-      this.#database.prepare('DELETE FROM project_presentations WHERE project_id = ?').run(projectId)
-      this.#database.prepare('DELETE FROM project_revisions WHERE project_id = ?').run(projectId)
-      return this.#database.prepare("DELETE FROM projects WHERE project_id = ? AND status = 'retiring'").run(projectId).changes == 1
+        .run(flowId, flowId, flowId, flowId)
+      this.#database.prepare('DELETE FROM poll_claims WHERE binding_id IN (SELECT binding_id FROM poll_bindings WHERE flow_id = ?)').run(flowId)
+      this.#database.prepare('DELETE FROM poll_event_dedupe WHERE binding_id IN (SELECT binding_id FROM poll_bindings WHERE flow_id = ?)').run(flowId)
+      this.#database.prepare('DELETE FROM integration_states WHERE binding_id IN (SELECT binding_id FROM integration_bindings WHERE flow_id = ?)').run(flowId)
+      this.#database.prepare('DELETE FROM webhook_bindings WHERE flow_id = ?').run(flowId)
+      this.#database.prepare('DELETE FROM cron_bindings WHERE flow_id = ?').run(flowId)
+      this.#database.prepare('DELETE FROM poll_bindings WHERE flow_id = ?').run(flowId)
+      this.#database.prepare('DELETE FROM integration_bindings WHERE flow_id = ?').run(flowId)
+      this.#database.prepare('DELETE FROM flow_live WHERE flow_id = ?').run(flowId)
+      this.#database.prepare('DELETE FROM publications WHERE flow_id = ?').run(flowId)
+      this.#database.prepare('DELETE FROM flow_presentations WHERE flow_id = ?').run(flowId)
+      this.#database.prepare('DELETE FROM flow_revisions WHERE flow_id = ?').run(flowId)
+      return this.#database.prepare("DELETE FROM flows WHERE flow_id = ? AND status = 'retiring'").run(flowId).changes == 1
     })
   }
 
@@ -367,7 +362,7 @@ export class Store {
         .prepare(
           `DELETE FROM revisions WHERE revision_id IN (
              SELECT revisions.revision_id FROM revisions
-             WHERE NOT EXISTS (SELECT 1 FROM project_revisions WHERE project_revisions.revision_id = revisions.revision_id)
+             WHERE NOT EXISTS (SELECT 1 FROM flow_revisions WHERE flow_revisions.revision_id = revisions.revision_id)
                AND NOT EXISTS (SELECT 1 FROM publications WHERE publications.revision_id = revisions.revision_id)
                AND NOT EXISTS (SELECT 1 FROM runs WHERE runs.revision_id = revisions.revision_id)
              ORDER BY revisions.revision_id LIMIT ?
@@ -391,31 +386,31 @@ export class Store {
     )
   }
 
-  draft(projectId: string): StoredProjectRevision | undefined {
+  draft(flowId: string): StoredFlowRevision | undefined {
     return this.#database
       .prepare(
         `SELECT metadata.actor_id AS actorId, revisions.content, metadata.created_at AS createdAt,
                 revisions.digest, metadata.parent_revision_id AS parentRevisionId,
-                metadata.project_id AS projectId, metadata.revision_id AS revisionId
-         FROM projects
-         JOIN project_revisions AS metadata ON metadata.revision_id = projects.draft_revision_id
+                metadata.flow_id AS flowId, metadata.revision_id AS revisionId
+         FROM flows
+         JOIN flow_revisions AS metadata ON metadata.revision_id = flows.draft_revision_id
          JOIN revisions ON revisions.revision_id = metadata.revision_id
-         WHERE projects.project_id = ? AND metadata.project_id = projects.project_id`,
+         WHERE flows.flow_id = ? AND metadata.flow_id = flows.flow_id`,
       )
-      .get(projectId) as StoredProjectRevision | undefined
+      .get(flowId) as StoredFlowRevision | undefined
   }
 
-  revision(projectId: string, revisionId: string): StoredProjectRevision | undefined {
+  revision(flowId: string, revisionId: string): StoredFlowRevision | undefined {
     return this.#database
       .prepare(
         `SELECT metadata.actor_id AS actorId, revisions.content, metadata.created_at AS createdAt,
                 revisions.digest, metadata.parent_revision_id AS parentRevisionId,
-                metadata.project_id AS projectId, metadata.revision_id AS revisionId
-         FROM project_revisions AS metadata
+                metadata.flow_id AS flowId, metadata.revision_id AS revisionId
+         FROM flow_revisions AS metadata
          JOIN revisions ON revisions.revision_id = metadata.revision_id
-         WHERE metadata.project_id = ? AND metadata.revision_id = ?`,
+         WHERE metadata.flow_id = ? AND metadata.revision_id = ?`,
       )
-      .get(projectId, revisionId) as StoredProjectRevision | undefined
+      .get(flowId, revisionId) as StoredFlowRevision | undefined
   }
 
   commitRevision(input: {
@@ -424,54 +419,46 @@ export class Store {
     readonly createdAt: number
     readonly digest: string
     readonly expectedRevisionId: string
-    readonly flowIds: readonly string[]
-    readonly projectId: string
+    readonly flowId: string
     readonly revisionId: string
-  }): { readonly kind: 'busy' | 'conflict' | 'not-found' } | { readonly kind: 'committed'; readonly revision: StoredProjectRevision } {
+  }): { readonly kind: 'busy' | 'conflict' | 'not-found' } | { readonly kind: 'committed'; readonly revision: StoredFlowRevision } {
     return this.#transaction(() => {
-      const project = this.#project(input.projectId)
-      if (project == null) return { kind: 'not-found' }
-      if (project.status != 'active') return { kind: 'busy' }
-      if (project.draftRevisionId != input.expectedRevisionId) return { kind: 'conflict' }
+      const flow = this.#flow(input.flowId)
+      if (flow == null) return { kind: 'not-found' }
+      if (flow.status != 'active') return { kind: 'busy' }
+      if (flow.draftRevisionId != input.expectedRevisionId) return { kind: 'conflict' }
 
       this.#ensureRevision({ content: input.content, revisionDigest: input.digest, revisionId: input.revisionId })
       this.#database
-        .prepare('INSERT INTO project_revisions (revision_id, project_id, parent_revision_id, actor_id, created_at) VALUES (?, ?, ?, ?, ?)')
-        .run(input.revisionId, input.projectId, input.expectedRevisionId, input.actorId, input.createdAt)
-      this.#database
-        .prepare('UPDATE projects SET draft_revision_id = ?, updated_at = ? WHERE project_id = ?')
-        .run(input.revisionId, input.createdAt, input.projectId)
-      const retained = new Set(input.flowIds)
-      const live = this.#database.prepare('SELECT flow_id AS flowId FROM flow_live WHERE project_id = ?').all(input.projectId) as { readonly flowId: string }[]
-      for (const { flowId } of live) {
-        if (!retained.has(flowId)) this.#retireFlow(input.projectId, flowId, input.createdAt)
-      }
-      return { kind: 'committed', revision: this.revision(input.projectId, input.revisionId)! }
+        .prepare('INSERT INTO flow_revisions (revision_id, flow_id, parent_revision_id, actor_id, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(input.revisionId, input.flowId, input.expectedRevisionId, input.actorId, input.createdAt)
+      this.#database.prepare('UPDATE flows SET draft_revision_id = ?, updated_at = ? WHERE flow_id = ?').run(input.revisionId, input.createdAt, input.flowId)
+      return { kind: 'committed', revision: this.revision(input.flowId, input.revisionId)! }
     })
   }
 
-  presentation(projectId: string): StoredPresentation | undefined {
+  presentation(flowId: string): StoredPresentation | undefined {
     const row = this.#database
-      .prepare('SELECT project_id AS projectId, revision, updated_at AS updatedAt, value FROM project_presentations WHERE project_id = ?')
-      .get(projectId) as { readonly projectId: string; readonly revision: number; readonly updatedAt: number; readonly value: string } | undefined
+      .prepare('SELECT flow_id AS flowId, revision, updated_at AS updatedAt, value FROM flow_presentations WHERE flow_id = ?')
+      .get(flowId) as { readonly flowId: string; readonly revision: number; readonly updatedAt: number; readonly value: string } | undefined
     return row == null ? undefined : { ...row, value: JSON.parse(row.value) as Readonly<Record<string, JsonValue>> }
   }
 
   updatePresentation(
-    projectId: string,
+    flowId: string,
     expectedRevision: number,
     value: Readonly<Record<string, JsonValue>>,
     updatedAt: number,
   ): { readonly kind: 'busy' | 'conflict' | 'not-found' } | { readonly kind: 'updated'; readonly presentation: StoredPresentation } {
     return this.#transaction(() => {
-      const project = this.#project(projectId)
-      if (project == null) return { kind: 'not-found' }
-      if (project.status != 'active') return { kind: 'busy' }
+      const flow = this.#flow(flowId)
+      if (flow == null) return { kind: 'not-found' }
+      if (flow.status != 'active') return { kind: 'busy' }
       const changed = this.#database
-        .prepare('UPDATE project_presentations SET revision = revision + 1, value = ?, updated_at = ? WHERE project_id = ? AND revision = ?')
-        .run(JSON.stringify(value), updatedAt, projectId, expectedRevision)
+        .prepare('UPDATE flow_presentations SET revision = revision + 1, value = ?, updated_at = ? WHERE flow_id = ? AND revision = ?')
+        .run(JSON.stringify(value), updatedAt, flowId, expectedRevision)
       if (changed.changes != 1) return { kind: 'conflict' }
-      return { kind: 'updated', presentation: this.presentation(projectId)! }
+      return { kind: 'updated', presentation: this.presentation(flowId)! }
     })
   }
 
@@ -481,7 +468,6 @@ export class Store {
     readonly idempotencyKey: string
     readonly inputs: RunInputs
     readonly modelVersion: number
-    readonly projectId: string
     readonly requestDigest: string
     readonly revisionDigest: string
     readonly revisionId: string
@@ -496,13 +482,13 @@ export class Store {
       }
       const revision = this.#database
         .prepare(
-          `SELECT projects.status, revisions.digest
-           FROM projects
-           JOIN project_revisions AS metadata ON metadata.project_id = projects.project_id
+          `SELECT flows.status, revisions.digest
+           FROM flows
+           JOIN flow_revisions AS metadata ON metadata.flow_id = flows.flow_id
            JOIN revisions ON revisions.revision_id = metadata.revision_id
-           WHERE projects.project_id = ? AND metadata.revision_id = ?`,
+           WHERE flows.flow_id = ? AND metadata.revision_id = ?`,
         )
-        .get(input.projectId, input.revisionId) as { readonly digest: string; readonly status: StoredProject['status'] } | undefined
+        .get(input.flowId, input.revisionId) as { readonly digest: string; readonly status: StoredFlow['status'] } | undefined
       if (revision == null || revision.digest != input.revisionDigest) return { kind: 'not-found' }
       if (revision.status != 'active') return { kind: 'busy' }
       if (!this.#hasRunCapacity()) return { kind: 'overloaded' }
@@ -522,7 +508,6 @@ export class Store {
     readonly idempotencyKey: string
     readonly inputs: RunInputs
     readonly modelVersion: number
-    readonly projectId: string
     readonly requestDigest: string
     readonly revisionDigest: string
     readonly revisionId: string
@@ -537,10 +522,10 @@ export class Store {
         if (existing.requestDigest != input.requestDigest || existing.source != 'live') return { kind: 'conflict' }
         return { created: false, kind: 'accepted', runId: existing.runId, status: existing.status }
       }
-      const project = this.#project(input.projectId)
-      if (project == null) return { kind: 'not-found' }
-      if (project.status != 'active') return { kind: 'busy' }
-      const target = this.live(input.projectId, input.flowId)
+      const flow = this.#flow(input.flowId)
+      if (flow == null) return { kind: 'not-found' }
+      if (flow.status != 'active') return { kind: 'busy' }
+      const target = this.live(input.flowId)
       if (target == null || target.publication.publicationId != input.expectedPublicationId) return { kind: 'live-conflict' }
       const publication = target.publication
       if (
@@ -562,14 +547,14 @@ export class Store {
     })
   }
 
-  publication(projectId: string, flowId: string, publicationId: string): StoredPublication | undefined {
+  publication(flowId: string, publicationId: string): StoredPublication | undefined {
     return this.#database
       .prepare(
         `SELECT ${publicationColumns}
          FROM publications
-         WHERE publications.project_id = ? AND publications.flow_id = ? AND publications.publication_id = ?`,
+         WHERE publications.flow_id = ? AND publications.publication_id = ?`,
       )
-      .get(projectId, flowId, publicationId) as StoredPublication | undefined
+      .get(flowId, publicationId) as StoredPublication | undefined
   }
 
   publicationById(publicationId: string): StoredPublication | undefined {
@@ -582,36 +567,21 @@ export class Store {
       .get(publicationId) as StoredPublication | undefined
   }
 
-  live(projectId: string, flowId: string): StoredLive | undefined {
+  live(flowId: string): StoredLive | undefined {
     const row = this.#database
       .prepare(
         `SELECT ${publicationColumns}, flow_live.revision, flow_live.updated_at AS updatedAt
          FROM flow_live
          JOIN publications ON publications.publication_id = flow_live.publication_id
-         WHERE flow_live.project_id = ? AND flow_live.flow_id = ?`,
+         WHERE flow_live.flow_id = ?`,
       )
-      .get(projectId, flowId) as (StoredPublication & { readonly revision: number; readonly updatedAt: number }) | undefined
+      .get(flowId) as (StoredPublication & { readonly revision: number; readonly updatedAt: number }) | undefined
     if (row == null) return
     const { revision, updatedAt, ...publication } = row
     return { publication, revision, updatedAt }
   }
 
-  liveFlows(projectId: string): readonly StoredLive[] {
-    return (
-      this.#database
-        .prepare(
-          `SELECT ${publicationColumns}, flow_live.revision, flow_live.updated_at AS updatedAt
-           FROM flow_live
-           JOIN publications ON publications.publication_id = flow_live.publication_id
-           WHERE flow_live.project_id = ?
-           ORDER BY flow_live.flow_id`,
-        )
-        .all(projectId) as unknown as readonly (StoredPublication & { readonly revision: number; readonly updatedAt: number })[]
-    ).map(({ revision, updatedAt, ...publication }) => ({ publication, revision, updatedAt }))
-  }
-
   listPublications(
-    projectId: string,
     flowId: string,
     limit: number,
     after?: { readonly createdAt: number; readonly publicationId: string },
@@ -623,24 +593,24 @@ export class Store {
             .prepare(
               `SELECT ${publicationColumns}
                FROM publications
-               WHERE publications.project_id = ? AND publications.flow_id = ?
+               WHERE publications.flow_id = ?
                ORDER BY publications.created_at DESC, publications.publication_id DESC
                LIMIT ?`,
             )
-            .all(projectId, flowId, limit) as unknown as readonly StoredPublication[])
+            .all(flowId, limit) as unknown as readonly StoredPublication[])
         : (this.#database
             .prepare(
               `SELECT ${publicationColumns}
                FROM publications
-               WHERE publications.project_id = ? AND publications.flow_id = ?
+               WHERE publications.flow_id = ?
                  AND (publications.created_at < ? OR (publications.created_at = ? AND publications.publication_id < ?))
                ORDER BY publications.created_at DESC, publications.publication_id DESC
                LIMIT ?`,
             )
-            .all(projectId, flowId, after.createdAt, after.createdAt, after.publicationId, limit) as unknown as readonly StoredPublication[])
+            .all(flowId, after.createdAt, after.createdAt, after.publicationId, limit) as unknown as readonly StoredPublication[])
     if (!includeTotal) return { publications }
     const total = (
-      this.#database.prepare('SELECT COUNT(*) AS total FROM publications WHERE project_id = ? AND flow_id = ?').get(projectId, flowId) as {
+      this.#database.prepare('SELECT COUNT(*) AS total FROM publications WHERE flow_id = ?').get(flowId) as {
         readonly total: number
       }
     ).total
@@ -682,7 +652,6 @@ export class Store {
       readonly triggerNodeId: string
     }[]
     readonly publishedAt: number
-    readonly projectId: string
     readonly requestDigest: string
     readonly revisionDigest: string
     readonly revisionId: string
@@ -690,22 +659,22 @@ export class Store {
   }): PublicationAcceptance {
     return this.#transaction(() => {
       const existing = this.#database
-        .prepare('SELECT publication_id AS publicationId, request_digest AS requestDigest FROM publications WHERE project_id = ? AND idempotency_key = ?')
-        .get(input.projectId, input.idempotencyKey) as { readonly publicationId: string; readonly requestDigest: string } | undefined
+        .prepare('SELECT publication_id AS publicationId, request_digest AS requestDigest FROM publications WHERE flow_id = ? AND idempotency_key = ?')
+        .get(input.flowId, input.idempotencyKey) as { readonly publicationId: string; readonly requestDigest: string } | undefined
       if (existing != null) {
         if (existing.requestDigest != input.requestDigest) return { kind: 'conflict' }
         return { created: false, kind: 'published', publicationId: existing.publicationId }
       }
 
       if (input.metadata != null) {
-        const project = this.#project(input.projectId)
-        if (project == null) return { kind: 'not-found' }
-        if (project.status != 'active') return { kind: 'busy' }
-        const revision = this.revision(input.projectId, input.revisionId)
+        const flow = this.#flow(input.flowId)
+        if (flow == null) return { kind: 'not-found' }
+        if (flow.status != 'active') return { kind: 'busy' }
+        const revision = this.revision(input.flowId, input.revisionId)
         if (revision == null || revision.digest != input.revisionDigest) return { kind: 'not-found' }
-        if (input.metadata.operation == 'publish' && project.draftRevisionId != input.revisionId) return { kind: 'revision-conflict' }
+        if (input.metadata.operation == 'publish' && flow.draftRevisionId != input.revisionId) return { kind: 'revision-conflict' }
         if (input.metadata.operation == 'rollback') {
-          const source = this.publication(input.projectId, input.flowId, input.metadata.sourcePublicationId)
+          const source = this.publication(input.flowId, input.metadata.sourcePublicationId)
           if (source == null) return { kind: 'source-not-found' }
           if (
             source.revisionId != input.revisionId ||
@@ -719,9 +688,9 @@ export class Store {
         }
       }
 
-      const live = this.#database
-        .prepare('SELECT publication_id AS publicationId FROM flow_live WHERE project_id = ? AND flow_id = ?')
-        .get(input.projectId, input.flowId) as { readonly publicationId: string } | undefined
+      const live = this.#database.prepare('SELECT publication_id AS publicationId FROM flow_live WHERE flow_id = ?').get(input.flowId) as
+        | { readonly publicationId: string }
+        | undefined
       if ((live?.publicationId ?? null) != input.expectedLivePublicationId) {
         if (input.metadata != null) return { kind: 'live-conflict' }
         throw new AcceptanceError('publication-live-conflict', 'The Flow Live pointer no longer matches the expected Publication.')
@@ -732,14 +701,13 @@ export class Store {
       this.#database
         .prepare(
           `INSERT INTO publications (
-             publication_id, project_id, flow_id, revision_id, revision_digest,
+             publication_id, flow_id, revision_id, revision_digest,
              closure_digest, engine_contract, idempotency_key, request_digest,
              actor_id, operation, source_publication_id, model_version, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           publicationId,
-          input.projectId,
           input.flowId,
           input.revisionId,
           input.revisionDigest,
@@ -755,21 +723,21 @@ export class Store {
         )
       this.#database
         .prepare(
-          `INSERT INTO flow_live (project_id, flow_id, publication_id, revision, updated_at) VALUES (?, ?, ?, 1, ?)
-           ON CONFLICT (project_id, flow_id) DO UPDATE SET
+          `INSERT INTO flow_live (flow_id, publication_id, revision, updated_at) VALUES (?, ?, 1, ?)
+           ON CONFLICT (flow_id) DO UPDATE SET
              publication_id = excluded.publication_id,
              revision = flow_live.revision + 1,
              updated_at = excluded.updated_at`,
         )
-        .run(input.projectId, input.flowId, publicationId, input.publishedAt)
+        .run(input.flowId, publicationId, input.publishedAt)
 
       const desired = new Map(input.webhooks.map((webhook) => [webhook.triggerNodeId, webhook.triggerJson]))
       const bindings = this.#database
         .prepare(
           `SELECT endpoint_id AS endpointId, trigger_node_id AS triggerNodeId, current_publication_id AS currentPublicationId
-           FROM webhook_bindings WHERE project_id = ? AND flow_id = ?`,
+           FROM webhook_bindings WHERE flow_id = ?`,
         )
-        .all(input.projectId, input.flowId) as {
+        .all(input.flowId) as {
         readonly currentPublicationId: string | null
         readonly endpointId: string
         readonly triggerNodeId: string
@@ -799,19 +767,19 @@ export class Store {
         this.#database
           .prepare(
             `INSERT INTO webhook_bindings (
-               endpoint_id, project_id, flow_id, trigger_node_id, current_publication_id, runtime_version, trigger_json, updated_at
-             ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+               endpoint_id, flow_id, trigger_node_id, current_publication_id, runtime_version, trigger_json, updated_at
+             ) VALUES (?, ?, ?, ?, 1, ?, ?)`,
           )
-          .run(`endpoint_${randomUUID().replaceAll('-', '')}`, input.projectId, input.flowId, triggerNodeId, publicationId, triggerJson, input.publishedAt)
+          .run(`endpoint_${randomUUID().replaceAll('-', '')}`, input.flowId, triggerNodeId, publicationId, triggerJson, input.publishedAt)
       }
 
       const desiredCrons = new Map(input.crons.map((cron) => [cron.triggerNodeId, cron]))
       const cronBindings = this.#database
         .prepare(
           `SELECT binding_id AS bindingId, trigger_node_id AS triggerNodeId, current_publication_id AS currentPublicationId
-           FROM cron_bindings WHERE project_id = ? AND flow_id = ?`,
+           FROM cron_bindings WHERE flow_id = ?`,
         )
-        .all(input.projectId, input.flowId) as {
+        .all(input.flowId) as {
         readonly bindingId: string
         readonly currentPublicationId: string | null
         readonly triggerNodeId: string
@@ -843,13 +811,12 @@ export class Store {
         this.#database
           .prepare(
             `INSERT INTO cron_bindings (
-               binding_id, project_id, flow_id, trigger_node_id, current_publication_id,
+               binding_id, flow_id, trigger_node_id, current_publication_id,
                runtime_version, trigger_json, schedule_json, next_at, updated_at
-             ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+             ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`,
           )
           .run(
             `binding_${randomUUID().replaceAll('-', '')}`,
-            input.projectId,
             input.flowId,
             triggerNodeId,
             publicationId,
@@ -866,9 +833,9 @@ export class Store {
           `SELECT binding_id AS bindingId, trigger_node_id AS triggerNodeId,
                   current_publication_id AS currentPublicationId, trigger_json AS triggerJson,
                   connection_id AS connectionId
-           FROM poll_bindings WHERE project_id = ? AND flow_id = ?`,
+           FROM poll_bindings WHERE flow_id = ?`,
         )
-        .all(input.projectId, input.flowId) as {
+        .all(input.flowId) as {
         readonly bindingId: string
         readonly connectionId: string | null
         readonly currentPublicationId: string | null
@@ -920,13 +887,12 @@ export class Store {
         this.#database
           .prepare(
             `INSERT INTO poll_bindings (
-               binding_id, project_id, flow_id, trigger_node_id, current_publication_id,
+               binding_id, flow_id, trigger_node_id, current_publication_id,
                runtime_version, trigger_json, connection_id, schedule_json, next_at, health, updated_at
-             ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 'initializing', ?)`,
+             ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, 'initializing', ?)`,
           )
           .run(
             `binding_${randomUUID().replaceAll('-', '')}`,
-            input.projectId,
             input.flowId,
             triggerNodeId,
             publicationId,
@@ -944,9 +910,9 @@ export class Store {
           `SELECT binding_id AS bindingId, trigger_node_id AS triggerNodeId,
                   current_publication_id AS currentPublicationId, trigger_json AS triggerJson,
                   connection_id AS connectionId
-           FROM integration_bindings WHERE project_id = ? AND flow_id = ?`,
+           FROM integration_bindings WHERE flow_id = ?`,
         )
-        .all(input.projectId, input.flowId) as {
+        .all(input.flowId) as {
         readonly bindingId: string
         readonly connectionId: string
         readonly currentPublicationId: string | null
@@ -991,14 +957,13 @@ export class Store {
         this.#database
           .prepare(
             `INSERT INTO integration_bindings (
-               binding_id, endpoint_id, project_id, flow_id, trigger_node_id,
+               binding_id, endpoint_id, flow_id, trigger_node_id,
                current_publication_id, runtime_version, trigger_json, connection_id, health, reconcile_at, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'initializing', ?, ?)`,
+             ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'initializing', ?, ?)`,
           )
           .run(
             `binding_${randomUUID().replaceAll('-', '')}`,
             `endpoint_${randomUUID().replaceAll('-', '')}`,
-            input.projectId,
             input.flowId,
             triggerNodeId,
             publicationId,
@@ -1034,26 +999,25 @@ export class Store {
     return this.commit(runId, 'canceled', { error: { code: 'run.canceled', message: 'Run canceled.' } })
   }
 
-  claim(excludedProjectIds: readonly string[] = []): StoredRun | undefined {
+  claim(excludedFlowIds: readonly string[] = []): StoredRun | undefined {
     return this.#transaction(() => {
-      const projectFilter =
-        excludedProjectIds.length == 0 ? '' : `AND (runs.project_id IS NULL OR runs.project_id NOT IN (${excludedProjectIds.map(() => '?').join(', ')}))`
+      const flowFilter = excludedFlowIds.length == 0 ? '' : `AND runs.flow_id NOT IN (${excludedFlowIds.map(() => '?').join(', ')})`
       const claimed = this.#database
         .prepare(
           `SELECT runs.run_id AS runId
            FROM work JOIN runs USING (run_id)
            WHERE runs.status IN ('queued', 'starting')
-             ${projectFilter}
+             ${flowFilter}
            ORDER BY work.sequence
            LIMIT 1`,
         )
-        .get(...excludedProjectIds) as { readonly runId: string } | undefined
+        .get(...excludedFlowIds) as { readonly runId: string } | undefined
       if (claimed == null) return
       this.#database.prepare("UPDATE runs SET status = 'starting' WHERE run_id = ? AND status = 'queued'").run(claimed.runId)
       const row = this.#database
         .prepare(
           `SELECT revisions.content, runs.engine_contract AS engineContract, runs.engine_digest AS engineDigest,
-                  runs.flow_id AS flowId, runs.inputs, runs.project_id AS projectId,
+                  runs.flow_id AS flowId, runs.inputs,
                   runs.revision_digest AS revisionDigest, runs.run_id AS runId,
                   trigger_occurrences.payload AS triggerPayload, trigger_occurrences.trigger_node_id AS triggerNodeId
            FROM runs JOIN revisions USING (revision_id) LEFT JOIN trigger_occurrences USING (run_id)
@@ -1063,9 +1027,8 @@ export class Store {
         readonly content: string
         readonly engineContract: string
         readonly engineDigest: string
-        readonly flowId: string
         readonly inputs: string
-        readonly projectId: string | null
+        readonly flowId: string
         readonly revisionDigest: string
         readonly runId: string
         readonly triggerNodeId: string | null
@@ -1134,8 +1097,7 @@ export class Store {
   runRequest(idempotencyKey: string): StoredRunRequest | undefined {
     return this.#database
       .prepare(
-        `SELECT project_id AS projectId, request_digest AS requestDigest,
-                run_id AS runId, source, status
+        `SELECT request_digest AS requestDigest, run_id AS runId, source, status
          FROM runs WHERE idempotency_key = ?`,
       )
       .get(idempotencyKey) as StoredRunRequest | undefined
@@ -1146,23 +1108,18 @@ export class Store {
   }
 
   listControlRuns(
-    projectId: string,
+    flowId: string,
     limit: number,
     options: {
       readonly after?: { readonly createdAt: number; readonly runId: string }
-      readonly flowId?: string
       readonly status?: RunStatus
     } = {},
   ): readonly StoredControlRun[] {
-    const conditions = ['runs.project_id = ?']
-    const parameters: (number | string)[] = [projectId]
+    const conditions = ['runs.flow_id = ?']
+    const parameters: (number | string)[] = [flowId]
     if (options.after != null) {
       conditions.push('(runs.created_at > ? OR (runs.created_at = ? AND runs.run_id > ?))')
       parameters.push(options.after.createdAt, options.after.createdAt, options.after.runId)
-    }
-    if (options.flowId != null) {
-      conditions.push('runs.flow_id = ?')
-      parameters.push(options.flowId)
     }
     if (options.status != null) {
       conditions.push('runs.status = ?')
@@ -1201,9 +1158,7 @@ export class Store {
 
   cancelControlRun(runId: string): { readonly accepted: boolean; readonly run: StoredControlRun } | undefined {
     return this.#transaction(() => {
-      const current = this.#database.prepare('SELECT status FROM runs WHERE run_id = ? AND project_id IS NOT NULL AND source IS NOT NULL').get(runId) as
-        | { readonly status: RunStatus }
-        | undefined
+      const current = this.#database.prepare('SELECT status FROM runs WHERE run_id = ?').get(runId) as { readonly status: RunStatus } | undefined
       if (current == null) return
       if (current.status == 'canceled' || current.status == 'completed' || current.status == 'failed' || current.status == 'indeterminate') {
         return { accepted: false, run: this.controlRun(runId)! }
@@ -1232,23 +1187,23 @@ export class Store {
     })
   }
 
-  #retireFlow(projectId: string, flowId: string, retiredAt: number): void {
-    this.#database.prepare('DELETE FROM flow_live WHERE project_id = ? AND flow_id = ?').run(projectId, flowId)
+  #retireFlow(flowId: string, retiredAt: number): void {
+    this.#database.prepare('DELETE FROM flow_live WHERE flow_id = ?').run(flowId)
     this.#database
       .prepare(
         `UPDATE webhook_bindings
          SET current_publication_id = NULL, runtime_version = runtime_version + 1, trigger_json = NULL, updated_at = ?
-         WHERE project_id = ? AND flow_id = ? AND current_publication_id IS NOT NULL`,
+         WHERE flow_id = ? AND current_publication_id IS NOT NULL`,
       )
-      .run(retiredAt, projectId, flowId)
+      .run(retiredAt, flowId)
     this.#database
       .prepare(
         `UPDATE cron_bindings
          SET current_publication_id = NULL, runtime_version = runtime_version + 1,
              trigger_json = NULL, schedule_json = NULL, next_at = NULL, updated_at = ?
-         WHERE project_id = ? AND flow_id = ? AND current_publication_id IS NOT NULL`,
+         WHERE flow_id = ? AND current_publication_id IS NOT NULL`,
       )
-      .run(retiredAt, projectId, flowId)
+      .run(retiredAt, flowId)
     this.#database
       .prepare(
         `UPDATE poll_bindings
@@ -1256,28 +1211,28 @@ export class Store {
              next_at = NULL, retry_at = NULL, continuation_root_id = NULL, continuation_page = 0,
              active_claim_id = NULL, active_lease_token = NULL, active_lease_expires_at = NULL,
              updated_at = ?
-         WHERE project_id = ? AND flow_id = ? AND current_publication_id IS NOT NULL`,
+         WHERE flow_id = ? AND current_publication_id IS NOT NULL`,
       )
-      .run(retiredAt, projectId, flowId)
+      .run(retiredAt, flowId)
     this.#database
       .prepare(
         `UPDATE integration_bindings
          SET current_publication_id = NULL, runtime_version = runtime_version + 1,
              reconcile_at = ?, retry_at = NULL, updated_at = ?
-         WHERE project_id = ? AND flow_id = ? AND current_publication_id IS NOT NULL`,
+         WHERE flow_id = ? AND current_publication_id IS NOT NULL`,
       )
-      .run(retiredAt, retiredAt, projectId, flowId)
+      .run(retiredAt, retiredAt, flowId)
   }
 
-  #project(projectId: string): StoredProject | undefined {
+  #flow(flowId: string): StoredFlow | undefined {
     return this.#database
       .prepare(
         `SELECT create_request_digest AS createRequestDigest, created_at AS createdAt,
-                draft_revision_id AS draftRevisionId, name, project_id AS projectId,
+                draft_revision_id AS draftRevisionId, name, flow_id AS flowId,
                 status, updated_at AS updatedAt
-         FROM projects WHERE project_id = ?`,
+         FROM flows WHERE flow_id = ?`,
       )
-      .get(projectId) as StoredProject | undefined
+      .get(flowId) as StoredFlow | undefined
   }
 
   #controlRuns(condition: string, parameters: readonly (number | string)[], suffix: string): readonly StoredControlRun[] {
@@ -1287,15 +1242,14 @@ export class Store {
                 runs.created_at AS createdAt, runs.engine_contract AS engineContract,
                 runs.engine_digest AS engineDigest, runs.events_expires_at AS eventsExpiresAt,
                 runs.events_truncated AS eventsTruncated,
-                runs.finished_at AS finishedAt, runs.flow_id AS flowId, runs.project_id AS projectId,
+                runs.finished_at AS finishedAt, runs.flow_id AS flowId,
                 runs.model_version AS modelVersion, trigger_occurrences.occurrence_id AS occurrenceId, runs.result,
                 runs.publication_id AS publicationId,
                 runs.revision_digest AS revisionDigest, runs.revision_id AS revisionId,
                 runs.run_id AS runId, runs.source, runs.started_at AS startedAt, runs.status,
                 trigger_occurrences.trigger_node_id AS triggerNodeId
          FROM runs LEFT JOIN trigger_occurrences USING (run_id)
-         WHERE ${condition} AND runs.project_id IS NOT NULL
-           AND runs.source IS NOT NULL AND runs.closure_digest IS NOT NULL AND runs.model_version IS NOT NULL
+         WHERE ${condition}
          ${suffix}`,
       )
       .all(...parameters) as unknown as readonly (Omit<StoredControlRun, 'eventsTruncated' | 'result'> & {
@@ -1378,7 +1332,6 @@ export class Store {
     readonly inputs: RunInputs
     readonly modelVersion: number
     readonly publicationId?: string
-    readonly projectId: string
     readonly requestDigest: string
     readonly revisionDigest: string
     readonly revisionId: string
@@ -1389,9 +1342,9 @@ export class Store {
       .prepare(
         `INSERT INTO runs (
            run_id, idempotency_key, request_digest, revision_id, revision_digest, flow_id,
-           engine_contract, engine_digest, inputs, status, project_id, source, closure_digest,
+           engine_contract, engine_digest, inputs, status, source, closure_digest,
            model_version, created_at, publication_id
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`,
       )
       .run(
         runId,
@@ -1403,7 +1356,6 @@ export class Store {
         currentEngineContract,
         isolatedVmEngineDigest,
         JSON.stringify(input.inputs),
-        input.projectId,
         input.source,
         input.closureDigest,
         input.modelVersion,

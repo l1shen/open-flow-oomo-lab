@@ -1,6 +1,6 @@
 import type { ConnectorProxyRequest, ConnectorProxyResult } from '@oomol-lab/open-flow/connector-proxy'
 import type { ConnectorAction, ConnectorConnection, ConnectorProvider } from '@oomol-lab/open-flow/control-api'
-import type { JsonValue } from '@oomol-lab/open-flow/project-change'
+import type { JsonValue } from '@oomol-lab/open-flow/flow-change'
 import type { Logger } from 'pino'
 
 import { connectorActionPorts } from '@oomol-lab/open-flow/connector-action'

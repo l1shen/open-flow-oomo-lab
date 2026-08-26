@@ -118,7 +118,7 @@ function cloudWorkbenchOwnershipViolations(root: string, sourceFile: SourceFile)
   const index = fileName.indexOf(marker)
   if (index < 0 || /\.(?:spec|test)\.[cm]?[jt]sx?$/.test(fileName)) return []
   const relative = fileName.slice(index + marker.length)
-  const allowedChangeOwner = relative == 'api.ts' || relative == 'designer/projectChanges.ts'
+  const allowedChangeOwner = relative == 'api.ts' || relative == 'designer/flowChanges.ts'
   const allowedDocumentReader = relative == 'revisionView.ts'
   const violations: BoundaryViolation[] = []
   const report = (pattern: RegExp, message: string): void => {
@@ -131,21 +131,21 @@ function cloudWorkbenchOwnershipViolations(root: string, sourceFile: SourceFile)
     })
   }
   if (!allowedChangeOwner) {
-    report(/\bChangeOperation\b/, 'Only the Workbench Project change builder may construct or name ChangeOperation.')
+    report(/\bChangeOperation\b/, 'Only the Workbench Flow change builder may construct or name ChangeOperation.')
   }
   if (!allowedDocumentReader && !allowedChangeOwner) {
-    report(/\.content\.document\b/, 'Only the Workbench Revision view may traverse Draft ProjectDocument data.')
+    report(/\.content\.document\b/, 'Only the Workbench Revision view may traverse Draft FlowDocument data.')
   }
   if (relative.endsWith('.tsx')) {
     report(
-      /\b(?:ChangeOperation|InputMapping|ProjectDocument|ProjectTrigger)\b/,
-      'Workbench components must consume view models and submit user intents instead of persistent Project Model types.',
+      /\b(?:ChangeOperation|InputMapping|FlowDocument|ProjectTrigger)\b/,
+      'Workbench components must consume view models and submit user intents instead of persistent Flow Model types.',
     )
   }
   if (relative.startsWith('stores/')) {
     report(
-      /\b(?:ChangeOperation|InputMapping|ProjectDocument|ProjectTrigger)\b/,
-      'Workbench stores must submit user intents instead of operating on persistent Project Model types.',
+      /\b(?:ChangeOperation|InputMapping|FlowDocument|ProjectTrigger)\b/,
+      'Workbench stores must submit user intents instead of operating on persistent Flow Model types.',
     )
   }
   return violations

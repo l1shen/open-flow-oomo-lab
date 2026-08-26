@@ -1,5 +1,5 @@
 import type { ConnectorProxyRequest, ConnectorProxyResult } from '../../../connector/common/proxy.ts'
-import type { JsonValue, TriggerKeySnapshot } from '../../../project/common/change.ts'
+import type { JsonValue, TriggerKeySnapshot } from '../../../flow/common/change.ts'
 import type { IntegrationDefinition, IntegrationReconcileContext, IntegrationStateContext } from '../../common/integration.ts'
 
 import { IntegrationConnectionError, PermanentIntegrationError, TransientIntegrationError } from '../../common/integration.ts'

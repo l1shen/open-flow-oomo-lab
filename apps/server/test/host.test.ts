@@ -49,16 +49,16 @@ it('uses a signed operator session, expires it on time or token rotation, and cl
 
     const authenticated = await app.request('/auth/session', { headers: { cookie } })
     expect(await authenticated.json()).toEqual({ authenticated: true, configured: true, version: 1 })
-    const project = await app.request('/v1/projects', {
-      body: JSON.stringify({ name: 'Operator project', version: 1 }),
-      headers: { 'content-type': 'application/json', cookie, 'idempotency-key': 'operator-project' },
+    const flow = await app.request('/v1/flows', {
+      body: JSON.stringify({ name: 'Operator flow', version: 1 }),
+      headers: { 'content-type': 'application/json', cookie, 'idempotency-key': 'operator-flow' },
       method: 'POST',
     })
-    expect(project.status).toBe(201)
-    expect((await app.request('/v1/projects')).status).toBe(401)
-    expect((await app.request('/v1/projects', { headers: { authorization: `Bearer ${token}` } })).status).toBe(200)
-    expect((await app.request('/v1/projects', { headers: { authorization: 'Bearer wrong' } })).status).toBe(401)
-    expect((await app.request('/v1/projects', { headers: { authorization: `Basic ${token}` } })).status).toBe(401)
+    expect(flow.status).toBe(201)
+    expect((await app.request('/v1/flows')).status).toBe(401)
+    expect((await app.request('/v1/flows', { headers: { authorization: `Bearer ${token}` } })).status).toBe(200)
+    expect((await app.request('/v1/flows', { headers: { authorization: 'Bearer wrong' } })).status).toBe(401)
+    expect((await app.request('/v1/flows', { headers: { authorization: `Basic ${token}` } })).status).toBe(401)
 
     const rotated = createServerApp(service, {
       operator: new OperatorSession('open-flow-server-rotated-token-00000001', false, () => now),
@@ -70,7 +70,7 @@ it('uses a signed operator session, expires it on time or token rotation, and cl
     })
 
     now += 12 * 60 * 60 * 1_000 + 1
-    expect((await app.request('/v1/projects', { headers: { cookie } })).status).toBe(401)
+    expect((await app.request('/v1/flows', { headers: { cookie } })).status).toBe(401)
 
     now = Date.UTC(2026, 7, 22)
     const logout = await app.request('/auth/session', { headers: { cookie }, method: 'DELETE' })
@@ -122,8 +122,8 @@ it('reports missing operator configuration without disabling callbacks or health
   try {
     expect(await (await app.request('/auth/session')).json()).toEqual({ authenticated: false, configured: false, version: 1 })
     expect((await app.request('/auth/session', { body: JSON.stringify({ token, version: 1 }), method: 'POST' })).status).toBe(503)
-    expect((await app.request('/v1/projects')).status).toBe(401)
-    expect((await app.request('/v1/projects', { headers: { authorization: `Bearer ${token}` } })).status).toBe(401)
+    expect((await app.request('/v1/flows')).status).toBe(401)
+    expect((await app.request('/v1/flows', { headers: { authorization: `Bearer ${token}` } })).status).toBe(401)
     expect((await app.request('/v1/runs/missing')).status).toBe(401)
     expect((await app.request('/healthz')).status).toBe(200)
     expect((await app.request('/v1/webhooks/not-an-endpoint')).status).toBe(404)
@@ -133,15 +133,24 @@ it('reports missing operator configuration without disabling callbacks or health
   }
 })
 
-it('streams authenticated project invalidations without making the stream authoritative', async () => {
+it('streams independent Flow catalog and current Flow invalidations', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-notifications-'))
   const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
   const app = createServerApp(service, { resolveControlActor: () => 'operator' })
   try {
-    const created = await service.control.createProject('operator', 'Notifications', 'notifications-project')
-    expect((await createServerApp(service).request(`/v1/projects/${created.project.projectId}/notifications`)).status).toBe(401)
+    expect((await createServerApp(service).request('/v1/flows/notifications')).status).toBe(401)
+    const catalog = await app.request('/v1/flows/notifications')
+    const catalogReader = catalog.body!.getReader()
+    expect(new TextDecoder().decode((await catalogReader.read()).value)).toBe(': connected\n\n')
+    const createdResponse = await app.request('/v1/flows', {
+      body: JSON.stringify({ name: 'Notifications', version: 1 }),
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'notifications-flow' },
+      method: 'POST',
+    })
+    const created = (await createdResponse.json()) as { readonly draftRevisionId: string; readonly flowId: string }
+    expect(new TextDecoder().decode((await catalogReader.read()).value)).toBe(`data: ${JSON.stringify({ kind: 'flows.changed', version: 1 })}\n\n`)
 
-    const response = await app.request(`/v1/projects/${created.project.projectId}/notifications`)
+    const response = await app.request(`/v1/flows/${created.flowId}/notifications`)
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('text/event-stream')
     expect(response.headers.get('cache-control')).toBe('no-cache')
@@ -149,42 +158,41 @@ it('streams authenticated project invalidations without making the stream author
     const first = await reader.read()
     expect(new TextDecoder().decode(first.value)).toBe(': connected\n\n')
 
-    const changed = await service.control.changeDraft('operator', created.project.projectId, created.project.draftRevisionId, [
-      { flow: { graph: { nodes: {} }, name: 'Main' }, flowId: 'main', kind: 'flow.create' },
+    const changed = await service.control.changeDraft('operator', created.flowId, created.draftRevisionId, [
+      {
+        kind: 'graph.node.create',
+        node: { concurrency: 1, inputs: {}, kind: 'value', values: {} },
+        nodeId: 'marker',
+        target: { kind: 'flow' },
+      },
     ])
     const notification = await reader.read()
     expect(new TextDecoder().decode(notification.value)).toBe(
-      `data: ${JSON.stringify({ kind: 'draft.changed', projectId: created.project.projectId, revisionId: changed.revision.revisionId, version: 1 })}\n\n`,
+      `data: ${JSON.stringify({ kind: 'draft.changed', flowId: created.flowId, revisionId: changed.revision.revisionId, version: 1 })}\n\n`,
     )
-    const accepted = await service.control.createDraftRun(
-      created.project.projectId,
-      changed.revision.revisionId,
-      'main',
-      currentEngineContract,
-      {},
-      'notification-run',
-    )
+    const accepted = await service.control.createDraftRun(created.flowId, changed.revision.revisionId, currentEngineContract, {}, 'notification-run')
     const runNotification = await reader.read()
     expect(new TextDecoder().decode(runNotification.value)).toBe(
-      `data: ${JSON.stringify({ flowId: 'main', kind: 'run.created', projectId: created.project.projectId, runId: accepted.run.runId, version: 1 })}\n\n`,
+      `data: ${JSON.stringify({ flowId: created.flowId, kind: 'run.created', runId: accepted.run.runId, version: 1 })}\n\n`,
     )
     await reader.cancel()
+    await catalogReader.cancel()
   } finally {
     await service.close()
     await rm(directory, { force: true, recursive: true })
   }
 })
 
-it('closes project notification streams during shutdown', async () => {
+it('closes Flow notification streams during shutdown', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-notification-shutdown-'))
   const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
   const shutdown = new AbortController()
   try {
-    const created = await service.control.createProject('operator', 'Shutdown', 'shutdown-project')
+    const created = await service.control.createFlow('operator', 'Shutdown', 'shutdown-flow')
     const app = createServerApp(service, { resolveControlActor: () => 'operator', shutdownSignal: shutdown.signal })
-    const response = await app.request(`/v1/projects/${created.project.projectId}/notifications`)
+    const response = await app.request(`/v1/flows/${created.flow.flowId}/notifications`)
     const reader = response.body?.getReader()
-    if (reader == null) throw new Error('Project notification stream is missing.')
+    if (reader == null) throw new Error('Flow notification stream is missing.')
     await expect(reader.read()).resolves.toMatchObject({ done: false })
 
     shutdown.abort()
@@ -204,7 +212,7 @@ it('serves immutable assets and limits the SPA fallback to non-reserved HTML nav
   const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
   const app = createServerApp(service, { publicDirectory })
   try {
-    for (const target of ['/', '/projects/project-1', '/projects/project-1/flows/main/design']) {
+    for (const target of ['/', '/flows/main/design', '/flows/main/runs']) {
       const response = await app.request(target, { headers: { accept: 'text/html' } })
       expect.soft(response.status, target).toBe(200)
       expect.soft(response.headers.get('cache-control'), target).toBe('no-cache')
@@ -221,8 +229,8 @@ it('serves immutable assets and limits the SPA fallback to non-reserved HTML nav
       expect.soft(response.status, target).toBe(404)
       expect.soft(response.headers.get('content-type'), target).toContain('application/json')
     }
-    expect((await app.request('/projects/project-1', { headers: { accept: 'application/json' } })).status).toBe(404)
-    expect((await app.request('/projects/project-1', { headers: { accept: 'text/html' }, method: 'POST' })).status).toBe(404)
+    expect((await app.request('/flows/main/design', { headers: { accept: 'application/json' } })).status).toBe(404)
+    expect((await app.request('/flows/main/design', { headers: { accept: 'text/html' }, method: 'POST' })).status).toBe(404)
 
     const apiOnly = createServerApp(service)
     const withoutAssets = await apiOnly.request('/', { headers: { accept: 'text/html' } })

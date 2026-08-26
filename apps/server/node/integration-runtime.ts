@@ -1,11 +1,12 @@
 import type { ConnectorProxy } from '@oomol-lab/open-flow/connector-proxy'
+import type { JsonValue, RevisionContent, TriggerNode } from '@oomol-lab/open-flow/flow-change'
+import type { PreparedFlow } from '@oomol-lab/open-flow/flow-semantics'
 import type { IntegrationDefinition, IntegrationReceiveContext, IntegrationStateContext } from '@oomol-lab/open-flow/integration-trigger'
-import type { JsonValue, RevisionContent, TriggerNode } from '@oomol-lab/open-flow/project-change'
-import type { PreparedFlow } from '@oomol-lab/open-flow/project-semantics'
 import type { Logger } from 'pino'
 import type { ConnectorHost } from './connector.ts'
 import type { IntegrationHealth, StoredIntegrationBinding, StoredIntegrationState, StoredIntegrationTarget } from './trigger-store.ts'
 
+import { canonicalJsonBytes, digestBytes } from '@oomol-lab/open-flow/flow-encoding'
 import {
   integrationCallbackSecret,
   integrationOccurrenceId,
@@ -14,7 +15,6 @@ import {
   PermanentIntegrationError,
   TransientIntegrationError,
 } from '@oomol-lab/open-flow/integration-trigger'
-import { canonicalJsonBytes, digestBytes } from '@oomol-lab/open-flow/project-encoding'
 import { ConnectorTaskError } from './connector.ts'
 import { AcceptanceError } from './error.ts'
 import { errorKind } from './logger.ts'
@@ -50,10 +50,7 @@ export interface IntegrationRuntimeState {
   readonly subscription: Readonly<Record<string, JsonValue>> | null
 }
 
-type ValidateFlow = (
-  revision: RevisionContent,
-  flowId: string,
-) => Promise<{ readonly content: string; readonly prepared: PreparedFlow; readonly revisionDigest: string }>
+type ValidateFlow = (revision: RevisionContent) => Promise<{ readonly content: string; readonly prepared: PreparedFlow; readonly revisionDigest: string }>
 
 const batchSize = 100
 const retryMs = 1_000
@@ -70,7 +67,7 @@ export class IntegrationRuntime {
   readonly #store: Store
   readonly #validateFlow: ValidateFlow
   readonly #wake: () => void
-  readonly #runCreated: (projectId: string, flowId: string, runId: string) => void
+  readonly #runCreated: (flowId: string, runId: string) => void
   #failure?: unknown
   #started = false
   #ticking?: Promise<void>
@@ -84,7 +81,7 @@ export class IntegrationRuntime {
     definitions: readonly IntegrationDefinition[],
     validateFlow: ValidateFlow,
     wake: () => void,
-    runCreated: (projectId: string, flowId: string, runId: string) => void,
+    runCreated: (flowId: string, runId: string) => void,
     logger: Logger,
   ) {
     this.#callbackKey = options?.callbackKey
@@ -119,7 +116,7 @@ export class IntegrationRuntime {
   }
 
   bindings(revision: RevisionContent, prepared: PreparedFlow, publishedAt: number) {
-    const nodes = Object.entries(prepared.flow.graph.nodes)
+    const nodes = Object.entries(prepared.graph.nodes)
       .filter((entry): entry is [string, Extract<TriggerNode, { readonly kind: 'integration' }>] => entry[1].kind == 'integration')
       .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
     if (nodes.length > 0 && (this.#callbackKey == null || this.#publicOrigin == null)) {
@@ -143,8 +140,8 @@ export class IntegrationRuntime {
     })
   }
 
-  endpoint(projectId: string, flowId: string, triggerNodeId: string): string | undefined {
-    return this.#store.triggers.integrationBinding(projectId, flowId, triggerNodeId)?.endpointId
+  endpoint(flowId: string, triggerNodeId: string): string | undefined {
+    return this.#store.triggers.integrationBinding(flowId, triggerNodeId)?.endpointId
   }
 
   start(): void {
@@ -152,8 +149,8 @@ export class IntegrationRuntime {
     this.arm()
   }
 
-  state(projectId: string, flowId: string, triggerNodeId: string): IntegrationRuntimeState | undefined {
-    const binding = this.#store.triggers.integrationBinding(projectId, flowId, triggerNodeId)
+  state(flowId: string, triggerNodeId: string): IntegrationRuntimeState | undefined {
+    const binding = this.#store.triggers.integrationBinding(flowId, triggerNodeId)
     if (binding == null) return
     const state = this.#store.triggers.integrationState(binding.bindingId)
     return {
@@ -230,8 +227,8 @@ export class IntegrationRuntime {
       readonly rawBody: Uint8Array
     },
   ): Promise<IntegrationResponse> {
-    const fixed = await this.#validateFlow(JSON.parse(target.stored.content) as RevisionContent, target.stored.flowId)
-    const currentTrigger = fixed.prepared.flow.graph.nodes[target.stored.triggerNodeId]
+    const fixed = await this.#validateFlow(JSON.parse(target.stored.content) as RevisionContent)
+    const currentTrigger = fixed.prepared.graph.nodes[target.stored.triggerNodeId]
     if (
       fixed.revisionDigest != target.stored.revisionDigest ||
       fixed.prepared.closureDigest != target.stored.closureDigest ||
@@ -298,7 +295,7 @@ export class IntegrationRuntime {
         if (accepted.kind == 'conflict') return { status: 409 }
         if (accepted.kind == 'overloaded') return { status: 429 }
         if (accepted.created) {
-          this.#runCreated(target.stored.projectId, target.stored.flowId, accepted.runId)
+          this.#runCreated(target.stored.flowId, accepted.runId)
           this.#wake()
         }
       }
@@ -380,7 +377,6 @@ export class IntegrationRuntime {
             bindingId: binding.bindingId,
             category: binding.health == 'initializing' && !retried ? 'trigger.integration.ready' : 'trigger.integration.recovered',
             flowId: binding.flowId,
-            projectId: binding.projectId,
             runtimeVersion: binding.runtimeVersion,
             triggerNodeId: binding.triggerNodeId,
           },
@@ -399,7 +395,6 @@ export class IntegrationRuntime {
       const fields = {
         bindingId: binding.bindingId,
         flowId: binding.flowId,
-        projectId: binding.projectId,
         runtimeVersion: binding.runtimeVersion,
         triggerNodeId: binding.triggerNodeId,
         ...errorKind(error),

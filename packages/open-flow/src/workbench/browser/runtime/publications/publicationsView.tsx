@@ -82,9 +82,9 @@ function activityLabel(kind: TriggerActivityKind, t: TFunction): string {
   }
 }
 
-function triggerName(binding: TriggerBinding, flowId: string, revision: RevisionView | undefined): string {
+function triggerName(binding: TriggerBinding, revision: RevisionView | undefined): string {
   if (revision == null || binding.currentRevisionId != revision.revision.revisionId) return binding.triggerNodeId
-  return revision.trigger(flowId, binding.triggerNodeId)?.name ?? binding.triggerNodeId
+  return revision.trigger(binding.triggerNodeId)?.name ?? binding.triggerNodeId
 }
 
 function triggerClass(binding: TriggerBinding): string {
@@ -116,6 +116,7 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
   const detail = useVal(store.publications.$.detail)
   const detailLoading = useVal(store.publications.$.detailLoading)
   const diagnostics = useVal(store.workspace.$.diagnostics)
+  const draft = useVal(store.workspace.$.draft)
   const flow = useVal(store.workspace.$.targetFlow)
   const live = useVal(store.publications.$.live)
   const loadFailed = useVal(store.publications.$.loadFailed)
@@ -124,7 +125,7 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
   const loadingMore = useVal(store.publications.$.loadingMore)
   const nextCursor = useVal(store.publications.$.nextCursor)
   const publications = useVal(store.publications.$.publications)
-  const projectId = useVal(store.workspace.$.projectId)
+  const flowId = useVal(store.workspace.$.flowId)
   const publishing = useVal(store.publications.$.publishing)
   const rollingBackPublicationId = useVal(store.publications.$.rollingBackPublicationId)
   const revision = useVal(store.workspace.$.revision)
@@ -168,24 +169,19 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
         {loadFailed ? (
           <div className="publication-load-error">
             <span>{t('publication.loadFailed')}</span>
-            <Button
-              disabled={projectId == null}
-              onClick={() => projectId != null && void store.publications.load(projectId, flow.flowId)}
-              size="sm"
-              variant="outline"
-            >
+            <Button disabled={flowId == null} onClick={() => flowId != null && void store.publications.load(flowId)} size="sm" variant="outline">
               {t('empty.retry')}
             </Button>
           </div>
         ) : (
           <div className="publication-precondition">
-            {flow.draft != null && (
+            {draft != null && (
               <div className="publication-publish-action">
                 <div>
-                  <strong>{t(flow.hasUnpublishedChanges ? 'workspace.unpublishedChanges' : 'publication.upToDate')}</strong>
-                  {flow.hasUnpublishedChanges && <span>{t(invalid ? 'workspace.fixIssuesToPublish' : 'publication.publishDescription')}</span>}
+                  <strong>{t(live?.hasUnpublishedChanges ? 'workspace.unpublishedChanges' : 'publication.upToDate')}</strong>
+                  {live?.hasUnpublishedChanges && <span>{t(invalid ? 'workspace.fixIssuesToPublish' : 'publication.publishDescription')}</span>}
                 </div>
-                {flow.hasUnpublishedChanges && (
+                {live?.hasUnpublishedChanges && (
                   <Button disabled={busy != null || invalid} onClick={() => void store.publications.publish()}>
                     <Icon data-icon="inline-start" name="publish" />
                     {t(publishing ? 'workspace.publishing' : 'publication.publishDraft')}
@@ -199,7 +195,7 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                 <dl>
                   <div>
                     <dt>{t('publication.draftRevision')}</dt>
-                    <dd>{flow.draft == null ? t('publication.noDraft') : <CompactId value={flow.draft.revisionId} />}</dd>
+                    <dd>{draft == null ? t('publication.noDraft') : <CompactId value={draft.revisionId} />}</dd>
                   </div>
                 </dl>
               </div>
@@ -255,7 +251,7 @@ export function PublicationsView({ store }: { readonly store: WorkbenchStore }):
                       variant="ghost"
                     >
                       <span className={`status-dot ${triggerClass(binding)}`} />
-                      <strong title={binding.triggerNodeId}>{triggerName(binding, flow.flowId, revision)}</strong>
+                      <strong title={binding.triggerNodeId}>{triggerName(binding, revision)}</strong>
                       <span className={'trigger-binding-state ' + triggerClass(binding)}>{triggerLabel(binding, t)}</span>
                       <code className="trigger-binding-kind">{binding.kind}</code>
                       <span className="trigger-binding-detail-label">{t(selected ? 'publication.hideTriggerDetails' : 'publication.triggerDetails')}</span>

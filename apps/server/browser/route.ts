@@ -10,28 +10,21 @@ function decode(value: string): string | undefined {
 
 export function parseRoute(pathname: string): WorkbenchLocation {
   const parts = pathname.split('/').filter(Boolean)
-  if (parts[0] != 'projects' || parts[1] == null) return { view: 'design' }
-
-  const projectId = decode(parts[1])
-  if (projectId == null) return { view: 'design' }
-  if (parts.length == 2) return { projectId, view: 'design' }
-  if (parts.length != 5 || parts[2] != 'flows' || parts[3] == null) return { view: 'design' }
-
-  const flowId = decode(parts[3])
+  if (parts.length == 0) return { view: 'design' }
+  if (parts.length != 3 || parts[0] != 'flows') return { view: 'design' }
+  const flowId = decode(parts[1]!)
   if (flowId == null) return { view: 'design' }
-  switch (parts[4]) {
+  switch (parts[2]) {
     case 'design':
     case 'publications':
     case 'runs':
-      return { flowId, projectId, view: parts[4] }
+      return { flowId, view: parts[2] }
     default:
       return { view: 'design' }
   }
 }
 
 export function routePath(route: WorkbenchLocation): string {
-  if (route.projectId == null) return '/'
-  const project = `/projects/${encodeURIComponent(route.projectId)}`
-  if (route.flowId != null) return `${project}/flows/${encodeURIComponent(route.flowId)}/${route.view}`
-  return project
+  if (route.flowId == null) return '/'
+  return `/flows/${encodeURIComponent(route.flowId)}/${route.view}`
 }

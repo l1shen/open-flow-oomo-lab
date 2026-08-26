@@ -3,7 +3,6 @@ import type {
   ConnectorConnection,
   Flow,
   JsonValue,
-  Project,
   Publication,
   RunDetails,
   RunEvent,
@@ -19,17 +18,15 @@ import type {
   RevisionContent,
   TriggerNode,
   TriggerSchedule,
-} from '@oomol-lab/open-flow/project-change'
+} from '@oomol-lab/open-flow/flow-change'
 
 import { ApiError, ControlClient } from '@oomol-lab/open-flow/control-api'
-import { resourceNameIssue, resourceNameMaxLength } from '@oomol-lab/open-flow/project-change'
+import { resourceNameIssue, resourceNameMaxLength } from '@oomol-lab/open-flow/flow-change'
 import { runStatuses as runStatusValues } from '@oomol-lab/open-flow/run-lifecycle'
 
 export interface CommandHost {
   readonly request: (path: string, init?: RequestInit) => Promise<Response>
-  getWorkbenchUrl?(projectId: string, flowId?: string): Promise<string>
-  getProject(): Promise<string | undefined>
-  setProject(projectId: string): Promise<void>
+  getWorkbenchUrl?(flowId?: string): Promise<string>
 }
 
 export interface Runtime {
@@ -61,7 +58,6 @@ export interface ParsedArguments {
   readonly limit?: number
   readonly name?: string
   readonly positionals: readonly string[]
-  readonly project?: string
   readonly source: 'draft' | 'live'
   readonly status?: RunStatus
   readonly summary: boolean
@@ -137,7 +133,7 @@ export class CliError extends Error {
   }
 }
 
-export function checkedResourceName(value: string, label: 'Flow' | 'Project'): string {
+export function checkedResourceName(value: string, label: 'Flow'): string {
   const name = value.trim()
   if (resourceNameIssue(name) != null) {
     throw new CliError(
@@ -148,7 +144,7 @@ export function checkedResourceName(value: string, label: 'Flow' | 'Project'): s
   return name
 }
 
-const projectPageLimit = 100
+const flowPageLimit = 100
 export const publicationPageLimit = 100
 export const runPageLimit = 100
 const terminalRunStatuses = new Set<RunStatus>(['canceled', 'completed', 'failed', 'indeterminate'])
@@ -176,7 +172,6 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
   let json = false
   let limit: number | undefined
   let name: string | undefined
-  let project: string | undefined
   const sets: string[] = []
   let source: ParsedArguments['source'] = 'draft'
   let status: RunStatus | undefined
@@ -200,7 +195,6 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     } else if (argument == '--summary') {
       summary = true
     } else if (
-      argument == '--project' ||
       argument == '--code' ||
       argument == '--connection' ||
       argument == '--cron' ||
@@ -224,8 +218,7 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     ) {
       const value = args[++index]
       if (value == null || value.length == 0) throw new CliError('cli.invalid-arguments', `${argument} requires a value.`)
-      if (argument == '--project') project = value
-      else if (argument == '--code') code = value
+      if (argument == '--code') code = value
       else if (argument == '--connection') connection = value
       else if (argument == '--cron') cron = value
       else if (argument == '--description') description = value
@@ -256,9 +249,6 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
         else if (argument == '--concurrency') concurrency = numeric
         else timeoutMs = numeric
       }
-    } else if (argument.startsWith('--project=')) {
-      project = argument.slice('--project='.length)
-      if (project.length == 0) throw new CliError('cli.invalid-arguments', '--project requires a value.')
     } else if (argument.startsWith('--flow=')) {
       flow = argument.slice('--flow='.length)
       if (flow.length == 0) throw new CliError('cli.invalid-arguments', '--flow requires a value.')
@@ -314,7 +304,6 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     ...(limit == null ? {} : { limit }),
     ...(name == null ? {} : { name }),
     positionals,
-    ...(project == null ? {} : { project }),
     sets,
     source,
     ...(status == null ? {} : { status }),
@@ -327,83 +316,47 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
   }
 }
 
-export async function allProjects(client: ControlClient): Promise<readonly Project[]> {
-  const projects: Project[] = []
+export async function allFlows(client: ControlClient): Promise<readonly Flow[]> {
+  const flows: Flow[] = []
   const cursors = new Set<string>()
   let cursor: string | undefined
   do {
-    const page = await client.listProjects({ cursor, limit: projectPageLimit })
-    projects.push(...page.projects)
+    const page = await client.listFlows({ cursor, limit: flowPageLimit })
+    flows.push(...page.flows)
     cursor = page.nextCursor
-    if (cursor != null && cursors.has(cursor)) throw new CliError('page.invalid-cursor', 'The deployment returned a repeated Project cursor.')
+    if (cursor != null && cursors.has(cursor)) throw new CliError('page.invalid-cursor', 'The deployment returned a repeated Flow cursor.')
     if (cursor != null) cursors.add(cursor)
   } while (cursor != null)
-  return projects
+  return flows
 }
 
-function exactProject(projects: readonly Project[], reference: string): Project {
-  const byId = projects.find((project) => project.projectId == reference)
+export function exactFlow(flows: readonly Flow[], reference: string): Flow {
+  const byId = flows.find((flow) => flow.flowId == reference)
   if (byId != null) return byId
-  const byName = projects.filter((project) => project.name == reference)
+  const byName = flows.filter((flow) => flow.name == reference)
   if (byName.length == 1) return byName[0]!
   if (byName.length > 1) {
-    throw new CliError('project.ambiguous', `Project name ${JSON.stringify(reference)} is ambiguous.`, {
-      candidates: byName.map(({ name, projectId }) => ({ name, projectId })),
-    })
-  }
-  throw new CliError('project.not-found', `Project ${JSON.stringify(reference)} was not found.`)
-}
-
-export async function referencedProject(client: ControlClient, reference: string): Promise<Project> {
-  try {
-    return await client.getProject(reference)
-  } catch (error) {
-    if (!(error instanceof ApiError) || (error.code != 'project.invalid' && error.code != 'project.not-found')) throw error
-  }
-  return exactProject(await allProjects(client), reference)
-}
-
-export async function currentProject(client: ControlClient, host: CommandHost, args: ParsedArguments, runtime: Runtime): Promise<Project> {
-  const reference = args.project ?? runtime.env.OO_FLOW_PROJECT ?? (await host.getProject())
-  if (reference == null || reference.length == 0) {
-    throw new CliError(
-      'flow.project-context-required',
-      localized(
-        runtime.language,
-        'Select a Project with "oo flow project use <project>" or pass --project.',
-        '请先使用“oo flow project use <project>”选择项目，或传入 --project。',
-      ),
-    )
-  }
-  return await referencedProject(client, reference)
-}
-
-export function exactFlow(flows: readonly Flow[], reference: string, draftRequired = false): Flow {
-  const candidates = flows.filter((flow) => flow.flowId == reference || flow.draft?.name == reference)
-  const byId = candidates.find((flow) => flow.flowId == reference)
-  if (byId != null) {
-    if (draftRequired && byId.draft == null) throw new CliError('flow.draft-not-found', `Flow ${JSON.stringify(reference)} is not in the Draft.`)
-    return byId
-  }
-  if (candidates.length == 1) {
-    const flow = candidates[0]!
-    if (draftRequired && flow.draft == null) throw new CliError('flow.draft-not-found', `Flow ${JSON.stringify(reference)} is not in the Draft.`)
-    return flow
-  }
-  if (candidates.length > 1) {
     throw new CliError('flow.ambiguous', `Flow name ${JSON.stringify(reference)} is ambiguous.`, {
-      candidates: candidates.map((flow) => ({ flowId: flow.flowId, name: flow.draft?.name })),
+      candidates: byName.map(({ flowId, name }) => ({ flowId, name })),
     })
   }
   throw new CliError('flow.not-found', `Flow ${JSON.stringify(reference)} was not found.`)
 }
 
-export async function selectedDraftFlow(client: ControlClient, projectId: string, reference: string) {
-  const flow = exactFlow(await client.listFlows(projectId), reference, true)
-  const draft = await client.getRevision(projectId, flow.draft!.revisionId)
-  const graph = draft.content.document.flows[flow.flowId]?.graph
-  if (graph == null) throw new CliError('flow.draft-not-found', `Flow ${JSON.stringify(reference)} is not in the selected Revision.`)
-  return { draft, flow, graph, target: { id: flow.flowId, kind: 'flow' } as const }
+export async function referencedFlow(client: ControlClient, reference: string): Promise<Flow> {
+  try {
+    return await client.getFlow(reference)
+  } catch (error) {
+    if (!(error instanceof ApiError) || (error.code != 'flow.invalid' && error.code != 'flow.not-found')) throw error
+  }
+  return exactFlow(await allFlows(client), reference)
+}
+
+export async function selectedDraftFlow(client: ControlClient, flowId: string, reference: string) {
+  const flow = await referencedFlow(client, reference)
+  if (flow.flowId != flowId) throw new CliError('flow.not-found', `Flow ${JSON.stringify(reference)} was not found.`)
+  const draft = await client.getRevision(flowId, flow.draftRevisionId)
+  return { draft, flow, graph: draft.content.document.graph, target: { kind: 'flow' } as const }
 }
 
 export type SemanticNode = Exclude<GraphNode, TriggerNode>
@@ -448,13 +401,13 @@ function exactAction(actions: readonly ConnectorAction[], reference: string): Co
   throw new CliError('connector.action-not-found', `Connector Action ${JSON.stringify(reference)} was not found.`)
 }
 
-export async function referencedAction(client: ControlClient, projectId: string, reference: string): Promise<ConnectorAction> {
+export async function referencedAction(client: ControlClient, reference: string): Promise<ConnectorAction> {
   try {
-    return await client.getConnectorAction(projectId, reference)
+    return await client.getConnectorAction(reference)
   } catch (error) {
     if (!(error instanceof ApiError) || error.status != 404) throw error
   }
-  return exactAction(await client.searchConnectorActions(projectId, reference), reference)
+  return exactAction(await client.searchConnectorActions(reference), reference)
 }
 
 function exactConnection(connections: readonly ConnectorConnection[], reference: string): ConnectorConnection {
@@ -473,7 +426,6 @@ function exactConnection(connections: readonly ConnectorConnection[], reference:
 
 export async function preferredConnection(
   client: ControlClient,
-  projectId: string,
   serviceId: string,
   reference: string | undefined,
   fallback: ConnectorConnection | undefined,
@@ -481,7 +433,7 @@ export async function preferredConnection(
 ): Promise<ConnectorConnection | undefined> {
   const selected = reference == 'default' ? undefined : reference
   if (selected == null && fallback?.status == 'active') return fallback
-  const connections = await client.listConnectorConnections(projectId, serviceId)
+  const connections = await client.listConnectorConnections(serviceId)
   if (selected != null) return exactConnection(connections, selected)
   const active = connections.filter((connection) => connection.status == 'active')
   const preferred = active.find((connection) => connection.isDefault) ?? (active.length == 1 ? active[0] : undefined)
@@ -489,9 +441,8 @@ export async function preferredConnection(
   throw new CliError('connector.connection-required', `Select an active ${JSON.stringify(serviceId)} Connection with --connection.`)
 }
 
-export function exactTrigger(content: RevisionContent, flowId: string, reference: string): { readonly trigger: TriggerNode; readonly triggerId: string } {
-  const flow = content.document.flows[flowId]
-  const entries = Object.entries(flow?.graph.nodes ?? {}).filter((entry): entry is [string, TriggerNode] => !('inputs' in entry[1]))
+export function exactTrigger(content: RevisionContent, reference: string): { readonly trigger: TriggerNode; readonly triggerId: string } {
+  const entries = Object.entries(content.document.graph.nodes).filter((entry): entry is [string, TriggerNode] => !('inputs' in entry[1]))
   const byId = entries?.find(([triggerId]) => triggerId == reference)
   if (byId != null) return { trigger: byId[1], triggerId: byId[0] }
   const byName = entries?.filter(([, trigger]) => trigger.name == reference) ?? []
@@ -661,14 +612,8 @@ export function write(runtime: Runtime, json: boolean, value: unknown, text: str
   runtime.stdout.write(json ? `${JSON.stringify(value)}\n` : `${text}\n`)
 }
 
-export function projectText(project: Project): string {
-  return `${project.name}\t${project.projectId}\t${project.status}`
-}
-
 export function flowText(flow: Flow): string {
-  const name = flow.draft?.name ?? '<not in Draft>'
-  const live = flow.live == null ? 'not-published' : flow.live.status
-  return `${name}\t${flow.flowId}\t${live}`
+  return `${flow.name}\t${flow.flowId}\t${flow.status}`
 }
 
 export function nodeText(nodeId: string, node: GraphNode): string {
@@ -1023,11 +968,11 @@ export async function runInputs(args: ParsedArguments, runtime: Runtime): Promis
   return value as Readonly<Record<string, Readonly<Record<string, JsonValue>>>>
 }
 
-export async function publicationById(client: ControlClient, projectId: string, flowId: string, publicationId: string): Promise<Publication> {
+export async function publicationById(client: ControlClient, flowId: string, publicationId: string): Promise<Publication> {
   const cursors = new Set<string>()
   let cursor: string | undefined
   do {
-    const page = await client.listPublications(projectId, flowId, { cursor, limit: publicationPageLimit })
+    const page = await client.listPublications(flowId, { cursor, limit: publicationPageLimit })
     const found = page.publications.find((publication) => publication.publicationId == publicationId)
     if (found != null) return found
     cursor = page.nextCursor
@@ -1052,13 +997,13 @@ export function cloudError(error: ApiError): CliError {
 
 export async function changeDraft(
   client: ControlClient,
-  projectId: string,
+  flowId: string,
   baseRevisionId: string,
   target: ErrorDetails,
   operations: Parameters<ControlClient['changeDraft']>[2],
 ) {
   try {
-    return await client.changeDraft(projectId, baseRevisionId, operations)
+    return await client.changeDraft(flowId, baseRevisionId, operations)
   } catch (error) {
     if (error instanceof ApiError && error.code != 'response.invalid') throw cloudError(error)
     throw new CliError(
@@ -1066,7 +1011,7 @@ export async function changeDraft(
       'The deployment did not confirm whether the Draft change was accepted. Read the Flow again before retrying.',
       {
         baseRevisionId,
-        projectId,
+        flowId,
         target,
       },
     )

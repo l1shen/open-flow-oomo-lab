@@ -218,9 +218,9 @@ export type TriggerNode =
 
 export type GraphNode = ConditionNode | SubflowNode | TaskNode | TriggerNode | ValueNode
 
-export interface ProjectDocument {
+export interface FlowDocument {
   readonly bindings: Readonly<Record<string, { readonly kind: 'connection' | 'secret'; readonly target: string }>>
-  readonly flows: Readonly<Record<string, { readonly graph: Graph; readonly name: string }>>
+  readonly graph: Graph
   readonly subflows: Readonly<
     Record<
       string,
@@ -242,12 +242,12 @@ export interface CodeModule {
 }
 
 export interface RevisionContent {
-  readonly document: ProjectDocument
+  readonly document: FlowDocument
   readonly modelVersion: 1
   readonly modules: Readonly<Record<string, CodeModule>>
 }
 
-export type GraphTarget = { readonly id: string; readonly kind: 'flow' } | { readonly id: string; readonly kind: 'subflow' }
+export type GraphTarget = { readonly kind: 'flow' } | { readonly id: string; readonly kind: 'subflow' }
 
 export interface GraphEdge {
   readonly source: string
@@ -257,12 +257,9 @@ export interface GraphEdge {
 }
 
 export type ChangeOperation =
-  | { readonly binding: ProjectDocument['bindings'][string]; readonly bindingId: string; readonly kind: 'binding.create' }
-  | { readonly binding: ProjectDocument['bindings'][string]; readonly bindingId: string; readonly kind: 'binding.replace' }
+  | { readonly binding: FlowDocument['bindings'][string]; readonly bindingId: string; readonly kind: 'binding.create' }
+  | { readonly binding: FlowDocument['bindings'][string]; readonly bindingId: string; readonly kind: 'binding.replace' }
   | { readonly bindingId: string; readonly kind: 'binding.delete' }
-  | { readonly flow: ProjectDocument['flows'][string]; readonly flowId: string; readonly kind: 'flow.create' }
-  | { readonly flowId: string; readonly kind: 'flow.delete' }
-  | { readonly flowId: string; readonly kind: 'flow.rename'; readonly name: string }
   | { readonly kind: 'graph.edge.connect'; readonly edge: GraphEdge; readonly target: GraphTarget }
   | { readonly kind: 'graph.edge.disconnect'; readonly edge: GraphEdge; readonly target: GraphTarget }
   | { readonly kind: 'graph.node.create'; readonly node: GraphNode; readonly nodeId: string; readonly target: GraphTarget }
@@ -272,35 +269,32 @@ export type ChangeOperation =
   | { readonly kind: 'module.delete'; readonly moduleId: string }
   | { readonly kind: 'module.rename'; readonly moduleId: string; readonly name: string }
   | { readonly imports: readonly string[]; readonly kind: 'module.source.replace'; readonly moduleId: string; readonly source: string }
-  | { readonly kind: 'subflow.create'; readonly subflow: ProjectDocument['subflows'][string]; readonly subflowId: string }
+  | { readonly kind: 'subflow.create'; readonly subflow: FlowDocument['subflows'][string]; readonly subflowId: string }
   | {
-      readonly definition: Omit<ProjectDocument['subflows'][string], 'graph'>
+      readonly definition: Omit<FlowDocument['subflows'][string], 'graph'>
       readonly kind: 'subflow.definition.replace'
       readonly subflowId: string
     }
   | { readonly kind: 'subflow.delete'; readonly subflowId: string }
-  | { readonly kind: 'task.create'; readonly task: ProjectDocument['tasks'][string]; readonly taskId: string }
+  | { readonly kind: 'task.create'; readonly task: FlowDocument['tasks'][string]; readonly taskId: string }
   | { readonly kind: 'task.delete'; readonly taskId: string }
-  | { readonly kind: 'task.replace'; readonly task: ProjectDocument['tasks'][string]; readonly taskId: string }
+  | { readonly kind: 'task.replace'; readonly task: FlowDocument['tasks'][string]; readonly taskId: string }
 
-export class ProjectChangeError extends Error {}
+export class FlowChangeError extends Error {}
 
 function invalid(): never {
-  throw new ProjectChangeError()
+  throw new FlowChangeError()
 }
 
-function selectedGraph(document: ProjectDocument, target: GraphTarget): Graph {
-  const resource = target.kind == 'flow' ? document.flows[target.id] : document.subflows[target.id]
-  if (resource == null) invalid()
-  return resource.graph
+function selectedGraph(document: FlowDocument, target: GraphTarget): Graph {
+  if (target.kind == 'flow') return document.graph
+  const subflow = document.subflows[target.id]
+  if (subflow == null) invalid()
+  return subflow.graph
 }
 
-function replaceGraph(document: ProjectDocument, target: GraphTarget, value: Graph): ProjectDocument {
-  if (target.kind == 'flow') {
-    const flow = document.flows[target.id]
-    if (flow == null) invalid()
-    return { ...document, flows: { ...document.flows, [target.id]: { ...flow, graph: value } } }
-  }
+function replaceGraph(document: FlowDocument, target: GraphTarget, value: Graph): FlowDocument {
+  if (target.kind == 'flow') return { ...document, graph: value }
   const subflow = document.subflows[target.id]
   if (subflow == null) invalid()
   return { ...document, subflows: { ...document.subflows, [target.id]: { ...subflow, graph: value } } }
@@ -318,7 +312,7 @@ function withoutNodeSources(node: GraphNode, removed: ReadonlySet<string>): Grap
   return { ...node, inputs }
 }
 
-export function applyProjectChanges(content: RevisionContent, operations: readonly ChangeOperation[]): RevisionContent {
+export function applyFlowChanges(content: RevisionContent, operations: readonly ChangeOperation[]): RevisionContent {
   const document = { ...content.document }
   const modules = { ...content.modules }
   for (const operation of operations) {
@@ -336,23 +330,6 @@ export function applyProjectChanges(content: RevisionContent, operations: readon
         const bindings = { ...document.bindings }
         delete bindings[operation.bindingId]
         document.bindings = bindings
-        break
-      }
-      case 'flow.create':
-        if (document.flows[operation.flowId] != null) invalid()
-        document.flows = { ...document.flows, [operation.flowId]: operation.flow }
-        break
-      case 'flow.delete': {
-        if (document.flows[operation.flowId] == null) invalid()
-        const flows = { ...document.flows }
-        delete flows[operation.flowId]
-        document.flows = flows
-        break
-      }
-      case 'flow.rename': {
-        const flow = document.flows[operation.flowId]
-        if (flow == null) invalid()
-        document.flows = { ...document.flows, [operation.flowId]: { ...flow, name: operation.name } }
         break
       }
       case 'graph.edge.connect': {

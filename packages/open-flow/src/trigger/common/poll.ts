@@ -1,5 +1,5 @@
 import type { ConnectorProxy } from '../../connector/common/proxy.ts'
-import type { JsonValue, TriggerKeySnapshot, TriggerSchedule } from '../../project/common/change.ts'
+import type { JsonValue, TriggerKeySnapshot, TriggerSchedule } from '../../flow/common/change.ts'
 
 const encoder = new TextEncoder()
 

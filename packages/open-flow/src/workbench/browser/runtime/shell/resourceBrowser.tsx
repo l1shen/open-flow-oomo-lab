@@ -1,6 +1,5 @@
 import type { FormEvent, ReactElement } from 'react'
 import type { Flow } from '../api.ts'
-import type { Project } from '../api.ts'
 import type { WorkbenchLanguage } from '../contract.ts'
 import type { WorkbenchStore } from '../stores/workbenchStore.ts'
 import type { WorkspaceBusy } from '../stores/workspaceModel.ts'
@@ -8,7 +7,7 @@ import type { WorkspaceBusy } from '../stores/workspaceModel.ts'
 import { lazy, Suspense, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useLang, useTranslate } from 'val-i18n-react'
-import { resourceNameIssue, resourceNameMaxLength } from '../../../../project/common/change.ts'
+import { resourceNameIssue, resourceNameMaxLength } from '../../../../flow/common/change.ts'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../../../../ui/browser/empty.tsx'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../../../../ui/browser/input-group.tsx'
@@ -47,272 +46,6 @@ export function LanguageSelect({ language, onLanguageChange }: LanguageSelectPro
   )
 }
 
-interface ProjectBrowserProps extends LanguageSelectProps {
-  readonly hrefForProject: (projectId: string) => string
-  readonly onCreateProject: (name: string) => Promise<boolean>
-  readonly onSelectProject: (projectId: string) => void
-  readonly store: WorkbenchStore
-}
-
-interface ProjectItemProps {
-  readonly busy: WorkspaceBusy | undefined
-  readonly href: string
-  readonly onSelect: (projectId: string) => void
-  readonly project: Project
-  readonly store: WorkbenchStore
-}
-
-function ProjectItem({ busy, href, onSelect, project, store }: ProjectItemProps): ReactElement {
-  const locale = useLang()
-  const t = useTranslate()
-  const [mode, setMode] = useState<'actions' | 'delete' | 'idle'>('idle')
-
-  async function remove(): Promise<void> {
-    if (await store.workspace.deleteProject(project.projectId)) setMode('idle')
-  }
-
-  return (
-    <div className="resource-item-row">
-      <Button
-        aria-disabled={project.status == 'retiring'}
-        className="resource-list-row project-columns"
-        nativeButton={false}
-        onClick={(event) => {
-          if (project.status == 'retiring') {
-            event.preventDefault()
-            return
-          }
-          followWorkbenchLink(event, () => {
-            setMode('idle')
-            onSelect(project.projectId)
-          })
-        }}
-        render={<a href={project.status == 'retiring' ? undefined : href} />}
-        tabIndex={project.status == 'retiring' ? -1 : undefined}
-        title={project.status == 'retiring' ? t('resource.projectRetiringDescription') : project.name}
-        variant="ghost"
-      >
-        <span className="resource-primary-cell">
-          <span className="resource-icon">
-            <Icon name="project" />
-          </span>
-          <span>
-            <strong>{project.name}</strong>
-            <code>{project.projectId}</code>
-          </span>
-        </span>
-        <time dateTime={project.updatedAt}>{new Date(project.updatedAt).toLocaleString(locale)}</time>
-        <span className={`resource-status ${project.status == 'active' ? 'active' : 'warning'}`}>
-          <span className={`status-dot ${project.status == 'active' ? 'success' : 'running'}`} />
-          {t(project.status == 'active' ? 'resource.active' : 'resource.retiring')}
-        </span>
-      </Button>
-      {project.status == 'active' && (
-        <Button
-          aria-expanded={mode != 'idle'}
-          aria-label={t('resource.projectActions', { name: project.name })}
-          className={cn('resource-row-more', mode != 'idle' && 'active')}
-          disabled={busy != null}
-          onClick={() => setMode(mode == 'idle' ? 'actions' : 'idle')}
-          size="icon-sm"
-          variant="ghost"
-        >
-          <Icon name="more" />
-        </Button>
-      )}
-      {mode == 'actions' && (
-        <div className="resource-row-actions">
-          <Button onClick={() => setMode('delete')} size="sm" variant="destructive">
-            {t('common.delete')}
-          </Button>
-        </div>
-      )}
-      {mode == 'delete' && (
-        <div className="resource-row-confirm" role="group" aria-label={t('resource.deleteProject', { name: project.name })}>
-          <span>
-            <strong>{t('resource.deleteProjectConfirm', { name: project.name })}</strong>
-            <small>{t('resource.deleteProjectDescription')}</small>
-          </span>
-          <div>
-            <Button onClick={() => setMode('idle')} size="sm" variant="outline">
-              {t('common.cancel')}
-            </Button>
-            <Button disabled={busy != null} onClick={() => void remove()} size="sm" variant="destructive">
-              {t(busy == 'project' ? 'common.deleting' : 'common.delete')}
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export function ProjectBrowser({ hrefForProject, language, onCreateProject, onLanguageChange, onSelectProject, store }: ProjectBrowserProps): ReactElement {
-  const t = useTranslate()
-  const busy = useVal(store.workspace.$.busy)
-  const loadFailed = useVal(store.workspace.$.projectLoadFailed)
-  const loadMoreFailed = useVal(store.workspace.$.projectLoadMoreFailed)
-  const loading = useVal(store.workspace.$.projectLoading)
-  const loadingMore = useVal(store.workspace.$.projectLoadingMore)
-  const nextCursor = useVal(store.workspace.$.projectNextCursor)
-  const projects = useVal(store.workspace.$.projects)
-  const total = useVal(store.workspace.$.projectTotal)
-  const [creating, setCreating] = useState(false)
-  const [filter, setFilter] = useState('')
-  const [name, setName] = useState('')
-  const normalizedFilter = filter.trim().toLocaleLowerCase()
-  const visibleProjects = projects.filter((project) => project.name.toLocaleLowerCase().includes(normalizedFilter))
-
-  async function createProject(event: FormEvent): Promise<void> {
-    event.preventDefault()
-    const nextName = name.trim()
-    if (resourceNameIssue(nextName) != null || !(await onCreateProject(nextName))) return
-    setCreating(false)
-    setName('')
-  }
-
-  return (
-    <main className="resource-browser">
-      <div className="resource-page">
-        <header className="resource-page-header">
-          <div className="resource-heading">
-            <span className="resource-eyebrow">{t('resource.workflows')}</span>
-            <h1>{t('resource.projects')}</h1>
-            <p>{t('resource.projectsDescription')}</p>
-          </div>
-          <LanguageSelect language={language} onLanguageChange={onLanguageChange} />
-        </header>
-        <section aria-labelledby="project-list-title" className="resource-list-section">
-          <div className="resource-list-title">
-            <div className="resource-list-heading">
-              <h2 id="project-list-title">{t('resource.allProjects')}</h2>
-              {!loading && <span>{t('resource.projectCount', { count: total ?? projects.length })}</span>}
-            </div>
-            <div className="resource-list-actions">
-              <InputGroup className="w-full sm:w-56">
-                <InputGroupAddon>
-                  <Icon name="search" size={17} />
-                </InputGroupAddon>
-                <InputGroupInput
-                  autoComplete="off"
-                  aria-label={t('resource.searchProjects')}
-                  name="project-search"
-                  onChange={(event) => setFilter(event.target.value)}
-                  placeholder={t('resource.searchProjects')}
-                  value={filter}
-                />
-              </InputGroup>
-              <Button
-                aria-label={t('common.refresh')}
-                disabled={loading || busy != null}
-                onClick={() => void store.workspace.reloadProjects()}
-                size="icon"
-                title={t('common.refresh')}
-                variant="outline"
-              >
-                <Icon name="refresh" />
-              </Button>
-              <Button disabled={busy != null} onClick={() => setCreating(true)}>
-                <Icon data-icon="inline-start" name="plus" />
-                {t('resource.newProject')}
-              </Button>
-            </div>
-          </div>
-          <div aria-hidden="true" className="resource-list-columns project-columns">
-            <span>{t('resource.name')}</span>
-            <span>{t('resource.updated')}</span>
-            <span>{t('resource.status')}</span>
-          </div>
-          <div className="resource-list">
-            {loading ? (
-              Array.from({ length: 5 }, (_, index) => <Skeleton className="h-14" key={index} />)
-            ) : loadFailed ? (
-              <Empty className="min-h-64" role="alert">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <Icon name="alert" size={20} />
-                  </EmptyMedia>
-                  <EmptyTitle>{t('resource.projectsLoadFailed')}</EmptyTitle>
-                  <EmptyDescription>{t('resource.projectsLoadFailedDescription')}</EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Button onClick={() => void store.retryProjects()} variant="outline">
-                    {t('empty.retry')}
-                  </Button>
-                </EmptyContent>
-              </Empty>
-            ) : visibleProjects.length == 0 ? (
-              <Empty className="min-h-64">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <Icon name="project" size={20} />
-                  </EmptyMedia>
-                  <EmptyTitle>{t(normalizedFilter.length == 0 ? 'resource.noProjects' : 'resource.noMatchingProjects')}</EmptyTitle>
-                  <EmptyDescription>{t(normalizedFilter.length == 0 ? 'resource.noProjectsDescription' : 'resource.noMatchingDescription')}</EmptyDescription>
-                </EmptyHeader>
-                {normalizedFilter.length == 0 && (
-                  <EmptyContent>
-                    <Button onClick={() => setCreating(true)} variant="outline">
-                      <Icon data-icon="inline-start" name="plus" /> {t('resource.newProject')}
-                    </Button>
-                  </EmptyContent>
-                )}
-              </Empty>
-            ) : (
-              visibleProjects.map((project) => (
-                <ProjectItem
-                  busy={busy}
-                  href={hrefForProject(project.projectId)}
-                  key={project.projectId}
-                  onSelect={onSelectProject}
-                  project={project}
-                  store={store}
-                />
-              ))
-            )}
-          </div>
-          {nextCursor != null && (
-            <Button className="mt-3 w-full" disabled={loadingMore} onClick={() => void store.workspace.loadMoreProjects()} variant="outline">
-              {t(loadingMore ? 'resource.loadingMore' : loadMoreFailed ? 'resource.retryLoadMore' : 'resource.loadMore')}
-            </Button>
-          )}
-        </section>
-        {creating && (
-          <Suspense fallback={null}>
-            <CreateResourceDialog
-              id="project-name"
-              issue={resourceNameIssue(name)}
-              label={t('resource.projectName')}
-              name={name}
-              onNameChange={setName}
-              onOpenChange={setCreating}
-              onSubmit={(event) => void createProject(event)}
-              pending={busy == 'project'}
-              title={t('resource.newProject')}
-            />
-          </Suspense>
-        )}
-      </div>
-    </main>
-  )
-}
-
-interface FlowBrowserProps extends LanguageSelectProps {
-  readonly hrefForFlow: (flow: Flow) => string
-  readonly onCreateFlow: (name: string) => Promise<boolean>
-  readonly onOpenProjects: () => void
-  readonly onSelectFlow: (flow: Flow) => void
-  readonly projectsHref: string
-  readonly store: WorkbenchStore
-}
-
-function flowStatus(flow: Flow): { readonly dot: 'running' | 'success'; readonly key: string } {
-  if (flow.live?.status == 'suspended') return { dot: 'running', key: 'resource.suspended' }
-  if (flow.draft != null && flow.live != null) return { dot: 'success', key: 'resource.liveAndDraft' }
-  if (flow.live != null) return { dot: 'success', key: 'resource.liveOnly' }
-  return { dot: 'running', key: 'resource.draft' }
-}
-
 interface FlowItemProps {
   readonly busy: WorkspaceBusy | undefined
   readonly flow: Flow
@@ -322,14 +55,11 @@ interface FlowItemProps {
 }
 
 function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactElement {
+  const locale = useLang()
   const t = useTranslate()
-  const draft = flow.draft
-  const status = flowStatus(flow)
   const [mode, setMode] = useState<'actions' | 'delete' | 'idle' | 'rename'>('idle')
-  const [name, setName] = useState(draft?.name ?? '')
-  const nameIssue = resourceNameIssue(name)
-  const showNameIssue = name.length > 0 && nameIssue != null
-  const nameMessageId = `rename-flow-${flow.flowId}-message`
+  const [name, setName] = useState(flow.name)
+  const issue = resourceNameIssue(name)
 
   async function rename(event: FormEvent): Promise<void> {
     event.preventDefault()
@@ -344,15 +74,18 @@ function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactEl
   return (
     <div className="resource-item-row">
       <Button
+        aria-disabled={flow.status == 'retiring'}
         className="resource-list-row flow-columns"
         nativeButton={false}
-        onClick={(event) =>
-          followWorkbenchLink(event, () => {
-            setMode('idle')
-            onSelect(flow)
-          })
-        }
-        render={<a href={href} />}
+        onClick={(event) => {
+          if (flow.status == 'retiring') {
+            event.preventDefault()
+            return
+          }
+          followWorkbenchLink(event, () => onSelect(flow))
+        }}
+        render={<a href={flow.status == 'retiring' ? undefined : href} />}
+        tabIndex={flow.status == 'retiring' ? -1 : undefined}
         variant="ghost"
       >
         <span className="resource-primary-cell">
@@ -360,22 +93,20 @@ function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactEl
             <Icon name="flow" />
           </span>
           <span>
-            <strong>{draft?.name ?? flow.flowId}</strong>
+            <strong>{flow.name}</strong>
             <code>{flow.flowId}</code>
           </span>
         </span>
-        <span className={`resource-change ${flow.hasUnpublishedChanges ? 'pending' : ''}`}>
-          {t(flow.hasUnpublishedChanges ? 'resource.unpublishedChanges' : 'resource.upToDate')}
-        </span>
-        <span className="resource-status">
-          <span className={`status-dot ${status.dot}`} />
-          {t(status.key)}
+        <time dateTime={flow.updatedAt}>{new Date(flow.updatedAt).toLocaleString(locale)}</time>
+        <span className={`resource-status ${flow.status == 'active' ? 'active' : 'warning'}`}>
+          <span className={`status-dot ${flow.status == 'active' ? 'success' : 'running'}`} />
+          {t(flow.status == 'active' ? 'resource.active' : 'resource.retiring')}
         </span>
       </Button>
-      {draft != null && (
+      {flow.status == 'active' && (
         <Button
           aria-expanded={mode != 'idle'}
-          aria-label={t('sidebar.flowActions', { name: draft.name })}
+          aria-label={t('sidebar.flowActions', { name: flow.name })}
           className={cn('resource-row-more', mode != 'idle' && 'active')}
           disabled={busy != null}
           onClick={() => setMode(mode == 'idle' ? 'actions' : 'idle')}
@@ -385,11 +116,11 @@ function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactEl
           <Icon name="more" />
         </Button>
       )}
-      {mode == 'actions' && draft != null && (
+      {mode == 'actions' && (
         <div className="resource-row-actions">
           <Button
             onClick={() => {
-              setName(draft.name)
+              setName(flow.name)
               setMode('rename')
             }}
             size="sm"
@@ -402,14 +133,13 @@ function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactEl
           </Button>
         </div>
       )}
-      {mode == 'rename' && draft != null && (
+      {mode == 'rename' && (
         <form className="resource-row-form" onSubmit={(event) => void rename(event)}>
-          <label htmlFor={`rename-flow-${flow.flowId}`}>{t('sidebar.renameFlow', { name: draft.name })}</label>
+          <label htmlFor={`rename-flow-${flow.flowId}`}>{t('sidebar.renameFlow', { name: flow.name })}</label>
           <span className="resource-row-field">
             <Input
               autoComplete="off"
-              aria-describedby={showNameIssue ? nameMessageId : undefined}
-              aria-invalid={showNameIssue}
+              aria-invalid={name.length > 0 && issue != null}
               autoFocus
               id={`rename-flow-${flow.flowId}`}
               name="flow-name"
@@ -417,34 +147,31 @@ function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactEl
               required
               value={name}
             />
-            {showNameIssue && (
-              <small className="resource-name-message error" id={nameMessageId}>
-                {t(`resource.nameIssue.${nameIssue}`, { max: resourceNameMaxLength })}
-              </small>
+            {name.length > 0 && issue != null && (
+              <small className="resource-name-message error">{t(`resource.nameIssue.${issue}`, { max: resourceNameMaxLength })}</small>
             )}
           </span>
           <div>
             <Button onClick={() => setMode('idle')} size="sm" variant="outline">
               {t('common.cancel')}
             </Button>
-            <Button disabled={busy != null || nameIssue != null} size="sm" type="submit">
+            <Button disabled={busy != null || issue != null} size="sm" type="submit">
               {t('common.save')}
             </Button>
           </div>
         </form>
       )}
-      {mode == 'delete' && draft != null && (
-        <div className="resource-row-confirm" role="group" aria-label={t('sidebar.deleteFlow', { name: draft.name })}>
+      {mode == 'delete' && (
+        <div className="resource-row-confirm" role="group" aria-label={t('sidebar.deleteFlow', { name: flow.name })}>
           <span>
-            <strong>{t('sidebar.deleteFlowConfirm', { name: draft.name })}</strong>
-            {flow.live != null && <small>{t('sidebar.deleteFlowLiveNote')}</small>}
+            <strong>{t('sidebar.deleteFlowConfirm', { name: flow.name })}</strong>
           </span>
           <div>
             <Button onClick={() => setMode('idle')} size="sm" variant="outline">
               {t('common.cancel')}
             </Button>
             <Button disabled={busy != null} onClick={() => void remove()} size="sm" variant="destructive">
-              {t(busy == 'resource' ? 'common.deleting' : 'common.delete')}
+              {t(busy == 'flow' ? 'common.deleting' : 'common.delete')}
             </Button>
           </div>
         </div>
@@ -453,31 +180,30 @@ function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactEl
   )
 }
 
-export function FlowBrowser({
-  hrefForFlow,
-  language,
-  onCreateFlow,
-  onLanguageChange,
-  onOpenProjects,
-  onSelectFlow,
-  projectsHref,
-  store,
-}: FlowBrowserProps): ReactElement {
+interface FlowBrowserProps extends LanguageSelectProps {
+  readonly hrefForFlow: (flow: Flow) => string
+  readonly onCreateFlow: (name: string) => Promise<boolean>
+  readonly onSelectFlow: (flow: Flow) => void
+  readonly store: WorkbenchStore
+}
+
+export function FlowBrowser({ hrefForFlow, language, onCreateFlow, onLanguageChange, onSelectFlow, store }: FlowBrowserProps): ReactElement {
   const t = useTranslate()
   const busy = useVal(store.workspace.$.busy)
-  const draft = useVal(store.workspace.$.draft)
+  const loadFailed = useVal(store.workspace.$.flowLoadFailed)
+  const loadMoreFailed = useVal(store.workspace.$.flowLoadMoreFailed)
+  const loading = useVal(store.workspace.$.flowLoading)
+  const loadingMore = useVal(store.workspace.$.flowLoadingMore)
+  const nextCursor = useVal(store.workspace.$.flowNextCursor)
   const flows = useVal(store.workspace.$.flows)
-  const project = useVal(store.workspace.$.project)
-  const projectId = useVal(store.workspace.$.projectId)
-  const loadFailed = useVal(store.workspace.$.workspaceLoadFailed)
-  const loading = useVal(store.workspace.$.workspaceLoading)
+  const total = useVal(store.workspace.$.flowTotal)
   const [creating, setCreating] = useState(false)
   const [filter, setFilter] = useState('')
   const [name, setName] = useState('')
-  const normalizedFilter = filter.trim().toLocaleLowerCase()
-  const visibleFlows = flows.filter((flow) => (flow.draft?.name ?? flow.flowId).toLocaleLowerCase().includes(normalizedFilter))
+  const normalized = filter.trim().toLocaleLowerCase()
+  const visible = flows.filter((flow) => flow.name.toLocaleLowerCase().includes(normalized))
 
-  async function createFlow(event: FormEvent): Promise<void> {
+  async function create(event: FormEvent): Promise<void> {
     event.preventDefault()
     const nextName = name.trim()
     if (resourceNameIssue(nextName) != null || !(await onCreateFlow(nextName))) return
@@ -490,19 +216,7 @@ export function FlowBrowser({
       <div className="resource-page">
         <header className="resource-page-header">
           <div className="resource-heading">
-            <nav aria-label={t('resource.breadcrumb')} className="resource-breadcrumb">
-              <Button
-                nativeButton={false}
-                onClick={(event) => followWorkbenchLink(event, onOpenProjects)}
-                render={<a href={projectsHref} />}
-                size="sm"
-                variant="link"
-              >
-                {t('resource.workflows')}
-              </Button>
-              <span>/</span>
-              <span>{project?.name ?? projectId}</span>
-            </nav>
+            <span className="resource-eyebrow">{t('resource.workflows')}</span>
             <h1>{t('resource.flows')}</h1>
             <p>{t('resource.flowsDescription')}</p>
           </div>
@@ -512,7 +226,7 @@ export function FlowBrowser({
           <div className="resource-list-title">
             <div className="resource-list-heading">
               <h2 id="flow-list-title">{t('resource.allFlows')}</h2>
-              {!loading && <span>{t('resource.flowCount', { count: flows.length })}</span>}
+              {!loading && <span>{t('resource.flowCount', { count: total ?? flows.length })}</span>}
             </div>
             <div className="resource-list-actions">
               <InputGroup className="w-full sm:w-56">
@@ -529,16 +243,15 @@ export function FlowBrowser({
                 />
               </InputGroup>
               <Button
-                aria-label={t('common.refresh')}
                 disabled={loading || busy != null}
-                onClick={() => void store.workspace.refreshFlows()}
+                onClick={() => void store.workspace.reloadFlows()}
                 size="icon"
                 title={t('common.refresh')}
                 variant="outline"
               >
                 <Icon name="refresh" />
               </Button>
-              <Button disabled={busy != null || draft == null || project?.status == 'retiring'} onClick={() => setCreating(true)}>
+              <Button disabled={busy != null} onClick={() => setCreating(true)}>
                 <Icon data-icon="inline-start" name="plus" />
                 {t('resource.newFlow')}
               </Button>
@@ -546,7 +259,7 @@ export function FlowBrowser({
           </div>
           <div aria-hidden="true" className="resource-list-columns flow-columns">
             <span>{t('resource.name')}</span>
-            <span>{t('resource.changes')}</span>
+            <span>{t('resource.updated')}</span>
             <span>{t('resource.status')}</span>
           </div>
           <div className="resource-list">
@@ -561,35 +274,39 @@ export function FlowBrowser({
                   <EmptyTitle>{t('resource.flowsLoadFailed')}</EmptyTitle>
                   <EmptyDescription>{t('resource.flowsLoadFailedDescription')}</EmptyDescription>
                 </EmptyHeader>
-                {projectId != null && (
-                  <EmptyContent>
-                    <Button onClick={() => void store.selectProject(projectId)} variant="outline">
-                      {t('empty.retry')}
-                    </Button>
-                  </EmptyContent>
-                )}
+                <EmptyContent>
+                  <Button onClick={() => void store.retryFlows()} variant="outline">
+                    {t('empty.retry')}
+                  </Button>
+                </EmptyContent>
               </Empty>
-            ) : visibleFlows.length == 0 ? (
+            ) : visible.length == 0 ? (
               <Empty className="min-h-64">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     <Icon name="flow" size={20} />
                   </EmptyMedia>
-                  <EmptyTitle>{t(normalizedFilter.length == 0 ? 'resource.noFlows' : 'resource.noMatchingFlows')}</EmptyTitle>
-                  <EmptyDescription>{t(normalizedFilter.length == 0 ? 'resource.noFlowsDescription' : 'resource.noMatchingDescription')}</EmptyDescription>
+                  <EmptyTitle>{t(normalized.length == 0 ? 'resource.noFlows' : 'resource.noMatchingFlows')}</EmptyTitle>
+                  <EmptyDescription>{t(normalized.length == 0 ? 'resource.noFlowsDescription' : 'resource.noMatchingDescription')}</EmptyDescription>
                 </EmptyHeader>
-                {normalizedFilter.length == 0 && draft != null && (
+                {normalized.length == 0 && (
                   <EmptyContent>
                     <Button onClick={() => setCreating(true)} variant="outline">
-                      <Icon data-icon="inline-start" name="plus" /> {t('resource.newFlow')}
+                      <Icon data-icon="inline-start" name="plus" />
+                      {t('resource.newFlow')}
                     </Button>
                   </EmptyContent>
                 )}
               </Empty>
             ) : (
-              visibleFlows.map((flow) => <FlowItem busy={busy} flow={flow} href={hrefForFlow(flow)} key={flow.flowId} onSelect={onSelectFlow} store={store} />)
+              visible.map((flow) => <FlowItem busy={busy} flow={flow} href={hrefForFlow(flow)} key={flow.flowId} onSelect={onSelectFlow} store={store} />)
             )}
           </div>
+          {nextCursor != null && (
+            <Button className="mt-3 w-full" disabled={loadingMore} onClick={() => void store.workspace.loadMoreFlows()} variant="outline">
+              {t(loadingMore ? 'resource.loadingMore' : loadMoreFailed ? 'resource.retryLoadMore' : 'resource.loadMore')}
+            </Button>
+          )}
         </section>
         {creating && (
           <Suspense fallback={null}>
@@ -600,8 +317,8 @@ export function FlowBrowser({
               name={name}
               onNameChange={setName}
               onOpenChange={setCreating}
-              onSubmit={(event) => void createFlow(event)}
-              pending={busy == 'resource'}
+              onSubmit={(event) => void create(event)}
+              pending={busy == 'flow'}
               title={t('resource.newFlow')}
             />
           </Suspense>

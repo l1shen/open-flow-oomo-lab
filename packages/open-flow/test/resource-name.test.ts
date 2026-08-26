@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { resourceNameIssue, resourceNameMaxLength } from '../src/project/common/change.ts'
+import { resourceNameIssue, resourceNameMaxLength } from '../src/flow/common/change.ts'
 
 describe('resource names', () => {
   test('accepts display names after caller normalization', () => {

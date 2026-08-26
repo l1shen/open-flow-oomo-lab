@@ -1,4 +1,4 @@
-import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { RevisionContent } from '@oomol-lab/open-flow/flow-change'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import type { DestinationStream, Logger } from 'pino'
 
@@ -36,20 +36,15 @@ function connectorFlow(options: { readonly action?: string; readonly connectionI
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              connector: {
-                concurrency: 1,
-                inputs: { message: { kind: 'value', value: 'hello' } },
-                kind: 'task',
-                taskId: 'connector',
-                ...(options.timeoutMs == null ? {} : { timeoutMs: options.timeoutMs }),
-              },
-            },
+      graph: {
+        nodes: {
+          connector: {
+            concurrency: 1,
+            inputs: { message: { kind: 'value', value: 'hello' } },
+            kind: 'task',
+            taskId: 'connector',
+            ...(options.timeoutMs == null ? {} : { timeoutMs: options.timeoutMs }),
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -75,25 +70,20 @@ function capabilityFlow(declared = true): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              capability: {
-                concurrency: 1,
-                inputs: { message: { kind: 'value', value: 'hello' } },
-                kind: 'task',
-                task: {
-                  ...(declared ? { capabilities: [{ action: 'example.echo', connectionId: 'connection-work', kind: 'connector' as const }] } : {}),
-                  inputs: { message: port },
-                  moduleId: 'capability',
-                  name: 'Capability',
-                  outputs: { message: port },
-                },
-              },
+      graph: {
+        nodes: {
+          capability: {
+            concurrency: 1,
+            inputs: { message: { kind: 'value', value: 'hello' } },
+            kind: 'task',
+            task: {
+              ...(declared ? { capabilities: [{ action: 'example.echo', connectionId: 'connection-work', kind: 'connector' as const }] } : {}),
+              inputs: { message: port },
+              moduleId: 'capability',
+              name: 'Capability',
+              outputs: { message: port },
             },
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -363,16 +353,11 @@ describe('Server Connector client', () => {
   it('uses only the explicit public Console origin for Connection pages', async () => {
     const configured = ServerService.open(await databaseFile(), undefined, Date.now, {}, 'https://connector.example')
     services.push(configured)
-    const created = await configured.control.createProject('operator', 'Connector page', 'connector-page')
-
-    expect(configured.control.connectorConnectionPage(created.project.projectId, 'mail/work')).toBe('https://connector.example/providers/mail%2Fwork')
+    expect(configured.control.connectorConnectionPage('mail/work')).toBe('https://connector.example/providers/mail%2Fwork')
 
     const unconfigured = ServerService.open(await databaseFile())
     services.push(unconfigured)
-    const unavailableProject = await unconfigured.control.createProject('operator', 'No Connector page', 'no-connector-page')
-    expect(() => unconfigured.control.connectorConnectionPage(unavailableProject.project.projectId, 'mail')).toThrow(
-      expect.objectContaining({ code: 'connector.unavailable', status: 503 }),
-    )
+    expect(() => unconfigured.control.connectorConnectionPage('mail')).toThrow(expect.objectContaining({ code: 'connector.unavailable', status: 503 }))
 
     const insecureFile = await databaseFile()
     expect(() => ServerService.open(insecureFile, undefined, Date.now, {}, 'http://connector.example')).toThrow(

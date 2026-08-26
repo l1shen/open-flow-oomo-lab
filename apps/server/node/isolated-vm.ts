@@ -1,4 +1,4 @@
-import type { JsonValue } from '@oomol-lab/open-flow/project-change'
+import type { JsonValue } from '@oomol-lab/open-flow/flow-change'
 import type { RuntimeCapabilityResponse, RuntimeInvocation, RuntimeProgram } from '@oomol-lab/open-flow/runtime-contract'
 import type IsolatedVM from 'isolated-vm'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'

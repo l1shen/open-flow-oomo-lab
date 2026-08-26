@@ -54,9 +54,7 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
   const [tab, setTab] = useState<'output' | 'timeline'>('timeline')
   const triggerRun = run?.source == 'trigger' && 'triggerNodeId' in run ? (run as TriggerRun) : undefined
   const triggerName =
-    triggerRun != null && revision?.revision.revisionId == triggerRun.revisionId
-      ? revision.trigger(triggerRun.flowId, triggerRun.triggerNodeId)?.name
-      : undefined
+    triggerRun != null && revision?.revision.revisionId == triggerRun.revisionId ? revision.trigger(triggerRun.triggerNodeId)?.name : undefined
 
   useEffect(() => {
     const element = root.current

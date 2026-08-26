@@ -1,5 +1,5 @@
 import type { ConnectorAction, ConnectorConnection, ConnectorProvider } from '@oomol-lab/open-flow/control-api'
-import type { JsonValue, RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { JsonValue, RevisionContent } from '@oomol-lab/open-flow/flow-change'
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -29,20 +29,15 @@ function connectorFlow(timeoutMs?: number): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              connector: {
-                concurrency: 1,
-                inputs: { message: { kind: 'value', value: 'hello' } },
-                kind: 'task',
-                taskId: 'connector',
-                ...(timeoutMs == null ? {} : { timeoutMs }),
-              },
-            },
+      graph: {
+        nodes: {
+          connector: {
+            concurrency: 1,
+            inputs: { message: { kind: 'value', value: 'hello' } },
+            kind: 'task',
+            taskId: 'connector',
+            ...(timeoutMs == null ? {} : { timeoutMs }),
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -67,25 +62,20 @@ function capabilityFlow(
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              capability: {
-                concurrency: 1,
-                inputs: { message: { kind: 'value', value: 'hello' } },
-                kind: 'task',
-                task: {
-                  ...(declared ? { capabilities: [{ action: 'example.echo', connectionId: 'connection-work', kind: 'connector' as const }] } : {}),
-                  inputs: { message: port },
-                  moduleId: 'capability',
-                  name: 'Capability',
-                  outputs: { message: port },
-                },
-              },
+      graph: {
+        nodes: {
+          capability: {
+            concurrency: 1,
+            inputs: { message: { kind: 'value', value: 'hello' } },
+            kind: 'task',
+            task: {
+              ...(declared ? { capabilities: [{ action: 'example.echo', connectionId: 'connection-work', kind: 'connector' as const }] } : {}),
+              inputs: { message: port },
+              moduleId: 'capability',
+              name: 'Capability',
+              outputs: { message: port },
             },
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -133,15 +123,13 @@ describe('Server Connector host', () => {
       searchActions: async () => actions,
     })
     const service = await open(connector, 'https://connector.example')
-    const created = await service.control.createProject('operator', 'Connector project', 'connector-project')
-    const projectId = created.project.projectId
 
-    await expect(service.control.listConnectorProviders(projectId)).resolves.toEqual(providers)
-    await expect(service.control.listConnectorActions(projectId, 'example')).resolves.toEqual(actions)
-    await expect(service.control.searchConnectorActions(projectId, 'echo')).resolves.toEqual(actions)
-    await expect(service.control.getConnectorAction(projectId, 'example.echo')).resolves.toEqual(actions[0])
-    await expect(service.control.listConnectorConnections(projectId, 'example')).resolves.toEqual(connections)
-    expect(service.control.connectorConnectionPage(projectId, 'example')).toBe('https://connector.example/providers/example')
+    await expect(service.control.listConnectorProviders()).resolves.toEqual(providers)
+    await expect(service.control.listConnectorActions('example')).resolves.toEqual(actions)
+    await expect(service.control.searchConnectorActions('echo')).resolves.toEqual(actions)
+    await expect(service.control.getConnectorAction('example.echo')).resolves.toEqual(actions[0])
+    await expect(service.control.listConnectorConnections('example')).resolves.toEqual(connections)
+    expect(service.control.connectorConnectionPage('example')).toBe('https://connector.example/providers/example')
   })
 
   it('executes managed Connector Tasks through the injected host', async () => {

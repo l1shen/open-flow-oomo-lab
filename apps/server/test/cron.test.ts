@@ -1,4 +1,4 @@
-import type { RevisionContent, TriggerSchedule } from '@oomol-lab/open-flow/project-change'
+import type { RevisionContent, TriggerSchedule } from '@oomol-lab/open-flow/flow-change'
 
 import { scheduledTriggerOccurrenceId } from '@oomol-lab/open-flow/cron-trigger'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -15,18 +15,13 @@ function revision(rules: readonly TriggerSchedule[]): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              scheduled: {
-                cronTimes: rules,
-                kind: 'cron',
-                name: 'Scheduled trigger',
-              },
-            },
+      graph: {
+        nodes: {
+          scheduled: {
+            cronTimes: rules,
+            kind: 'cron',
+            name: 'Scheduled trigger',
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -56,7 +51,6 @@ describe('Server Cron Trigger', () => {
         expectedLivePublicationId: null,
         flowId: 'main',
         idempotencyKey: 'publish-invalid',
-        projectId: 'project-a',
         revision: revision([{ expression: '* * * * * *', timezone: 'UTC', type: 'cron' }]),
         revisionId: 'revision-invalid',
       }),
@@ -80,7 +74,6 @@ describe('Server Cron Trigger', () => {
       expectedLivePublicationId: null,
       flowId: 'main',
       idempotencyKey: 'publish-cron',
-      projectId: 'project-a',
       revision: revision([{ type: 'every', unit: 'minute', value: 1 }]),
       revisionId: 'revision-a',
     })
@@ -122,7 +115,6 @@ describe('Server Cron Trigger', () => {
       expectedLivePublicationId: null,
       flowId: 'main',
       idempotencyKey: 'publish-timer',
-      projectId: 'project-a',
       revision: revision([{ type: 'every', unit: 'minute', value: 1 }]),
       revisionId: 'revision-timer',
     })
@@ -152,7 +144,6 @@ describe('Server Cron Trigger', () => {
       expectedLivePublicationId: null,
       flowId: 'main',
       idempotencyKey: 'publish-before-race',
-      projectId: 'project-a',
       revision: revision([{ type: 'every', unit: 'minute', value: 1 }]),
       revisionId: 'revision-before-race',
     })
@@ -187,7 +178,6 @@ describe('Server Cron Trigger', () => {
         expectedLivePublicationId: published.publicationId,
         flowId: 'main',
         idempotencyKey: 'publish-during-race',
-        projectId: 'project-a',
         revision: revision([{ type: 'every', unit: 'hour', value: 1 }]),
         revisionId: 'revision-during-race',
       })

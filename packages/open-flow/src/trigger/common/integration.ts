@@ -1,5 +1,5 @@
 import type { ConnectorProxy } from '../../connector/common/proxy.ts'
-import type { IntegrationEndpointMethod, JsonValue, TriggerKeySnapshot } from '../../project/common/change.ts'
+import type { IntegrationEndpointMethod, JsonValue, TriggerKeySnapshot } from '../../flow/common/change.ts'
 
 import { dequal } from 'dequal/lite'
 

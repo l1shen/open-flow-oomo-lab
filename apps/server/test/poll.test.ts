@@ -1,5 +1,5 @@
+import type { RevisionContent } from '@oomol-lab/open-flow/flow-change'
 import type { PollDefinition, PollResult } from '@oomol-lab/open-flow/poll-trigger'
-import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
 import type { DestinationStream, Logger } from 'pino'
 
 import { PollConnectionError, TransientPollError } from '@oomol-lab/open-flow/poll-trigger'
@@ -61,32 +61,27 @@ function revision(source = 'primary'): RevisionContent {
   return {
     document: {
       bindings: { connection: { kind: 'connection', target: 'connection-main' } },
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              poll: {
-                bindingId: 'connection',
-                config: { source },
-                definition: snapshot,
-                kind: 'poll',
-                name: 'Poll test trigger',
-                pollTimes: [{ type: 'every', unit: 'minute', value: 1 }],
-              },
-              task: {
-                concurrency: 1,
-                inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'poll', output: 'payload' }] } },
-                kind: 'task',
-                task: {
-                  inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
-                  moduleId: 'module-main',
-                  name: 'Main',
-                  outputs: {},
-                },
-              },
+      graph: {
+        nodes: {
+          poll: {
+            bindingId: 'connection',
+            config: { source },
+            definition: snapshot,
+            kind: 'poll',
+            name: 'Poll test trigger',
+            pollTimes: [{ type: 'every', unit: 'minute', value: 1 }],
+          },
+          task: {
+            concurrency: 1,
+            inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'poll', output: 'payload' }] } },
+            kind: 'task',
+            task: {
+              inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
+              moduleId: 'module-main',
+              name: 'Main',
+              outputs: {},
             },
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -105,7 +100,6 @@ async function publish(service: ServerService, content = revision(), expectedLiv
     expectedLivePublicationId,
     flowId: 'main',
     idempotencyKey: crypto.randomUUID(),
-    projectId: 'project-main',
     revision: content,
     revisionId: crypto.randomUUID(),
   })
@@ -133,23 +127,14 @@ describe('Server Poll Trigger', () => {
     }
     const service = ServerService.open(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
     try {
-      const created = await service.control.createProject('operator', 'Poll control', 'poll-control-project')
+      const created = await service.control.createFlow('operator', 'Poll control', 'poll-control-flow')
       const content = revision()
-      const flow = content.document.flows.main!
-      const changed = await service.control.changeDraft('operator', created.project.projectId, created.project.draftRevisionId, [
+      const changed = await service.control.changeDraft('operator', created.flow.flowId, created.flow.draftRevisionId, [
         { binding: { kind: 'connection', target: 'connection-main' }, bindingId: 'connection', kind: 'binding.create' },
-        { flow: { ...flow, graph: { nodes: { poll: flow.graph.nodes.poll! } } }, flowId: 'main', kind: 'flow.create' },
+        { kind: 'graph.node.create', node: content.document.graph.nodes.poll!, nodeId: 'poll', target: { kind: 'flow' } },
       ])
-      await service.control.publishFlow(
-        'operator',
-        created.project.projectId,
-        changed.revision.revisionId,
-        'main',
-        'open-flow-engine/v1',
-        null,
-        'poll-control-publication',
-      )
-      const before = service.pollState(created.project.projectId, 'main', 'poll')
+      await service.control.publishFlow('operator', created.flow.flowId, changed.revision.revisionId, 'open-flow-engine/v1', null, 'poll-control-publication')
+      const before = service.pollState(created.flow.flowId, 'poll')
 
       expect(service.control.listTriggerKeys()).toEqual([
         {
@@ -161,7 +146,7 @@ describe('Server Poll Trigger', () => {
           type: snapshot.type,
         },
       ])
-      await expect(service.control.testFlowPollTrigger(created.project.projectId, 'main', 'poll')).resolves.toEqual({
+      await expect(service.control.testFlowPollTrigger(created.flow.flowId, 'poll')).resolves.toEqual({
         events: [{ value: 'first' }],
         filtered: 2,
         hasMore: true,
@@ -169,7 +154,7 @@ describe('Server Poll Trigger', () => {
       })
       expect(calls).toBe(1)
       expect(checkpoint).toBeNull()
-      expect(service.pollState(created.project.projectId, 'main', 'poll')).toEqual(before)
+      expect(service.pollState(created.flow.flowId, 'poll')).toEqual(before)
       const database = new DatabaseSync(file, { readOnly: true })
       expect(database.prepare('SELECT COUNT(*) AS count FROM poll_claims').get()).toEqual({ count: 0 })
       expect(database.prepare('SELECT COUNT(*) AS count FROM poll_event_dedupe').get()).toEqual({ count: 0 })
@@ -197,7 +182,7 @@ describe('Server Poll Trigger', () => {
 
     await service.tickPoll('2026-08-21T00:01:00.000Z')
     expect(calls).toBe(2)
-    expect(service.pollState('project-main', 'main', 'poll')).toMatchObject({ checkpoint: { page: 1 }, health: 'initializing' })
+    expect(service.pollState('main', 'poll')).toMatchObject({ checkpoint: { page: 1 }, health: 'initializing' })
     await service.close()
 
     service = ServerService.open(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
@@ -205,7 +190,7 @@ describe('Server Poll Trigger', () => {
     expect(calls).toBe(2)
     await service.tickPoll('2026-08-21T00:01:01.000Z')
     expect(calls).toBe(3)
-    expect(service.pollState('project-main', 'main', 'poll')).toMatchObject({ checkpoint: { page: 2 }, health: 'healthy' })
+    expect(service.pollState('main', 'poll')).toMatchObject({ checkpoint: { page: 2 }, health: 'healthy' })
     await service.close()
   })
 
@@ -223,7 +208,7 @@ describe('Server Poll Trigger', () => {
 
     await service.tickPoll('2026-08-21T00:01:00.000Z')
 
-    expect(service.pollState('project-main', 'main', 'poll')).toMatchObject({ checkpoint: null, health: 'needs_reauth' })
+    expect(service.pollState('main', 'poll')).toMatchObject({ checkpoint: null, health: 'needs_reauth' })
     const database = new DatabaseSync(file, { readOnly: true })
     expect(database.prepare('SELECT next_at AS nextAt FROM poll_bindings').get()).toEqual({ nextAt: null })
     expect(database.prepare('SELECT error_code AS errorCode, kind FROM trigger_activities ORDER BY created_at DESC, activity_id DESC').all()).toEqual([
@@ -258,7 +243,7 @@ describe('Server Poll Trigger', () => {
     page.resolve({ checkpoint: { stale: true }, events: [{ dedupeKey: 'stale', payload: { value: 'stale' } }] })
     await ticking
 
-    expect(service.pollState('project-main', 'main', 'poll')).toMatchObject({ checkpoint: null, health: 'initializing', runtimeVersion: 2 })
+    expect(service.pollState('main', 'poll')).toMatchObject({ checkpoint: null, health: 'initializing', runtimeVersion: 2 })
     const database = new DatabaseSync(file, { readOnly: true })
     expect(database.prepare('SELECT COUNT(*) AS count FROM poll_claims').get()).toEqual({ count: 0 })
     expect(database.prepare('SELECT COUNT(*) AS count FROM poll_admissions').get()).toEqual({ count: 0 })

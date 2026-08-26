@@ -1,5 +1,6 @@
 import type {
   CodeModule,
+  FlowDocument,
   Graph,
   GraphNode,
   InlineTaskDefinition,
@@ -8,13 +9,12 @@ import type {
   JsonValue,
   OutputMapping,
   PortDefinition,
-  ProjectDocument,
   RevisionContent,
   TriggerKeySnapshot,
   TriggerNode,
   TriggerSchedule,
   WebhookOptions,
-} from '@oomol-lab/open-flow/project-change'
+} from '@oomol-lab/open-flow/flow-change'
 
 const encoder = new TextEncoder()
 
@@ -130,7 +130,7 @@ export function canonicalGraph(value: Graph): JsonValue {
   }
 }
 
-export function canonicalTask(task: ProjectDocument['tasks'][string]): JsonValue {
+export function canonicalTask(task: FlowDocument['tasks'][string]): JsonValue {
   return {
     executor: task.executor,
     inputs: canonicalPorts(task.inputs),
@@ -229,10 +229,10 @@ function canonicalTriggerNode(trigger: TriggerNode): JsonValue {
   }
 }
 
-export function canonicalDocument(document: ProjectDocument): JsonValue {
+export function canonicalDocument(document: FlowDocument): JsonValue {
   return {
     bindings: Object.fromEntries(entries(document.bindings)),
-    flows: Object.fromEntries(entries(document.flows).map(([id, flow]) => [id, { graph: canonicalGraph(flow.graph), name: flow.name }])),
+    graph: canonicalGraph(document.graph),
     subflows: Object.fromEntries(
       entries(document.subflows).map(([id, subflow]) => [
         id,
@@ -255,7 +255,7 @@ export function canonicalModule(module: CodeModule): JsonValue {
 function canonicalRevision(content: RevisionContent): JsonValue {
   return {
     document: canonicalDocument(content.document),
-    kind: 'open-flow-project-revision',
+    kind: 'open-flow-flow-revision',
     modelVersion: content.modelVersion,
     modules: Object.fromEntries(entries(content.modules).map(([id, module]) => [id, canonicalModule(module)])),
     version: 1,

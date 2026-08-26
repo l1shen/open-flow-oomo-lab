@@ -1,4 +1,4 @@
-import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { RevisionContent } from '@oomol-lab/open-flow/flow-change'
 import type { DestinationStream } from 'pino'
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -47,19 +47,14 @@ function failingFlow(): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              task: {
-                concurrency: 1,
-                inputs: {},
-                kind: 'task',
-                task: { inputs: {}, moduleId: 'main', name: 'Main', outputs: {} },
-              },
-            },
+      graph: {
+        nodes: {
+          task: {
+            concurrency: 1,
+            inputs: {},
+            kind: 'task',
+            task: { inputs: {}, moduleId: 'main', name: 'Main', outputs: {} },
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -107,7 +102,7 @@ it('correlates an unknown HTTP failure without logging headers or request bodies
     },
   })
 
-  const response = await app.request('http://server.local/v1/projects', {
+  const response = await app.request('http://server.local/v1/flows', {
     body: JSON.stringify({ secret: 'request-body-secret' }),
     headers: {
       'authorization': 'Bearer request-authorization-secret',
@@ -122,11 +117,11 @@ it('correlates an unknown HTTP failure without logging headers or request bodies
   expect(response.headers.get('x-request-id')).toBe('request-123')
   expect(captured.entries()).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ category: 'http.request.failed', method: 'POST', path: '/v1/projects', requestId: 'request-123' }),
+      expect.objectContaining({ category: 'http.request.failed', method: 'POST', path: '/v1/flows', requestId: 'request-123' }),
       expect.objectContaining({
         category: 'http.request.completed',
         method: 'POST',
-        path: '/v1/projects',
+        path: '/v1/flows',
         requestId: 'request-123',
         status: 500,
       }),
@@ -174,8 +169,8 @@ it('logs Run lifecycle metadata without copying user errors or Run payloads', as
   expect(service.run(accepted.runId)?.status).toBe('failed')
   expect(captured.entries()).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ category: 'run.started', flowId: 'main', runId: accepted.runId }),
-      expect.objectContaining({ category: 'run.failed', flowId: 'main', runId: accepted.runId }),
+      expect.objectContaining({ category: 'run.started', flowId: expect.any(String), runId: accepted.runId }),
+      expect.objectContaining({ category: 'run.failed', flowId: expect.any(String), runId: accepted.runId }),
     ]),
   )
   expect(captured.output()).not.toContain('user-secret-must-not-leak')

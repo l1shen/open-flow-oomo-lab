@@ -12,7 +12,6 @@ import { errorNotice } from '../stores/workbenchNotice.ts'
 
 interface Target {
   readonly flowId: string
-  readonly projectId: string
 }
 
 interface Attempt {
@@ -104,7 +103,7 @@ const activityPageLimit = 20
 const pageLimit = 50
 
 function sameTarget(left: Target | undefined, right: Target): boolean {
-  return left?.projectId == right.projectId && left.flowId == right.flowId
+  return left?.flowId == right.flowId
 }
 
 export class PublicationStore {
@@ -178,8 +177,8 @@ export class PublicationStore {
     this.#state.set(initialState)
   }
 
-  public async load(projectId: string, flowId: string): Promise<void> {
-    const target = { flowId, projectId }
+  public async load(flowId: string): Promise<void> {
+    const target = { flowId }
     const current = this.#loads.begin()
     if (!sameTarget(this.#state.value.target, target)) this.#attempt = undefined
     this.#setNotice(undefined)
@@ -201,7 +200,7 @@ export class PublicationStore {
     const current = this.#loads.capture()
     this.#set({ loadMoreFailed: false, loadingMore: true })
     try {
-      const page = await this.#client.listPublications(target.projectId, target.flowId, { cursor: nextCursor, limit: pageLimit })
+      const page = await this.#client.listPublications(target.flowId, { cursor: nextCursor, limit: pageLimit })
       if (!current()) return
       const seen = new Set(this.#state.value.publications.map((publication) => publication.publicationId))
       this.#set({
@@ -218,32 +217,32 @@ export class PublicationStore {
   }
 
   public async publish(): Promise<boolean> {
-    const projectId = this.#workspace.$.projectId.value
     const flow = this.#workspace.$.targetFlow.value
+    const draft = this.#workspace.$.draft.value
     if (
-      projectId == null ||
-      flow?.draft == null ||
+      flow == null ||
+      draft == null ||
       this.#state.value.changingTriggerId != null ||
       this.#state.value.publishing ||
       this.#state.value.rollingBackPublicationId != null
     ) {
       return false
     }
-    const target = { flowId: flow.flowId, projectId }
-    const expectedLivePublicationId = flow.live?.publication.publicationId ?? null
-    const signature = JSON.stringify({ expectedLivePublicationId, flowId: flow.flowId, kind: 'publish', projectId, revisionId: flow.draft.revisionId })
+    const target = { flowId: flow.flowId }
+    const expectedLivePublicationId = this.#workspace.$.live.value?.publication?.publicationId ?? null
+    const signature = JSON.stringify({ expectedLivePublicationId, flowId: flow.flowId, kind: 'publish', revisionId: draft.revisionId })
     const attempt = this.#attempt?.signature == signature ? this.#attempt : { key: this.#identity(), signature }
     const current = this.#operation.begin()
     this.#attempt = attempt
     this.#setNotice(undefined)
     this.#setTarget(target, { publishing: true })
     try {
-      await this.#client.publishFlow(projectId, flow.draft.revisionId, flow.flowId, expectedLivePublicationId, { idempotencyKey: attempt.key })
+      await this.#client.publishFlow(flow.flowId, draft.revisionId, expectedLivePublicationId, { idempotencyKey: attempt.key })
       if (!current()) return false
       await this.#refresh(target)
       if (!current()) return false
       this.#attempt = undefined
-      this.#setNotice({ kind: 'success', message: this.#i18n.t('notice.published', { name: flow.draft.name }) })
+      this.#setNotice({ kind: 'success', message: this.#i18n.t('notice.published', { name: flow.name }) })
       return true
     } catch (error) {
       if (!current()) return false
@@ -264,7 +263,6 @@ export class PublicationStore {
       this.#state.value.changingTriggerId != null ||
       rollingBackPublicationId != null ||
       this.#state.value.publishing ||
-      publication.projectId != target.projectId ||
       publication.flowId != target.flowId
     ) {
       return false
@@ -273,7 +271,6 @@ export class PublicationStore {
       currentPublicationId,
       flowId: target.flowId,
       kind: 'rollback',
-      projectId: target.projectId,
       targetPublicationId: publication.publicationId,
     })
     const attempt = this.#attempt?.signature == signature ? this.#attempt : { key: this.#identity(), signature }
@@ -282,7 +279,7 @@ export class PublicationStore {
     this.#setNotice(undefined)
     this.#set({ rollingBackPublicationId: publication.publicationId })
     try {
-      await this.#client.rollbackFlow(target.projectId, target.flowId, publication.publicationId, currentPublicationId, { idempotencyKey: attempt.key })
+      await this.#client.rollbackFlow(target.flowId, publication.publicationId, currentPublicationId, { idempotencyKey: attempt.key })
       if (!current()) return false
       await this.#refresh(target)
       if (!current()) return false
@@ -334,8 +331,8 @@ export class PublicationStore {
       testResult: undefined,
     })
     const [detail, activities] = await Promise.allSettled([
-      this.#client.getFlowTriggerBinding(target.projectId, target.flowId, triggerId),
-      this.#client.listFlowTriggerActivities(target.projectId, target.flowId, triggerId, { limit: activityPageLimit }),
+      this.#client.getFlowTriggerBinding(target.flowId, triggerId),
+      this.#client.listFlowTriggerActivities(target.flowId, triggerId, { limit: activityPageLimit }),
     ])
     if (!current()) return
     if (detail.status == 'rejected') {
@@ -363,7 +360,7 @@ export class PublicationStore {
     const current = this.#triggerDetails.capture()
     this.#set({ activitiesLoadFailed: false, activitiesLoadingMore: true })
     try {
-      const page = await this.#client.listFlowTriggerActivities(target.projectId, target.flowId, selectedTriggerId, {
+      const page = await this.#client.listFlowTriggerActivities(target.flowId, selectedTriggerId, {
         cursor: activitiesNextCursor,
         limit: activityPageLimit,
       })
@@ -396,7 +393,7 @@ export class PublicationStore {
     const current = this.#triggerTest.begin()
     this.#set({ testingTriggerId: selectedTriggerId, testResult: undefined })
     try {
-      const result = await this.#client.testFlowPollTrigger(target.projectId, target.flowId, selectedTriggerId)
+      const result = await this.#client.testFlowPollTrigger(target.flowId, selectedTriggerId)
       if (!current() || this.#state.value.selectedTriggerId != selectedTriggerId) return false
       this.#set({ testResult: result })
       return true
@@ -416,10 +413,10 @@ export class PublicationStore {
     const current = this.#operation.begin()
     this.#set({ changingTriggerId: binding.triggerNodeId })
     try {
-      if (binding.operatorState == 'active') await this.#client.pauseFlowTrigger(target.projectId, target.flowId, binding.triggerNodeId)
-      else await this.#client.resumeFlowTrigger(target.projectId, target.flowId, binding.triggerNodeId)
+      if (binding.operatorState == 'active') await this.#client.pauseFlowTrigger(target.flowId, binding.triggerNodeId)
+      else await this.#client.resumeFlowTrigger(target.flowId, binding.triggerNodeId)
       if (!current()) return false
-      const bindings = await this.#client.listFlowTriggerBindings(target.projectId, target.flowId)
+      const bindings = await this.#client.listFlowTriggerBindings(target.flowId)
       if (!current()) return false
       this.#set({ bindings })
       if (this.#state.value.selectedTriggerId == binding.triggerNodeId) void this.openTrigger(binding.triggerNodeId)
@@ -438,6 +435,7 @@ export class PublicationStore {
 
   async #refresh(target: Target): Promise<void> {
     const [live, page, bindings] = await this.#read(target)
+    this.#workspace.updateLive(live)
     await this.#workspace.refreshFlows()
     if (sameTarget(this.#state.value.target, target)) {
       this.#set({ bindings, live, loadFailed: false, nextCursor: page.nextCursor, publications: page.publications, total: page.total })
@@ -455,9 +453,9 @@ export class PublicationStore {
 
   async #read(target: Target) {
     return await Promise.all([
-      this.#client.getLive(target.projectId, target.flowId),
-      this.#client.listPublications(target.projectId, target.flowId, { includeTotal: true, limit: pageLimit }),
-      this.#client.listFlowTriggerBindings(target.projectId, target.flowId),
+      this.#client.getLive(target.flowId),
+      this.#client.listPublications(target.flowId, { includeTotal: true, limit: pageLimit }),
+      this.#client.listFlowTriggerBindings(target.flowId),
     ])
   }
 

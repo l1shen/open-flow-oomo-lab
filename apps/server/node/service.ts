@@ -1,8 +1,8 @@
-import type { ProjectChangeEvent } from '@oomol-lab/open-flow/control-api'
+import type { FlowCatalogEvent, FlowChangeEvent } from '@oomol-lab/open-flow/control-api'
+import type { ConnectorCapability, JsonValue, RevisionContent, TriggerNode } from '@oomol-lab/open-flow/flow-change'
+import type { PreparedFlow } from '@oomol-lab/open-flow/flow-semantics'
 import type { IntegrationDefinition } from '@oomol-lab/open-flow/integration-trigger'
 import type { PollDefinition } from '@oomol-lab/open-flow/poll-trigger'
-import type { ConnectorCapability, JsonValue, RevisionContent, TriggerNode } from '@oomol-lab/open-flow/project-change'
-import type { PreparedFlow } from '@oomol-lab/open-flow/project-semantics'
 import type { ProviderTriggerDefinition } from '@oomol-lab/open-flow/provider-triggers'
 import type { ProjectedRunEvent } from '@oomol-lab/open-flow/run-events'
 import type { InvokeLlmTask, RuntimeCapabilityCall, RuntimeCapabilityResponse } from '@oomol-lab/open-flow/runtime-contract'
@@ -15,6 +15,8 @@ import type { PollState, RunAdmission, StoredCronTarget, StoredPollTarget } from
 
 import { controlErrorCode } from '@oomol-lab/open-flow/control-api'
 import { nextTriggerScheduledAt, scheduledTriggerOccurrenceId, validateTriggerSchedule } from '@oomol-lab/open-flow/cron-trigger'
+import { canonicalJsonBytes, digestBytes, encodeRevision } from '@oomol-lab/open-flow/flow-encoding'
+import { createRuntimeProgram, matchesSchema, prepareFlow, triggerPayloadSchema } from '@oomol-lab/open-flow/flow-semantics'
 import {
   maximumPollCheckpointBytes,
   maximumPollEventsPerPage,
@@ -23,8 +25,6 @@ import {
   providerEventId,
   PollConnectionError,
 } from '@oomol-lab/open-flow/poll-trigger'
-import { canonicalJsonBytes, digestBytes, encodeRevision } from '@oomol-lab/open-flow/project-encoding'
-import { createRuntimeProgram, matchesSchema, prepareFlow, triggerPayloadSchema } from '@oomol-lab/open-flow/project-semantics'
 import { triggerDefinitions as providerTriggerDefinitions } from '@oomol-lab/open-flow/provider-triggers'
 import { createEventProjector } from '@oomol-lab/open-flow/run-events'
 import { currentEngineContract } from '@oomol-lab/open-flow/runtime-contract'
@@ -47,7 +47,6 @@ interface PublishFlowInput {
   readonly expectedLivePublicationId: string | null
   readonly flowId: string
   readonly idempotencyKey: string
-  readonly projectId: string
   readonly revision: RevisionContent
   readonly revisionId: string
 }
@@ -77,7 +76,6 @@ interface WebhookTarget {
   readonly endpointId: string
   readonly engineContract: string
   readonly flowId: string
-  readonly projectId: string
   readonly publicationId: string
   readonly revision: RevisionContent
   readonly revisionDigest: string
@@ -131,8 +129,9 @@ export class ServerService {
   readonly #llm?: InvokeLlmTask
   readonly #maxConcurrentRuns: number
   readonly #pollDefinitions: ReadonlyMap<string, PollDefinition>
-  readonly #projectSubscribers = new Map<string, Set<(event: ProjectChangeEvent) => void>>()
-  readonly #runningProjects = new Set<string>()
+  readonly #flowCatalogSubscribers = new Set<(event: FlowCatalogEvent) => void>()
+  readonly #flowSubscribers = new Map<string, Set<(event: FlowChangeEvent) => void>>()
+  readonly #runningFlows = new Set<string>()
   readonly #runTimeoutMs: number
   readonly #store: Store
   readonly #workers = new Set<Promise<void>>()
@@ -179,8 +178,9 @@ export class ServerService {
         this.#armMaintenance(0)
       },
       snapshots,
-      (projectId, flowId, triggerNodeId) => this.#testPollTrigger(projectId, flowId, triggerNodeId),
-      (event) => this.#notifyProject(event),
+      (flowId, triggerNodeId) => this.#testPollTrigger(flowId, triggerNodeId),
+      () => this.#notifyFlowCatalog(),
+      (event) => this.#notifyFlow(event),
       connector,
       connectorConsoleOrigin,
     )
@@ -192,7 +192,7 @@ export class ServerService {
       integrationDefinitions,
       validatedFlow,
       () => this.#wake(),
-      (projectId, flowId, runId) => this.#runCreated(projectId, flowId, runId),
+      (flowId, runId) => this.#runCreated(flowId, runId),
       logger,
     )
   }
@@ -260,7 +260,6 @@ export class ServerService {
   }
 
   async #testPollTrigger(
-    projectId: string,
     flowId: string,
     triggerNodeId: string,
   ): Promise<{
@@ -269,12 +268,12 @@ export class ServerService {
     readonly hasMore: boolean
     readonly version: 1
   }> {
-    const target = this.#store.triggers.pollTestTarget(projectId, flowId, triggerNodeId)
+    const target = this.#store.triggers.pollTestTarget(flowId, triggerNodeId)
     if (target == null) throw new ControlError(controlErrorCode.triggerNotFound, 'The Trigger binding was not found.')
     try {
       const revision = JSON.parse(target.content) as RevisionContent
-      const fixed = await validatedFlow(revision, target.flowId)
-      const trigger = fixed.prepared.flow.graph.nodes[target.triggerNodeId]
+      const fixed = await validatedFlow(revision)
+      const trigger = fixed.prepared.graph.nodes[target.triggerNodeId]
       if (
         fixed.revisionDigest != target.revisionDigest ||
         fixed.prepared.closureDigest != target.closureDigest ||
@@ -324,8 +323,8 @@ export class ServerService {
   }
 
   async acceptWebhookTarget(target: WebhookTarget, occurrenceId: string, payload: JsonValue): Promise<RunAdmission | undefined> {
-    const fixed = await validatedFlow(target.revision, target.flowId)
-    const trigger = fixed.prepared.flow.graph.nodes[target.triggerNodeId]
+    const fixed = await validatedFlow(target.revision)
+    const trigger = fixed.prepared.graph.nodes[target.triggerNodeId]
     if (
       fixed.revisionDigest != target.revisionDigest ||
       fixed.prepared.closureDigest != target.closureDigest ||
@@ -359,7 +358,6 @@ export class ServerService {
       modelVersion: target.revision.modelVersion,
       occurrenceId,
       payload,
-      projectId: target.projectId,
       publicationId: target.publicationId,
       requestDigest,
       revisionDigest: fixed.revisionDigest,
@@ -368,13 +366,13 @@ export class ServerService {
       triggerJson: JSON.stringify(trigger),
       triggerNodeId: target.triggerNodeId,
     })
-    if (accepted?.kind == 'accepted' && accepted.created) this.#runCreated(target.projectId, target.flowId, accepted.runId)
+    if (accepted?.kind == 'accepted' && accepted.created) this.#runCreated(target.flowId, accepted.runId)
     if (accepted != null) this.#wake()
     return accepted
   }
 
   async publishFlow(input: PublishFlowInput): Promise<PublicationAcceptance> {
-    const fixed = await validatedFlow(input.revision, input.flowId)
+    const fixed = await validatedFlow(input.revision)
     const engineContract = input.engineContract ?? currentEngineContract
     const requestDigest = await digestBytes(
       canonicalJsonBytes({
@@ -382,17 +380,16 @@ export class ServerService {
         expectedLivePublicationId: input.expectedLivePublicationId,
         flowId: input.flowId,
         operation: input.control?.operation ?? 'publish',
-        projectId: input.projectId,
         revisionDigest: fixed.revisionDigest,
         ...(input.control?.operation == 'rollback' ? { sourcePublicationId: input.control.sourcePublicationId } : {}),
       }),
     )
-    const webhooks = Object.entries(fixed.prepared.flow.graph.nodes)
+    const webhooks = Object.entries(fixed.prepared.graph.nodes)
       .filter((entry): entry is [string, Extract<TriggerNode, { readonly kind: 'webhook' }>] => entry[1].kind == 'webhook')
       .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([triggerNodeId, trigger]) => ({ triggerJson: JSON.stringify(trigger), triggerNodeId }))
     const publishedAt = this.#clock()
-    const crons = Object.entries(fixed.prepared.flow.graph.nodes)
+    const crons = Object.entries(fixed.prepared.graph.nodes)
       .filter((entry): entry is [string, Extract<TriggerNode, { readonly kind: 'cron' }>] => entry[1].kind == 'cron')
       .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([triggerNodeId, trigger]) => {
@@ -408,7 +405,7 @@ export class ServerService {
           triggerNodeId,
         }
       })
-    const polls = Object.entries(fixed.prepared.flow.graph.nodes)
+    const polls = Object.entries(fixed.prepared.graph.nodes)
       .filter((entry): entry is [string, Extract<TriggerNode, { readonly kind: 'poll' }>] => entry[1].kind == 'poll')
       .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([triggerNodeId, trigger]) => {
@@ -457,7 +454,6 @@ export class ServerService {
       ...(metadata == null ? {} : { metadata }),
       polls,
       publishedAt,
-      projectId: input.projectId,
       requestDigest,
       revisionDigest: fixed.revisionDigest,
       revisionId: input.revisionId,
@@ -495,15 +491,20 @@ export class ServerService {
     }
   }
 
-  subscribeProject(projectId: string, listener: (event: ProjectChangeEvent) => void): () => void {
-    this.control.getProject(projectId)
-    const subscribers = this.#projectSubscribers.get(projectId) ?? new Set<(event: ProjectChangeEvent) => void>()
+  subscribeFlow(flowId: string, listener: (event: FlowChangeEvent) => void): () => void {
+    this.control.getFlow(flowId)
+    const subscribers = this.#flowSubscribers.get(flowId) ?? new Set<(event: FlowChangeEvent) => void>()
     subscribers.add(listener)
-    this.#projectSubscribers.set(projectId, subscribers)
+    this.#flowSubscribers.set(flowId, subscribers)
     return () => {
       subscribers.delete(listener)
-      if (subscribers.size == 0) this.#projectSubscribers.delete(projectId)
+      if (subscribers.size == 0) this.#flowSubscribers.delete(flowId)
     }
+  }
+
+  subscribeFlowCatalog(listener: (event: FlowCatalogEvent) => void): () => void {
+    this.#flowCatalogSubscribers.add(listener)
+    return () => this.#flowCatalogSubscribers.delete(listener)
   }
 
   events(runId: string): readonly RunEvent[] {
@@ -591,8 +592,8 @@ export class ServerService {
     }
   }
 
-  pollState(projectId: string, flowId: string, triggerNodeId: string): PollState | undefined {
-    return this.#store.triggers.pollState(projectId, flowId, triggerNodeId)
+  pollState(flowId: string, triggerNodeId: string): PollState | undefined {
+    return this.#store.triggers.pollState(flowId, triggerNodeId)
   }
 
   async processPollOccurrence(input: PollOccurrenceInput): Promise<void> {
@@ -616,12 +617,12 @@ export class ServerService {
     }
   }
 
-  integrationEndpoint(projectId: string, flowId: string, triggerNodeId: string): string | undefined {
-    return this.#integration.endpoint(projectId, flowId, triggerNodeId)
+  integrationEndpoint(flowId: string, triggerNodeId: string): string | undefined {
+    return this.#integration.endpoint(flowId, triggerNodeId)
   }
 
-  integrationState(projectId: string, flowId: string, triggerNodeId: string): IntegrationRuntimeState | undefined {
-    return this.#integration.state(projectId, flowId, triggerNodeId)
+  integrationState(flowId: string, triggerNodeId: string): IntegrationRuntimeState | undefined {
+    return this.#integration.state(flowId, triggerNodeId)
   }
 
   integrationTarget(endpointId: string): IntegrationTarget | undefined {
@@ -643,8 +644,8 @@ export class ServerService {
     }
   }
 
-  webhookEndpoint(projectId: string, flowId: string, triggerNodeId: string): string | undefined {
-    return this.#store.triggers.webhookEndpoint(projectId, flowId, triggerNodeId)
+  webhookEndpoint(flowId: string, triggerNodeId: string): string | undefined {
+    return this.#store.triggers.webhookEndpoint(flowId, triggerNodeId)
   }
 
   async waitForIdle(): Promise<void> {
@@ -662,12 +663,10 @@ export class ServerService {
     let started: ProjectedRunEvent | undefined
     try {
       if (run.engineDigest != isolatedVmEngineDigest) throw new Error('Fixed Run Engine implementation is not available.')
-      if ((await digestBytes(encoder.encode(run.content))) != run.revisionDigest) {
-        throw new Error('Fixed Project Revision digest does not match stored content.')
-      }
+      if ((await digestBytes(encoder.encode(run.content))) != run.revisionDigest) throw new Error('Fixed Flow Revision digest does not match stored content.')
       const revision = JSON.parse(run.content) as RevisionContent
-      prepared = await prepareFlow(revision, run.flowId, run.engineContract)
-      if (prepared.kind != 'prepared') throw new Error(`Fixed Project Revision can no longer be prepared: ${prepared.kind}.`)
+      prepared = await prepareFlow(revision, run.engineContract)
+      if (prepared.kind != 'prepared') throw new Error(`Fixed Flow Revision can no longer be prepared: ${prepared.kind}.`)
       projectEvent = createEventProjector(run.runId, nodeFailureCodes)
       started = await projectEvent({ flowId: run.flowId, runId: run.runId, type: 'run.started' })
     } catch (error) {
@@ -696,6 +695,7 @@ export class ServerService {
           const projected = await projectEvent(event)
           if (projected != null) this.#store.append(run.runId, projected)
         },
+        flowId: run.flowId,
         inputs: run.inputs,
         invokeTask: (invocation) => this.#invokeTask(prepared.flow, invocation),
         projectFailure: (error) => {
@@ -737,8 +737,8 @@ export class ServerService {
   }
 
   async #admitCron(target: StoredCronTarget, now: number): Promise<'admitted' | 'overloaded'> {
-    const fixed = await validatedFlow(JSON.parse(target.content) as RevisionContent, target.flowId)
-    const trigger = fixed.prepared.flow.graph.nodes[target.triggerNodeId]
+    const fixed = await validatedFlow(JSON.parse(target.content) as RevisionContent)
+    const trigger = fixed.prepared.graph.nodes[target.triggerNodeId]
     if (
       fixed.revisionDigest != target.revisionDigest ||
       fixed.prepared.closureDigest != target.closureDigest ||
@@ -774,7 +774,7 @@ export class ServerService {
       return 'overloaded'
     }
     this.#cronRetryAt = undefined
-    if (accepted?.kind == 'accepted' && accepted.created) this.#runCreated(target.projectId, target.flowId, accepted.runId)
+    if (accepted?.kind == 'accepted' && accepted.created) this.#runCreated(target.flowId, accepted.runId)
     if (accepted != null) this.#wake()
     return 'admitted'
   }
@@ -791,8 +791,8 @@ export class ServerService {
 
     try {
       const revision = JSON.parse(target.content) as RevisionContent
-      const fixed = await validatedFlow(revision, target.flowId)
-      const trigger = fixed.prepared.flow.graph.nodes[target.triggerNodeId]
+      const fixed = await validatedFlow(revision)
+      const trigger = fixed.prepared.graph.nodes[target.triggerNodeId]
       if (
         fixed.revisionDigest != target.revisionDigest ||
         fixed.prepared.closureDigest != target.closureDigest ||
@@ -884,7 +884,7 @@ export class ServerService {
         return
       }
       if (completed.kind == 'completed' && completed.accepted?.kind == 'accepted') {
-        if (completed.accepted.created) this.#runCreated(target.projectId, target.flowId, completed.accepted.runId)
+        if (completed.accepted.created) this.#runCreated(target.flowId, completed.accepted.runId)
         this.#wake()
       }
       if (completed.kind == 'completed' && baseline && !hasMore) {
@@ -893,7 +893,6 @@ export class ServerService {
             bindingId: target.bindingId,
             category: 'trigger.poll.ready',
             flowId: target.flowId,
-            projectId: target.projectId,
             runtimeVersion: target.runtimeVersion,
             triggerNodeId: target.triggerNodeId,
           },
@@ -906,7 +905,6 @@ export class ServerService {
       const fields = {
         bindingId: target.bindingId,
         flowId: target.flowId,
-        projectId: target.projectId,
         runtimeVersion: target.runtimeVersion,
         triggerNodeId: target.triggerNodeId,
         ...errorKind(error),
@@ -1010,47 +1008,53 @@ export class ServerService {
     }
   }
 
-  #notifyProject(event: ProjectChangeEvent): void {
-    for (const listener of this.#projectSubscribers.get(event.projectId) ?? []) listener(event)
+  #notifyFlow(event: FlowChangeEvent): void {
+    for (const listener of this.#flowSubscribers.get(event.flowId) ?? []) listener(event)
   }
 
-  #runCreated(projectId: string, flowId: string, runId: string): void {
-    this.#notifyProject({ flowId, kind: 'run.created', projectId, runId, version: 1 })
+  #notifyFlowCatalog(): void {
+    const event = { kind: 'flows.changed', version: 1 } as const
+    for (const listener of this.#flowCatalogSubscribers) listener(event)
+  }
+
+  #runCreated(flowId: string, runId: string): void {
+    this.#notifyFlow({ flowId, kind: 'run.created', runId, version: 1 })
   }
 
   #maintain(now: number): number {
     let nextDelay = this.#store.pruneExpiredEvents(now, maintenanceBatchSize) == 0 ? maintenanceIntervalMs : 0
-    const projectId = this.#store.claimRetiringProject(now)
-    if (projectId == null) {
+    const flowId = this.#store.claimRetiringFlow(now)
+    if (flowId == null) {
       if (this.#store.collectOrphanRevisions(maintenanceBatchSize) > 0) nextDelay = 0
       return nextDelay
     }
 
-    const canceled = this.#store.cancelProjectRuns(projectId, maintenanceBatchSize)
-    for (const runId of canceled) this.#active.get(runId)?.abort(new Error('Project retired.'))
+    const canceled = this.#store.cancelFlowRuns(flowId, maintenanceBatchSize)
+    for (const runId of canceled) this.#active.get(runId)?.abort(new Error('Flow retired.'))
     if (canceled.length > 0) return 0
-    if (this.#runningProjects.has(projectId)) return maintenanceRetryMs
-    if (this.#store.projectHasIntegrationState(projectId)) return nextDelay
-    if (this.#store.deleteProjectRuns(projectId, maintenanceBatchSize) > 0) return 0
-    if (!this.#store.deleteProject(projectId)) return nextDelay
+    if (this.#runningFlows.has(flowId)) return maintenanceRetryMs
+    if (this.#store.flowHasIntegrationState(flowId)) return nextDelay
+    if (this.#store.deleteFlowRuns(flowId, maintenanceBatchSize) > 0) return 0
+    if (!this.#store.deleteFlow(flowId)) return nextDelay
 
-    this.#logger.info({ category: 'project.deleted', projectId }, 'Retired Project was physically deleted.')
+    this.#logger.info({ category: 'flow.deleted', flowId }, 'Retired Flow was physically deleted.')
+    this.#notifyFlowCatalog()
     if (this.#store.collectOrphanRevisions(maintenanceBatchSize) > 0) return 0
     return nextDelay
   }
 
   #wake(): void {
     while (this.#started && this.#failure == null && this.#workers.size < this.#maxConcurrentRuns) {
-      const run = this.#store.claim([...this.#runningProjects])
+      const run = this.#store.claim([...this.#runningFlows])
       if (run == null) return
-      if (run.projectId != null) this.#runningProjects.add(run.projectId)
+      this.#runningFlows.add(run.flowId)
       const worker = this.#dispatch(run)
         .catch((error: unknown) => {
           this.#fail('runtime.worker.failed', error)
         })
         .finally(() => {
           this.#workers.delete(worker)
-          if (run.projectId != null) this.#runningProjects.delete(run.projectId)
+          this.#runningFlows.delete(run.flowId)
           this.#wake()
         })
       this.#workers.add(worker)
@@ -1142,27 +1146,22 @@ function pollFailure(error: unknown): Extract<PollState['health'], 'failed' | 'n
   }
 }
 
-async function validatedFlow(
-  revision: RevisionContent,
-  flowId: string,
-): Promise<{
+async function validatedFlow(revision: RevisionContent): Promise<{
   readonly content: string
   readonly prepared: PreparedFlow
   readonly revisionDigest: string
 }> {
   let prepared: Awaited<ReturnType<typeof prepareFlow>>
   try {
-    prepared = await prepareFlow(revision, flowId, currentEngineContract)
+    prepared = await prepareFlow(revision, currentEngineContract)
   } catch {
-    throw new AcceptanceError('revision-invalid', 'Project Revision is not structurally valid.')
+    throw new AcceptanceError('revision-invalid', 'Flow Revision is not structurally valid.')
   }
   switch (prepared.kind) {
     case 'engine-unsupported':
-      throw new AcceptanceError(prepared.kind, 'Project Revision requires an unsupported Engine Contract.')
+      throw new AcceptanceError(prepared.kind, 'Flow Revision requires an unsupported Engine Contract.')
     case 'flow-invalid':
       throw new AcceptanceError(prepared.kind, 'Flow validation failed.')
-    case 'flow-not-found':
-      throw new AcceptanceError(prepared.kind, 'Flow does not exist in the fixed Project Revision.')
     case 'prepared': {
       const bytes = encodeRevision(revision)
       return {

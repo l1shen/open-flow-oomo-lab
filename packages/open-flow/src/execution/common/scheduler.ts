@@ -1,7 +1,7 @@
-import type { ConnectorCapability, Graph, GraphNode, InputPortDefinition, JsonValue, ProjectDocument, TriggerNode } from '../../project/common/change.ts'
-import type { PreparedFlow } from '../../project/common/semantics.ts'
+import type { ConnectorCapability, Graph, GraphNode, InputPortDefinition, JsonValue, FlowDocument, TriggerNode } from '../../flow/common/change.ts'
+import type { PreparedFlow } from '../../flow/common/semantics.ts'
 
-type SubflowDefinition = ProjectDocument['subflows'][string]
+type SubflowDefinition = FlowDocument['subflows'][string]
 type ExecutableNode = Exclude<GraphNode, TriggerNode>
 
 interface ExecutableGraph {
@@ -107,6 +107,7 @@ export interface SchedulerFailure {
 export interface FlowRunOptions {
   readonly createId: () => string
   readonly emit?: (event: SchedulerEvent) => void | Promise<void>
+  readonly flowId: string
   readonly inputs?: Readonly<Record<string, Readonly<Record<string, JsonValue>>>>
   readonly invokeTask: (invocation: TaskInvocation) => Promise<unknown>
   readonly projectFailure?: (error: unknown) => SchedulerFailure
@@ -679,13 +680,13 @@ async function runGraph(
 export async function runFlow(prepared: PreparedFlow, options: FlowRunOptions): Promise<FlowRunResult> {
   const emit = async (event: SchedulerEvent): Promise<void> => await options.emit?.(event)
   const signal = options.signal ?? new AbortController().signal
-  const triggerNode = options.trigger == null ? undefined : prepared.flow.graph.nodes[options.trigger.nodeId]
+  const triggerNode = options.trigger == null ? undefined : prepared.graph.nodes[options.trigger.nodeId]
   if (options.trigger != null && (triggerNode == null || 'inputs' in triggerNode)) {
-    throw new Error(`Node "${options.trigger.nodeId}" is not a TriggerNode in Flow "${prepared.flowId}".`)
+    throw new Error(`Node "${options.trigger.nodeId}" is not a TriggerNode in Flow "${options.flowId}".`)
   }
   return (await runGraph(
     { createId: options.createId, emit, invokeTask: options.invokeTask, prepared, projectFailure: options.projectFailure },
-    { flowId: prepared.flowId, graph: executableGraph(prepared.flow.graph), inputs: {}, kind: 'flow', outputs: {} },
+    { flowId: options.flowId, graph: executableGraph(prepared.graph), inputs: {}, kind: 'flow', outputs: {} },
     options.runId,
     {},
     signal,

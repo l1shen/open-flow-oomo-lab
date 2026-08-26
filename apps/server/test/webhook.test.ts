@@ -1,4 +1,4 @@
-import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { RevisionContent } from '@oomol-lab/open-flow/flow-change'
 
 import { webhookEndpointId } from '@oomol-lab/open-flow/webhook-trigger'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -37,24 +37,19 @@ function webhookFlow(): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              capture: {
-                concurrency: 1,
-                inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'incoming', output: 'payload' }] } },
-                kind: 'task',
-                task: { inputs: { event: payloadPort }, moduleId: 'capture', name: 'Capture', outputs: { message: stringPort } },
-              },
-              incoming: {
-                inputsDef: [{ handle: 'message', ...stringPort }],
-                kind: 'webhook',
-                name: 'Incoming',
-              },
-            },
+      graph: {
+        nodes: {
+          capture: {
+            concurrency: 1,
+            inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'incoming', output: 'payload' }] } },
+            kind: 'task',
+            task: { inputs: { event: payloadPort }, moduleId: 'capture', name: 'Capture', outputs: { message: stringPort } },
           },
-          name: 'Main',
+          incoming: {
+            inputsDef: [{ handle: 'message', ...stringPort }],
+            kind: 'webhook',
+            name: 'Incoming',
+          },
         },
       },
       subflows: {},
@@ -69,8 +64,8 @@ function webhookFlow(): RevisionContent {
 
 async function publishedWebhook(service: ServerService) {
   const stored = await storeRevision(service, webhookFlow(), 'revision-webhook')
-  await service.control.publishFlow('test', stored.projectId, stored.revisionId, 'main', 'open-flow-engine/v1', null, 'publication-webhook')
-  const binding = service.control.getFlowTriggerBinding(stored.projectId, 'main', 'incoming', 'http://server.local')
+  await service.control.publishFlow('test', stored.flowId, stored.revisionId, 'open-flow-engine/v1', null, 'publication-webhook')
+  const binding = service.control.getFlowTriggerBinding(stored.flowId, 'incoming', 'http://server.local')
   const endpointId = binding.endpointUrl == null ? undefined : webhookEndpointId(new URL(binding.endpointUrl))
   const target = endpointId == null ? undefined : service.webhookTarget(endpointId)
   if (target == null) throw new Error('Published Webhook target is missing.')
@@ -138,9 +133,10 @@ describe('Server Webhook Trigger admission', () => {
       runId: first.runId,
       status: 'queued',
     })
-    await expect(
-      service.control.createDraftRun(target.projectId, target.revisionId, target.flowId, target.engineContract, {}, 'manual-run'),
-    ).rejects.toMatchObject({ code: 'run.overloaded', status: 429 })
+    await expect(service.control.createDraftRun(target.flowId, target.revisionId, target.engineContract, {}, 'manual-run')).rejects.toMatchObject({
+      code: 'run.overloaded',
+      status: 429,
+    })
   })
 
   it('rate limits requests to a valid callback endpoint', async () => {

@@ -23,7 +23,7 @@ import '@oomol-lab/open-flow/workbench.css'
 ```
 
 Open Flow clients operate Projects through one selected Control API deployment and do not create,
-scan, or execute local Project directories. The concrete Isolated VM host belongs to Server and
+scan or execute local workflow directories. The concrete Isolated VM host belongs to Server and
 is not exported by this package.
 
 [Read the repository documentation](../../docs/README.md).

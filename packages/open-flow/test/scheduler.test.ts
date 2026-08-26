@@ -1,11 +1,11 @@
 import type { FlowRunOptions, SchedulerEvent, TaskInvocation } from '../src/execution/common/scheduler.ts'
-import type { ConditionOperator, JsonValue, RevisionContent } from '../src/project/common/change.ts'
-import type { PreparedFlow } from '../src/project/common/semantics.ts'
+import type { ConditionOperator, JsonValue, RevisionContent } from '../src/flow/common/change.ts'
+import type { PreparedFlow } from '../src/flow/common/semantics.ts'
 
 import { describe, expect, it } from 'vitest'
 import { currentEngineContract } from '../src/execution/common/runtime.ts'
 import { runFlow as scheduleFlow } from '../src/execution/common/scheduler.ts'
-import { prepareFlow as prepareProjectFlow } from '../src/project/common/semantics.ts'
+import { prepareFlow as prepareRevision } from '../src/flow/common/semantics.ts'
 
 const port = { jsonSchema: {}, nullable: false } as const
 const engine = currentEngineContract
@@ -13,9 +13,10 @@ const connectorConnectionRequired = 'connector.connection-required'
 const connectorUnavailable = 'connector.unavailable'
 let nextId = 0
 
-function runFlow(prepared: PreparedFlow, options: Omit<FlowRunOptions, 'createId'>) {
+function runFlow(prepared: PreparedFlow, options: Omit<FlowRunOptions, 'createId' | 'flowId'>) {
   return scheduleFlow(prepared, {
     createId: () => `scheduler-${++nextId}`,
+    flowId: 'main',
     projectFailure: (error) => {
       if (error instanceof TaskError) return { code: error.code, message: error.message }
       return { code: 'node.failed', message: error instanceof Error ? error.message : String(error) }
@@ -24,8 +25,8 @@ function runFlow(prepared: PreparedFlow, options: Omit<FlowRunOptions, 'createId
   })
 }
 
-async function prepareFlow(source: RevisionContent, flowId: string, contract: string): Promise<PreparedFlow> {
-  const result = await prepareProjectFlow(source, flowId, contract)
+async function prepareFlow(source: RevisionContent, _flowId: string, contract: string): Promise<PreparedFlow> {
+  const result = await prepareRevision(source, contract)
   if (result.kind != 'prepared') throw new Error(`Flow preparation failed: ${result.kind}.`)
   return result.flow
 }
@@ -71,27 +72,22 @@ describe('revision graph scheduler', () => {
     const source = revision(
       {
         bindings: {},
-        flows: {
-          main: {
-            graph: {
-              nodes: {
-                capture: {
-                  concurrency: 1,
-                  inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'incoming', output: 'payload' }] } },
-                  kind: 'task',
-                  task: task('capture', ['event'], ['event']),
-                },
-                ignored: {
-                  concurrency: 1,
-                  inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'scheduled', output: 'payload' }] } },
-                  kind: 'task',
-                  task: task('ignored', ['event'], ['event']),
-                },
-                incoming: { inputsDef: [], kind: 'webhook', name: 'Incoming' },
-                scheduled: { cronTimes: [{ type: 'every', unit: 'minute', value: 1 }], kind: 'cron', name: 'Scheduled' },
-              },
+        graph: {
+          nodes: {
+            capture: {
+              concurrency: 1,
+              inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'incoming', output: 'payload' }] } },
+              kind: 'task',
+              task: task('capture', ['event'], ['event']),
             },
-            name: 'Main',
+            ignored: {
+              concurrency: 1,
+              inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'scheduled', output: 'payload' }] } },
+              kind: 'task',
+              task: task('ignored', ['event'], ['event']),
+            },
+            incoming: { inputsDef: [], kind: 'webhook', name: 'Incoming' },
+            scheduled: { cronTimes: [{ type: 'every', unit: 'minute', value: 1 }], kind: 'cron', name: 'Scheduled' },
           },
         },
         subflows: {},
@@ -138,22 +134,17 @@ describe('revision graph scheduler', () => {
     const source = revision(
       {
         bindings: {},
-        flows: {
-          main: {
-            graph: {
-              nodes: {
-                value: {
-                  concurrency: 1,
-                  inputs: {},
-                  kind: 'value',
-                  values: {
-                    count: { jsonSchema: { type: 'number' }, nullable: false, value: 2 },
-                    label: { jsonSchema: { type: 'string' }, nullable: false, value: 'ready' },
-                  },
-                },
+        graph: {
+          nodes: {
+            value: {
+              concurrency: 1,
+              inputs: {},
+              kind: 'value',
+              values: {
+                count: { jsonSchema: { type: 'number' }, nullable: false, value: 2 },
+                label: { jsonSchema: { type: 'string' }, nullable: false, value: 'ready' },
               },
             },
-            name: 'Main',
           },
         },
         subflows: {},
@@ -182,39 +173,34 @@ describe('revision graph scheduler', () => {
     const source = revision(
       {
         bindings: {},
-        flows: {
-          main: {
-            graph: {
-              nodes: {
-                source: {
-                  concurrency: 1,
-                  inputs: { value: { kind: 'value', value: 1 } },
-                  kind: 'task',
-                  task: task('source', ['value'], ['value']),
-                },
-                branch: {
-                  cases: [{ expressions: [{ input: 'value', operator: '>', value: 5 }], output: 'high', relation: 'all' }],
-                  concurrency: 1,
-                  defaultOutput: 'low',
-                  input: { ...port, handle: 'value' },
-                  inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'source', output: 'value' }] } },
-                  kind: 'condition',
-                },
-                nested: {
-                  concurrency: 1,
-                  inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'high' }] } },
-                  kind: 'subflow',
-                  subflowId: 'double-flow',
-                },
-                low: {
-                  concurrency: 1,
-                  inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'low' }] } },
-                  kind: 'task',
-                  task: task('low', ['value'], ['value']),
-                },
-              },
+        graph: {
+          nodes: {
+            source: {
+              concurrency: 1,
+              inputs: { value: { kind: 'value', value: 1 } },
+              kind: 'task',
+              task: task('source', ['value'], ['value']),
             },
-            name: 'Main',
+            branch: {
+              cases: [{ expressions: [{ input: 'value', operator: '>', value: 5 }], output: 'high', relation: 'all' }],
+              concurrency: 1,
+              defaultOutput: 'low',
+              input: { ...port, handle: 'value' },
+              inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'source', output: 'value' }] } },
+              kind: 'condition',
+            },
+            nested: {
+              concurrency: 1,
+              inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'high' }] } },
+              kind: 'subflow',
+              subflowId: 'double-flow',
+            },
+            low: {
+              concurrency: 1,
+              inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'low' }] } },
+              kind: 'task',
+              task: task('low', ['value'], ['value']),
+            },
           },
         },
         subflows: {
@@ -299,39 +285,34 @@ describe('revision graph scheduler', () => {
       const source = revision(
         {
           bindings: {},
-          flows: {
-            main: {
-              graph: {
-                nodes: {
-                  branch: {
-                    cases: [
-                      {
-                        expressions: [{ input: 'value', operator, ...(right === undefined ? {} : { value: right }) }],
-                        output: 'matched',
-                        relation: 'all',
-                      },
-                    ],
-                    concurrency: 1,
-                    defaultOutput: 'fallback',
-                    input: { ...port, handle: 'value' },
-                    inputs: { value: { kind: 'value', value: left } },
-                    kind: 'condition',
+          graph: {
+            nodes: {
+              branch: {
+                cases: [
+                  {
+                    expressions: [{ input: 'value', operator, ...(right === undefined ? {} : { value: right }) }],
+                    output: 'matched',
+                    relation: 'all',
                   },
-                  fallback: {
-                    concurrency: 1,
-                    inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'fallback' }] } },
-                    kind: 'task',
-                    task: task('fallback', ['value'], []),
-                  },
-                  matched: {
-                    concurrency: 1,
-                    inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'matched' }] } },
-                    kind: 'task',
-                    task: task('matched', ['value'], []),
-                  },
-                },
+                ],
+                concurrency: 1,
+                defaultOutput: 'fallback',
+                input: { ...port, handle: 'value' },
+                inputs: { value: { kind: 'value', value: left } },
+                kind: 'condition',
               },
-              name: 'Main',
+              fallback: {
+                concurrency: 1,
+                inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'fallback' }] } },
+                kind: 'task',
+                task: task('fallback', ['value'], []),
+              },
+              matched: {
+                concurrency: 1,
+                inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'matched' }] } },
+                kind: 'task',
+                task: task('matched', ['value'], []),
+              },
             },
           },
           subflows: {},
@@ -357,57 +338,52 @@ describe('revision graph scheduler', () => {
     const source = revision(
       {
         bindings: {},
-        flows: {
-          main: {
-            graph: {
-              nodes: {
-                branch: {
-                  cases: [
-                    {
-                      expressions: [
-                        { input: 'value', operator: 'isTrue' },
-                        { input: 'value', operator: 'isFalse' },
-                      ],
-                      output: 'all',
-                      relation: 'all',
-                    },
-                    {
-                      expressions: [
-                        { input: 'value', operator: 'isFalse' },
-                        { input: 'value', operator: 'isTrue' },
-                      ],
-                      output: 'any',
-                      relation: 'any',
-                    },
-                    { expressions: [{ input: 'value', operator: 'isTrue' }], output: 'later', relation: 'all' },
+        graph: {
+          nodes: {
+            branch: {
+              cases: [
+                {
+                  expressions: [
+                    { input: 'value', operator: 'isTrue' },
+                    { input: 'value', operator: 'isFalse' },
                   ],
-                  concurrency: 1,
-                  defaultOutput: 'fallback',
-                  input: { ...port, handle: 'value' },
-                  inputs: { value: { kind: 'value', value: true } },
-                  kind: 'condition',
+                  output: 'all',
+                  relation: 'all',
                 },
-                all: {
-                  concurrency: 1,
-                  inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'all' }] } },
-                  kind: 'task',
-                  task: task('all', ['value'], []),
+                {
+                  expressions: [
+                    { input: 'value', operator: 'isFalse' },
+                    { input: 'value', operator: 'isTrue' },
+                  ],
+                  output: 'any',
+                  relation: 'any',
                 },
-                any: {
-                  concurrency: 1,
-                  inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'any' }] } },
-                  kind: 'task',
-                  task: task('any', ['value'], []),
-                },
-                later: {
-                  concurrency: 1,
-                  inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'later' }] } },
-                  kind: 'task',
-                  task: task('later', ['value'], []),
-                },
-              },
+                { expressions: [{ input: 'value', operator: 'isTrue' }], output: 'later', relation: 'all' },
+              ],
+              concurrency: 1,
+              defaultOutput: 'fallback',
+              input: { ...port, handle: 'value' },
+              inputs: { value: { kind: 'value', value: true } },
+              kind: 'condition',
             },
-            name: 'Main',
+            all: {
+              concurrency: 1,
+              inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'all' }] } },
+              kind: 'task',
+              task: task('all', ['value'], []),
+            },
+            any: {
+              concurrency: 1,
+              inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'any' }] } },
+              kind: 'task',
+              task: task('any', ['value'], []),
+            },
+            later: {
+              concurrency: 1,
+              inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'branch', output: 'later' }] } },
+              kind: 'task',
+              task: task('later', ['value'], []),
+            },
           },
         },
         subflows: {},
@@ -432,29 +408,24 @@ describe('revision graph scheduler', () => {
     const source = revision(
       {
         bindings: {},
-        flows: {
-          main: {
-            graph: {
-              nodes: {
-                a: { concurrency: 1, inputs: {}, kind: 'task', task: task('a', [], ['item']) },
-                b: { concurrency: 1, inputs: {}, kind: 'task', task: task('b', [], ['item']) },
-                collect: {
-                  concurrency: 1,
-                  inputs: {
-                    item: {
-                      kind: 'sources',
-                      sources: [
-                        { kind: 'node', nodeId: 'a', output: 'item' },
-                        { kind: 'node', nodeId: 'b', output: 'item' },
-                      ],
-                    },
-                  },
-                  kind: 'task',
-                  task: task('collect', ['item'], ['seen']),
+        graph: {
+          nodes: {
+            a: { concurrency: 1, inputs: {}, kind: 'task', task: task('a', [], ['item']) },
+            b: { concurrency: 1, inputs: {}, kind: 'task', task: task('b', [], ['item']) },
+            collect: {
+              concurrency: 1,
+              inputs: {
+                item: {
+                  kind: 'sources',
+                  sources: [
+                    { kind: 'node', nodeId: 'a', output: 'item' },
+                    { kind: 'node', nodeId: 'b', output: 'item' },
+                  ],
                 },
               },
+              kind: 'task',
+              task: task('collect', ['item'], ['seen']),
             },
-            name: 'Main',
           },
         },
         subflows: {},
@@ -500,12 +471,7 @@ describe('revision graph scheduler', () => {
     const source = revision(
       {
         bindings: {},
-        flows: {
-          main: {
-            graph: { nodes: { slow: { concurrency: 1, inputs: {}, kind: 'task', task: task('slow', [], []), timeoutMs: 10 } } },
-            name: 'Main',
-          },
-        },
+        graph: { nodes: { slow: { concurrency: 1, inputs: {}, kind: 'task', task: task('slow', [], []), timeoutMs: 10 } } },
         subflows: {},
         tasks: {},
       },
@@ -517,11 +483,11 @@ describe('revision graph scheduler', () => {
     expect(events.filter((event) => event.type == 'node.failed')).toHaveLength(1)
     expect(events.filter((event) => event.type == 'run.failed')).toHaveLength(1)
 
-    const slow = prepared.flow.graph.nodes.slow!
+    const slow = prepared.graph.nodes.slow!
     if (!('inputs' in slow)) throw new Error('Fixture slow node must be executable.')
     const controller = new AbortController()
     const canceled = runFlow(
-      { ...prepared, flow: { ...prepared.flow, graph: { nodes: { slow: { ...slow, timeoutMs: undefined } } } } },
+      { ...prepared, graph: { nodes: { slow: { ...slow, timeoutMs: undefined } } } },
       { invokeTask: waitForAbort, runId: 'run-cancel', signal: controller.signal },
     )
     controller.abort(new Error('canceled by test'))
@@ -530,7 +496,7 @@ describe('revision graph scheduler', () => {
     const raced = new AbortController()
     await expect(
       runFlow(
-        { ...prepared, flow: { ...prepared.flow, graph: { nodes: { slow: { ...slow, timeoutMs: undefined } } } } },
+        { ...prepared, graph: { nodes: { slow: { ...slow, timeoutMs: undefined } } } },
         {
           invokeTask: async () => {
             raced.abort(new Error('canceled during invocation'))
@@ -550,12 +516,7 @@ describe('revision graph scheduler', () => {
     const source = revision(
       {
         bindings: {},
-        flows: {
-          main: {
-            graph: { nodes: { task: { concurrency: 1, inputs: {}, kind: 'task', taskId: 'task-main' } } },
-            name: 'Main',
-          },
-        },
+        graph: { nodes: { task: { concurrency: 1, inputs: {}, kind: 'task', taskId: 'task-main' } } },
         subflows: {},
         tasks: {
           'task-main': {

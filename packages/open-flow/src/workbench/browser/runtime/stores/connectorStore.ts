@@ -222,22 +222,22 @@ export class ConnectorStore {
 
   public readonly browseAddNodeOptions = async (signal: AbortSignal): Promise<readonly AddNodeOption[] | undefined> => {
     if (this.#disposed) return
-    const projectId = this.#workspace.$.projectId.value
-    if (projectId == null) return
-    const providers = this.#providers ?? (await this.#client.listConnectorProviders(projectId, signal))
-    if (signal.aborted || this.#disposed || projectId != this.#workspace.$.projectId.value) return
+    const flowId = this.#workspace.$.flowId.value
+    if (flowId == null) return
+    const providers = this.#providers ?? (await this.#client.listConnectorProviders(signal))
+    if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
     this.#providers = providers
     return providers.toSorted((left, right) => left.serviceName.localeCompare(right.serviceName)).map((provider) => providerOption(provider, this.#i18n.t))
   }
 
   public readonly provideAddNodeOptionChoices = async (optionId: string, signal: AbortSignal): Promise<readonly AddNodeOption[] | undefined> => {
     if (this.#disposed) return
-    const projectId = this.#workspace.$.projectId.value
+    const flowId = this.#workspace.$.flowId.value
     const provider = this.#providers?.find((candidate) => `connector-provider:${candidate.serviceId}` == optionId)
-    if (projectId == null || provider == null) return
+    if (flowId == null || provider == null) return
     const loaded = this.#providerActions.get(provider.serviceId)
-    const actions = loaded ?? (await this.#client.listConnectorActions(projectId, provider.serviceId, signal))
-    if (signal.aborted || this.#disposed || projectId != this.#workspace.$.projectId.value) return
+    const actions = loaded ?? (await this.#client.listConnectorActions(provider.serviceId, signal))
+    if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
     const resolved = actions.map((action) =>
       Object.assign({}, action, action.icon == null && provider.icon != null ? { icon: provider.icon } : {}, { serviceName: provider.serviceName }),
     )
@@ -248,11 +248,11 @@ export class ConnectorStore {
 
   public readonly provideAddNodeOptions = async (searchTerm: string, signal: AbortSignal): Promise<readonly AddNodeOption[] | undefined> => {
     if (this.#disposed) return
-    const projectId = this.#workspace.$.projectId.value
-    if (projectId == null) return
+    const flowId = this.#workspace.$.flowId.value
+    if (flowId == null) return
     const query = searchTerm.trim()
-    const actions = query.length == 0 ? Object.values(this.#state.value.actions) : await this.#client.searchConnectorActions(projectId, query, signal)
-    if (signal.aborted || this.#disposed || projectId != this.#workspace.$.projectId.value) return
+    const actions = query.length == 0 ? Object.values(this.#state.value.actions) : await this.#client.searchConnectorActions(query, signal)
+    if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
     const next = { ...this.#state.value.actions }
     for (const action of actions) next[action.actionId] = action
     this.#set({ actions: next })
@@ -268,9 +268,9 @@ export class ConnectorStore {
   public async refresh(force = false): Promise<void> {
     if (this.#disposed) return
     const current = this.#refresh.begin()
-    const projectId = this.#workspace.$.projectId.value
+    const flowId = this.#workspace.$.flowId.value
     const target = connectorTarget(this.#workspace.$.selection.value)
-    if (projectId == null || target == null) {
+    if (flowId == null || target == null) {
       if (this.#state.value.actionLoading != null || this.#state.value.connectionLoading != null) {
         this.#set({ actionLoading: undefined, connectionLoading: undefined })
       }
@@ -278,31 +278,31 @@ export class ConnectorStore {
     }
     this.#set({ actionError: undefined, actionLoading: target.actionId, connectionError: undefined, connectionLoading: undefined })
     try {
-      const action = await this.#loadAction(projectId, target.actionId, force)
-      if (!this.#isCurrent(current, projectId)) return
+      const action = await this.#loadAction(target.actionId, force)
+      if (!this.#isCurrent(current, flowId)) return
       this.#set({ actions: { ...this.#state.value.actions, [action.actionId]: action } })
-      await this.#refreshConnections(projectId, target, action.serviceId, force, current)
+      await this.#refreshConnections(flowId, target, action.serviceId, force, current)
     } catch (error) {
-      if (this.#isCurrent(current, projectId)) {
+      if (this.#isCurrent(current, flowId)) {
         this.#set({ actionError: { actionId: target.actionId, message: errorNotice(error, this.#i18n.t).message } })
       }
     } finally {
-      if (this.#isCurrent(current, projectId) && this.#state.value.actionLoading == target.actionId) this.#set({ actionLoading: undefined })
+      if (this.#isCurrent(current, flowId) && this.#state.value.actionLoading == target.actionId) this.#set({ actionLoading: undefined })
     }
   }
 
   public async connect(serviceId: string): Promise<void> {
     if (this.#disposed) return
-    const projectId = this.#workspace.$.projectId.value
-    if (projectId == null) return
+    const flowId = this.#workspace.$.flowId.value
+    if (flowId == null) return
     const catalog = this.#state.value.catalogs[serviceId]
     try {
-      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(projectId, serviceId))
+      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(serviceId))
       if (!opened) {
         this.#setNotice({ kind: 'error', message: this.#i18n.t('notice.connectionPopupBlocked') })
         return
       }
-      if (this.#disposed || projectId != this.#workspace.$.projectId.value) return
+      if (this.#disposed || flowId != this.#workspace.$.flowId.value) return
       this.#authorization = { connectionIds: new Set(catalog?.all.map((connection) => connection.connectionId)), serviceId }
       this.#set({ authorizationServiceId: serviceId })
     } catch (error) {
@@ -323,34 +323,34 @@ export class ConnectorStore {
     if (!this.#disposed && this.#authorization?.serviceId == serviceId) this.#authorization = undefined
   }
 
-  async #loadAction(projectId: string, actionId: string, force: boolean): Promise<ConnectorAction> {
+  async #loadAction(actionId: string, force: boolean): Promise<ConnectorAction> {
     const action = this.#state.value.actions[actionId]
     if (!force && action != null) return action
-    return await this.#client.getConnectorAction(projectId, actionId)
+    return await this.#client.getConnectorAction(actionId)
   }
 
-  async #refreshConnections(projectId: string, target: ConnectorTarget, serviceId: string, force: boolean, current: Current): Promise<void> {
+  async #refreshConnections(flowId: string, target: ConnectorTarget, serviceId: string, force: boolean, current: Current): Promise<void> {
     this.#set({ connectionLoading: serviceId })
     try {
-      const catalog = await this.#loadCatalog(projectId, serviceId, force, current)
-      if (catalog == null || !this.#isCurrent(current, projectId)) return
+      const catalog = await this.#loadCatalog(flowId, serviceId, force, current)
+      if (catalog == null || !this.#isCurrent(current, flowId)) return
       await this.#pinPreferredConnection(target, serviceId, catalog)
     } finally {
-      if (this.#isCurrent(current, projectId) && this.#state.value.connectionLoading == serviceId) this.#set({ connectionLoading: undefined })
+      if (this.#isCurrent(current, flowId) && this.#state.value.connectionLoading == serviceId) this.#set({ connectionLoading: undefined })
     }
   }
 
-  async #loadCatalog(projectId: string, serviceId: string, force: boolean, current: Current): Promise<ConnectionCatalog | undefined> {
+  async #loadCatalog(flowId: string, serviceId: string, force: boolean, current: Current): Promise<ConnectionCatalog | undefined> {
     const cached = this.#state.value.catalogs[serviceId]
     if (!force && cached != null) return cached
     let connections: readonly ConnectorConnection[]
     try {
-      connections = await this.#client.listConnectorConnections(projectId, serviceId)
+      connections = await this.#client.listConnectorConnections(serviceId)
     } catch (error) {
-      if (this.#isCurrent(current, projectId)) this.#set({ connectionError: { message: errorNotice(error, this.#i18n.t).message, serviceId } })
+      if (this.#isCurrent(current, flowId)) this.#set({ connectionError: { message: errorNotice(error, this.#i18n.t).message, serviceId } })
       return
     }
-    if (!this.#isCurrent(current, projectId)) return
+    if (!this.#isCurrent(current, flowId)) return
     const catalog = connectionCatalog(connections)
     this.#set({ catalogs: { ...this.#state.value.catalogs, [serviceId]: catalog } })
     return catalog
@@ -378,22 +378,22 @@ export class ConnectorStore {
     this.#state.set({ ...this.#state.value, ...patch })
   }
 
-  #isCurrent(current: Current, projectId: string): boolean {
-    return !this.#disposed && current() && projectId == this.#workspace.$.projectId.value
+  #isCurrent(current: Current, flowId: string): boolean {
+    return !this.#disposed && current() && flowId == this.#workspace.$.flowId.value
   }
 
   async #loadDraftActions(): Promise<void> {
     if (this.#disposed) return
     const current = this.#refresh.capture()
-    const projectId = this.#workspace.$.projectId.value
+    const flowId = this.#workspace.$.flowId.value
     const revision = this.#workspace.$.revision.value
-    if (projectId == null || revision == null) return
+    if (flowId == null || revision == null) return
     const missing = [...revision.connectorActionIds].filter((actionId) => this.#state.value.actions[actionId] == null && !this.#loadingActions.has(actionId))
     if (missing.length == 0) return
     for (const actionId of missing) this.#loadingActions.add(actionId)
     try {
-      const actions = await Promise.all(missing.map((actionId) => this.#client.getConnectorAction(projectId, actionId)))
-      if (!this.#isCurrent(current, projectId)) return
+      const actions = await Promise.all(missing.map((actionId) => this.#client.getConnectorAction(actionId)))
+      if (!this.#isCurrent(current, flowId)) return
       const next = { ...this.#state.value.actions }
       for (const action of actions) next[action.actionId] = action
       this.#set({ actions: next })

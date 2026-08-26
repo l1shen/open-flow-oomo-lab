@@ -166,7 +166,7 @@ export function createValue(target: GraphTarget, nodeId: string, name: string): 
 }
 
 export function createBuiltinTrigger(
-  target: { readonly id: string; readonly kind: 'flow' },
+  target: Extract<GraphTarget, { readonly kind: 'flow' }>,
   nodeId: string,
   node: Extract<TriggerNode, { readonly kind: 'cron' | 'webhook' }>,
 ): readonly ChangeOperation[] {
@@ -174,7 +174,7 @@ export function createBuiltinTrigger(
 }
 
 export function createProviderTrigger(
-  target: { readonly id: string; readonly kind: 'flow' },
+  target: Extract<GraphTarget, { readonly kind: 'flow' }>,
   identity: { readonly bindingId: string; readonly nodeId: string },
   definition: TriggerKeySnapshot,
   options: {
@@ -228,10 +228,8 @@ export function deleteNodes(content: RevisionContent, target: GraphTarget, nodeI
     }),
   )
   for (const bindingId of bindingIds) {
-    const inUse = Object.entries(content.document.flows).some(([flowId, flow]) =>
-      Object.entries(flow.graph.nodes).some(
-        ([nodeId, node]) => !(flowId == target.id && removed.has(nodeId)) && (node.kind == 'poll' || node.kind == 'integration') && node.bindingId == bindingId,
-      ),
+    const inUse = Object.entries(content.document.graph.nodes).some(
+      ([nodeId, node]) => !removed.has(nodeId) && (node.kind == 'poll' || node.kind == 'integration') && node.bindingId == bindingId,
     )
     if (!inUse) operations.push({ bindingId, kind: 'binding.delete' })
   }
@@ -279,11 +277,11 @@ export function setConnectorConnection(content: RevisionContent, taskId: string,
 
 export function updateTrigger(
   content: RevisionContent,
-  target: { readonly id: string; readonly kind: 'flow' },
+  target: { readonly kind: 'flow' },
   nodeId: string,
   settings: TriggerSettings,
 ): readonly ChangeOperation[] | undefined {
-  const trigger = content.document.flows[target.id]?.graph.nodes[nodeId]
+  const trigger = content.document.graph.nodes[nodeId]
   if (trigger == null) return
   const common = { ...(settings.description == null ? {} : { description: settings.description }), name: settings.name }
   let next: TriggerNode
@@ -313,12 +311,12 @@ export function updateTrigger(
 
 export function updateTriggerConfig(
   content: RevisionContent,
-  target: { readonly id: string; readonly kind: 'flow' },
+  target: { readonly kind: 'flow' },
   nodeId: string,
   name: string,
   value: JsonValue | undefined,
 ): readonly ChangeOperation[] | undefined {
-  const trigger = content.document.flows[target.id]?.graph.nodes[nodeId]
+  const trigger = content.document.graph.nodes[nodeId]
   if (trigger == null || (trigger.kind != 'integration' && trigger.kind != 'poll')) return
   const config: Record<string, JsonValue> = { ...trigger.config }
   if (value === undefined) delete config[name]
@@ -328,11 +326,11 @@ export function updateTriggerConfig(
 
 export function updateTriggerSchedule(
   content: RevisionContent,
-  target: { readonly id: string; readonly kind: 'flow' },
+  target: { readonly kind: 'flow' },
   nodeId: string,
   schedule: readonly TriggerSchedule[],
 ): readonly ChangeOperation[] | undefined {
-  const trigger = content.document.flows[target.id]?.graph.nodes[nodeId]
+  const trigger = content.document.graph.nodes[nodeId]
   if (trigger == null) return
   switch (trigger.kind) {
     case 'cron':
@@ -349,11 +347,11 @@ export function updateTriggerSchedule(
 
 export function setTriggerConnection(
   content: RevisionContent,
-  target: { readonly id: string; readonly kind: 'flow' },
+  _target: { readonly kind: 'flow' },
   nodeId: string,
   connectionId: string,
 ): readonly ChangeOperation[] | undefined {
-  const trigger = content.document.flows[target.id]?.graph.nodes[nodeId]
+  const trigger = content.document.graph.nodes[nodeId]
   if (trigger == null || (trigger.kind != 'poll' && trigger.kind != 'integration')) return
   const binding = content.document.bindings[trigger.bindingId]
   if (binding?.kind != 'connection') return
@@ -361,7 +359,7 @@ export function setTriggerConnection(
 }
 
 function graph(content: RevisionContent, target: GraphTarget) {
-  return target.kind == 'flow' ? content.document.flows[target.id]?.graph : content.document.subflows[target.id]?.graph
+  return target.kind == 'flow' ? content.document.graph : content.document.subflows[target.id]?.graph
 }
 
 function defaultInputs(ports: TaskDefinition['inputs']): Readonly<Record<string, InputMapping>> {

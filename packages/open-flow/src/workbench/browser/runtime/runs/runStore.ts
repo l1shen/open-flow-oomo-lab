@@ -28,7 +28,7 @@ interface RunState {
   readonly result?: RunResult
   readonly run?: Run
   readonly runs: readonly Run[]
-  readonly target?: { readonly flowId?: string; readonly projectId: string }
+  readonly target?: { readonly flowId: string }
 }
 
 type Client = Pick<WorkbenchClient, 'cancelRun' | 'getRun' | 'getRunEvents' | 'getRunResult' | 'listRuns'>
@@ -126,23 +126,23 @@ export class RunStore {
     this.#state.set(initialState)
   }
 
-  public async load(projectId: string, flowId?: string): Promise<void> {
+  public async load(flowId: string): Promise<void> {
     const current = this.#lists.begin()
     this.#selection.invalidate()
     this.#clearTimer()
     this.#setNotice(undefined)
     const state = this.#state.value
-    const cancelingRunId = state.run?.projectId == projectId ? state.cancelingRunId : undefined
+    const cancelingRunId = state.run?.flowId == flowId ? state.cancelingRunId : undefined
     if (state.cancelingRunId != null && cancelingRunId == null) this.#cancellation.invalidate()
     this.#state.set({
       ...initialState,
       ...(cancelingRunId == null ? {} : { cancelingRunId }),
       eventFilter: state.eventFilter,
       loading: true,
-      target: { ...(flowId == null ? {} : { flowId }), projectId },
+      target: { flowId },
     })
     try {
-      const page = await this.#client.listRuns(projectId, { ...(flowId == null ? {} : { flowId }), limit: 50 })
+      const page = await this.#client.listRuns(flowId, { limit: 50 })
       if (!current()) return
       this.#set({ loadFailed: false, loading: false, nextCursor: page.nextCursor, runs: page.runs })
       const first = page.runs[0]
@@ -160,9 +160,8 @@ export class RunStore {
     const current = this.#lists.capture()
     this.#set({ loadMoreFailed: false, loadingMore: true })
     try {
-      const page = await this.#client.listRuns(target.projectId, {
+      const page = await this.#client.listRuns(target.flowId, {
         cursor: nextCursor,
-        ...(target.flowId == null ? {} : { flowId: target.flowId }),
         limit: 50,
       })
       if (!current()) return
@@ -187,7 +186,7 @@ export class RunStore {
 
   public async retryLoad(): Promise<void> {
     const target = this.#state.value.target
-    if (target != null) await this.load(target.projectId, target.flowId)
+    if (target != null) await this.load(target.flowId)
   }
 
   public retryObservation(): void {
@@ -246,7 +245,7 @@ export class RunStore {
       result: undefined,
       run,
       runs: [run, ...this.#state.value.runs.filter((candidate) => candidate.runId != run.runId)],
-      target: { flowId: run.flowId, projectId: run.projectId },
+      target: { flowId: run.flowId },
     })
     void this.#poll(run, current)
     return true

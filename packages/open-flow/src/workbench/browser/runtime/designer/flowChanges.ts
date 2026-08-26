@@ -1,4 +1,4 @@
-import type { Settings as NodeSettings } from '../../../../project/common/nodeChanges.ts'
+import type { Settings as NodeSettings } from '../../../../flow/common/nodeChanges.ts'
 import type {
   ChangeOperation,
   CodeModule,
@@ -15,8 +15,7 @@ import type {
 } from '../api.ts'
 import type { RevisionView } from '../revisionView.ts'
 
-import { applyProjectChanges as reduceProjectChanges } from '../../../../project/common/change.ts'
-import { createFlow } from '../../../../project/common/flowChanges.ts'
+import { applyFlowChanges as reduceFlowChanges } from '../../../../flow/common/change.ts'
 import {
   createCodeTask,
   createBuiltinTrigger,
@@ -28,19 +27,19 @@ import {
   deleteNodes,
   setInputValue as setGraphInputValue,
   updateSettings,
-} from '../../../../project/common/nodeChanges.ts'
+} from '../../../../flow/common/nodeChanges.ts'
 
-export type DesignerTarget = { readonly id: string; readonly kind: 'flow' } | { readonly id: string; readonly kind: 'subflow' }
+export type DesignerTarget = { readonly kind: 'flow' } | { readonly id: string; readonly kind: 'subflow' }
 
 export interface NodeClipboard {
   readonly modules: Readonly<Record<string, CodeModule>>
   readonly nodes: Readonly<Record<string, GraphNode>>
 }
 
-export type ProjectChanges = readonly ChangeOperation[]
+export type FlowChanges = readonly ChangeOperation[]
 
-export function applyProjectChanges(draft: Draft, changes: ProjectChanges): Draft {
-  return { ...draft, content: reduceProjectChanges(draft.content, changes) }
+export function applyFlowChanges(draft: Draft, changes: FlowChanges): Draft {
+  return { ...draft, content: reduceFlowChanges(draft.content, changes) }
 }
 
 export interface WebhookSettings {
@@ -87,13 +86,12 @@ export type AddNodeIntent =
   | { readonly kind: 'webhook'; readonly name: string }
 
 export interface PastedNodes {
-  readonly changes: ProjectChanges
+  readonly changes: FlowChanges
   readonly nodeIds: readonly string[]
   readonly sourceIds: readonly string[]
 }
 
-export function createResource(kind: DesignerTarget['kind'], id: string, name: string): ProjectChanges {
-  if (kind == 'flow') return createFlow(id, name)
+export function createResource(id: string, name: string): FlowChanges {
   return [
     {
       kind: 'subflow.create',
@@ -120,7 +118,7 @@ export function addNode(
   nodeId: string,
   intent: AddNodeIntent,
   identity: () => string,
-): ProjectChanges | undefined {
+): FlowChanges | undefined {
   switch (intent.kind) {
     case 'code':
       return createCodeTask(target, { moduleId: identity(), nodeId }, intent.name)
@@ -170,7 +168,7 @@ export function addNode(
   }
 }
 
-export function deleteSelection(revision: RevisionView, target: DesignerTarget, nodeIds: readonly string[]): ProjectChanges {
+export function deleteSelection(revision: RevisionView, target: DesignerTarget, nodeIds: readonly string[]): FlowChanges {
   return deleteNodes(revision.revision.content, target, nodeIds)
 }
 
@@ -250,7 +248,7 @@ export function pasteNodes(revision: RevisionView, target: DesignerTarget, clipb
   return { changes: operations, nodeIds: [...ids.values()], sourceIds }
 }
 
-export function updateNodeSettings(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: NodeSettings): ProjectChanges | undefined {
+export function updateNodeSettings(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: NodeSettings): FlowChanges | undefined {
   return updateSettings(revision.revision.content, target, nodeId, settings)
 }
 
@@ -259,7 +257,7 @@ export function updateNodeDescription(
   target: DesignerTarget,
   nodeId: string,
   description: string | undefined,
-): ProjectChanges | undefined {
+): FlowChanges | undefined {
   const node = revision.node(target, nodeId)?.node
   if (node == null) return
   const { description: _, ...rest } = node
@@ -272,11 +270,11 @@ export function setInputValue(
   nodeId: string,
   handle: string,
   value: JsonValue | undefined,
-): ProjectChanges | undefined {
+): FlowChanges | undefined {
   return setGraphInputValue(revision.revision.content, target, nodeId, handle, value)
 }
 
-export function updateCondition(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: ConditionSettings): ProjectChanges | undefined {
+export function updateCondition(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: ConditionSettings): FlowChanges | undefined {
   const graph = revision.graph(target)
   const current = graph?.nodes[nodeId]
   if (graph == null || current?.kind != 'condition') return
@@ -332,7 +330,7 @@ export function updateCondition(revision: RevisionView, target: DesignerTarget, 
   return changes
 }
 
-export function updateValue(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: readonly ValueSettings[]): ProjectChanges | undefined {
+export function updateValue(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: readonly ValueSettings[]): FlowChanges | undefined {
   const node = revision.node(target, nodeId)?.node
   if (node?.kind != 'value') return
   return replaceNode(target, nodeId, {
@@ -351,7 +349,7 @@ export function updateValue(revision: RevisionView, target: DesignerTarget, node
   })
 }
 
-export function updateTask(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: TaskSettings): ProjectChanges | undefined {
+export function updateTask(revision: RevisionView, target: DesignerTarget, nodeId: string, settings: TaskSettings): FlowChanges | undefined {
   const node = revision.graph(target)?.nodes[nodeId]
   if (node?.kind != 'task') return
   switch (settings.kind) {
@@ -381,7 +379,7 @@ export function updateTask(revision: RevisionView, target: DesignerTarget, nodeI
   }
 }
 
-export function updateCodeTaskPorts(revision: RevisionView, target: DesignerTarget, nodeId: string, ports: CodeTaskPorts): ProjectChanges | undefined {
+export function updateCodeTaskPorts(revision: RevisionView, target: DesignerTarget, nodeId: string, ports: CodeTaskPorts): FlowChanges | undefined {
   const node = revision.graph(target)?.nodes[nodeId]
   if (node?.kind != 'task' || node.task == null) return
   return replaceCodeTaskPorts(revision, target, nodeId, { ...node.task, ...ports })
@@ -389,11 +387,11 @@ export function updateCodeTaskPorts(revision: RevisionView, target: DesignerTarg
 
 export function updateWebhook(
   revision: RevisionView,
-  target: { readonly id: string; readonly kind: 'flow' },
+  target: Extract<DesignerTarget, { readonly kind: 'flow' }>,
   triggerId: string,
   settings: WebhookSettings,
-): ProjectChanges | undefined {
-  const trigger = revision.trigger(target.id, triggerId)
+): FlowChanges | undefined {
+  const trigger = revision.trigger(triggerId)
   if (trigger == null || trigger.kind != 'webhook') return
   const { options: _, ...withoutOptions } = trigger
   const next: Extract<TriggerNode, { readonly kind: 'webhook' }> =
@@ -403,12 +401,12 @@ export function updateWebhook(
   return replaceNode(target, triggerId, next)
 }
 
-export function updateSubflow(revision: RevisionView, subflowId: string, settings: SubflowSettings): ProjectChanges | undefined {
+export function updateSubflow(revision: RevisionView, subflowId: string, settings: SubflowSettings): FlowChanges | undefined {
   if (revision.subflow(subflowId) == null) return
   return [{ definition: settings, kind: 'subflow.definition.replace', subflowId }]
 }
 
-function createSubflowNode(target: DesignerTarget, nodeId: string, subflowId: string, inputs: TaskDefinition['inputs']): ProjectChanges {
+function createSubflowNode(target: DesignerTarget, nodeId: string, subflowId: string, inputs: TaskDefinition['inputs']): FlowChanges {
   return [
     {
       kind: 'graph.node.create',
@@ -441,7 +439,7 @@ function replaceCodeTaskPorts(
   target: DesignerTarget,
   nodeId: string,
   task: Extract<TaskDefinition, { readonly moduleId: string }>,
-): ProjectChanges | undefined {
+): FlowChanges | undefined {
   const graph = revision.graph(target)
   const current = graph?.nodes[nodeId]
   if (graph == null || current?.kind != 'task' || current.task == null) return
@@ -490,6 +488,6 @@ function replaceCodeTaskPorts(
   return changes
 }
 
-function replaceNode(target: DesignerTarget, nodeId: string, node: GraphNode): ProjectChanges {
+function replaceNode(target: DesignerTarget, nodeId: string, node: GraphNode): FlowChanges {
   return [{ kind: 'graph.node.replace', node, nodeId, target }]
 }

@@ -1,11 +1,11 @@
-import type { ChangeOperation, JsonValue } from '@oomol-lab/open-flow/project-change'
+import type { ChangeOperation, JsonValue } from '@oomol-lab/open-flow/flow-change'
 import type { RunStatus } from '@oomol-lab/open-flow/run-lifecycle'
 import type { FlowRunOptions } from '@oomol-lab/open-flow/scheduler'
 import type { Context, Next } from 'hono'
-import type { ControlService, ProjectPosition, PublicationPosition, RunPosition, TriggerActivityPosition } from './control-service.ts'
+import type { ControlService, FlowPosition, PublicationPosition, RunPosition, TriggerActivityPosition } from './control-service.ts'
 
 import { controlErrorCode } from '@oomol-lab/open-flow/control-api'
-import { resourceNameIssue } from '@oomol-lab/open-flow/project-change'
+import { resourceNameIssue } from '@oomol-lab/open-flow/flow-change'
 import { runStatuses } from '@oomol-lab/open-flow/run-lifecycle'
 import { Hono } from 'hono'
 import { ControlError } from './error.ts'
@@ -13,7 +13,7 @@ import { ControlError } from './error.ts'
 export type ResolveControlActor = (request: Request) => Promise<string | undefined> | string | undefined
 
 type Environment = { Variables: { actorId: string } }
-type InvalidCode = typeof controlErrorCode.pageInvalidCursor | typeof controlErrorCode.projectInvalid | typeof controlErrorCode.runInvalid
+type InvalidCode = typeof controlErrorCode.flowInvalid | typeof controlErrorCode.pageInvalidCursor | typeof controlErrorCode.runInvalid
 type RunInputs = NonNullable<FlowRunOptions['inputs']>
 
 const maxRequestBytes = 5 * 1024 * 1024
@@ -31,297 +31,211 @@ export function createControlApp(service: ControlService, resolveActor?: Resolve
     context.set('actorId', actorId)
     await next()
   }
-  app.use('/trigger-keys', authenticate)
-  app.use('/trigger-keys/*', authenticate)
-  app.use('/projects', authenticate)
-  app.use('/projects/*', authenticate)
-  app.use('/runs', authenticate)
-  app.use('/runs/*', authenticate)
+  for (const route of ['/connector/*', '/flows', '/flows/*', '/runs', '/runs/*', '/trigger-keys', '/trigger-keys/*']) app.use(route, authenticate)
 
   app.get('/trigger-keys', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
+    query(context.req.raw, [], controlErrorCode.flowInvalid)
     return response(200, { keys: service.listTriggerKeys(), version: 1 })
   })
-
   app.get('/trigger-keys/catalog', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
+    query(context.req.raw, [], controlErrorCode.flowInvalid)
     return response(200, { definitions: service.listTriggerDefinitions(), version: 1 })
   })
-
   app.get('/trigger-keys/:key', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
+    query(context.req.raw, [], controlErrorCode.flowInvalid)
     return response(200, { definition: service.getTriggerKey(context.req.param('key')), version: 1 })
   })
 
-  app.get('/projects', (context) => {
-    const parameters = query(context.req.raw, ['cursor', 'includeTotal', 'limit'], controlErrorCode.projectInvalid)
+  app.get('/flows', (context) => {
+    const parameters = query(context.req.raw, ['cursor', 'includeTotal', 'limit'], controlErrorCode.flowInvalid)
     const limit = pageSize(parameters)
     const cursor = parameters.get('cursor')
-    const after = cursor == null ? undefined : decodeCursor(cursor, 'projects')
-    const includeTotal = optionalBoolean(parameters.get('includeTotal'), controlErrorCode.projectInvalid)
-    const { next, page } = service.listProjects(limit, after, includeTotal)
-    return response(200, { ...page, ...(next == null ? {} : { nextCursor: encodeCursor('projects', next) }) })
+    const after = cursor == null ? undefined : decodeFlowCursor(cursor)
+    const { next, page } = service.listFlows(limit, after, optionalBoolean(parameters.get('includeTotal'), controlErrorCode.flowInvalid))
+    return response(200, { ...page, ...(next == null ? {} : { nextCursor: encodeCursor('flows', next) }) })
+  })
+  app.post('/flows', async (context) => {
+    query(context.req.raw, [], controlErrorCode.flowInvalid)
+    const body = await requestObject(context.req.raw, controlErrorCode.flowInvalid)
+    exact(body, ['name', 'version'], controlErrorCode.flowInvalid)
+    version(body.version, controlErrorCode.flowInvalid)
+    const name = resourceName(body.name)
+    const created = await service.createFlow(context.get('actorId'), name, idempotencyKey(context.req.raw, controlErrorCode.flowInvalid))
+    return response(created.created ? 201 : 200, created.flow)
+  })
+  app.get('/flows/:flowId', (context) => {
+    query(context.req.raw, [], controlErrorCode.flowInvalid)
+    return response(200, service.getFlow(context.req.param('flowId')))
+  })
+  app.patch('/flows/:flowId', async (context) => {
+    query(context.req.raw, [], controlErrorCode.flowInvalid)
+    const body = await requestObject(context.req.raw, controlErrorCode.flowInvalid)
+    exact(body, ['name', 'version'], controlErrorCode.flowInvalid)
+    version(body.version, controlErrorCode.flowInvalid)
+    return response(200, service.renameFlow(context.req.param('flowId'), resourceName(body.name)))
+  })
+  app.delete('/flows/:flowId', (context) => {
+    query(context.req.raw, [], controlErrorCode.flowInvalid)
+    return response(202, service.retireFlow(context.req.param('flowId')))
   })
 
-  app.post('/projects', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const body = await requestObject(context.req.raw, controlErrorCode.projectInvalid)
-    exact(body, ['name', 'version'], controlErrorCode.projectInvalid)
-    version(body.version, controlErrorCode.projectInvalid)
-    const name = text(body.name, controlErrorCode.projectInvalid)
-    if (name != name.trim() || resourceNameIssue(name) != null) invalid(controlErrorCode.projectInvalid, 'Project name is invalid.')
-    const created = await service.createProject(context.get('actorId'), name, idempotencyKey(context.req.raw, controlErrorCode.projectInvalid))
-    return response(created.created ? 201 : 200, created.project)
-  })
-
-  app.get('/projects/:projectId', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    return response(200, service.getProject(context.req.param('projectId')))
-  })
-
-  app.delete('/projects/:projectId', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    return response(202, service.retireProject(context.req.param('projectId')))
-  })
-
-  app.get('/projects/:projectId/draft', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    return response(200, service.getDraft(context.req.param('projectId')))
-  })
-
-  app.get('/projects/:projectId/draft/sync', async (context) => {
-    const parameters = query(context.req.raw, ['fromRevisionId'], controlErrorCode.projectInvalid)
+  app.get('/flows/:flowId/draft', (context) => response(200, service.getDraft(context.req.param('flowId'))))
+  app.get('/flows/:flowId/draft/sync', (context) => {
+    const parameters = query(context.req.raw, ['fromRevisionId'], controlErrorCode.flowInvalid)
     const fromRevisionId = parameters.get('fromRevisionId')
-    if (fromRevisionId != null) text(fromRevisionId, controlErrorCode.projectInvalid)
-    return response(200, await service.syncDraft(context.req.param('projectId')))
+    if (fromRevisionId != null) text(fromRevisionId, controlErrorCode.flowInvalid)
+    return response(200, service.syncDraft(context.req.param('flowId')))
   })
-
-  app.post('/projects/:projectId/draft/changes', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const body = await requestObject(context.req.raw, controlErrorCode.projectInvalid)
-    exact(body, ['expectedRevisionId', 'operations', 'version'], controlErrorCode.projectInvalid)
-    version(body.version, controlErrorCode.projectInvalid)
-    if (!Array.isArray(body.operations) || body.operations.length == 0) invalid(controlErrorCode.projectInvalid, 'Draft operations must be a non-empty array.')
+  app.post('/flows/:flowId/draft/changes', async (context) => {
+    query(context.req.raw, [], controlErrorCode.flowInvalid)
+    const body = await requestObject(context.req.raw, controlErrorCode.flowInvalid)
+    exact(body, ['expectedRevisionId', 'operations', 'version'], controlErrorCode.flowInvalid)
+    version(body.version, controlErrorCode.flowInvalid)
+    if (!Array.isArray(body.operations) || body.operations.length == 0) invalid(controlErrorCode.flowInvalid, 'Draft operations must be a non-empty array.')
     for (const operation of body.operations) {
-      if (typeof record(operation, controlErrorCode.projectInvalid).kind != 'string')
-        invalid(controlErrorCode.projectInvalid, 'Draft operation kind is invalid.')
+      if (typeof record(operation, controlErrorCode.flowInvalid).kind != 'string') invalid(controlErrorCode.flowInvalid, 'Draft operation kind is invalid.')
     }
     return response(
       200,
       await service.changeDraft(
         context.get('actorId'),
-        context.req.param('projectId'),
-        text(body.expectedRevisionId, controlErrorCode.projectInvalid),
+        context.req.param('flowId'),
+        text(body.expectedRevisionId, controlErrorCode.flowInvalid),
         body.operations as readonly ChangeOperation[],
       ),
     )
   })
+  app.get('/flows/:flowId/revisions/:revisionId', (context) => response(200, service.getRevision(context.req.param('flowId'), context.req.param('revisionId'))))
 
-  app.get('/projects/:projectId/revisions/:revisionId', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    return response(200, service.getRevision(context.req.param('projectId'), context.req.param('revisionId')))
-  })
-
-  app.get('/projects/:projectId/flows', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const projectId = context.req.param('projectId')
-    return response(200, { flows: await service.listFlows(projectId), projectId, version: 1 })
-  })
-
-  app.get('/projects/:projectId/connector/providers', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const projectId = context.req.param('projectId')
-    return response(200, { projectId, providers: await service.listConnectorProviders(projectId), version: 1 })
-  })
-
-  app.get('/projects/:projectId/connector/actions', async (context) => {
-    const parameters = query(context.req.raw, ['q', 'service'], controlErrorCode.projectInvalid)
-    const projectId = context.req.param('projectId')
+  app.get('/connector/providers', async () => response(200, { providers: await service.listConnectorProviders(), version: 1 }))
+  app.get('/connector/actions', async (context) => {
+    const parameters = query(context.req.raw, ['q', 'service'], controlErrorCode.flowInvalid)
     const queryValue = parameters.get('q')?.trim()
     const serviceId = parameters.get('service')?.trim()
-    if (queryValue != null && serviceId != null) invalid(controlErrorCode.projectInvalid, 'Connector Action query is invalid.')
-    if (queryValue != null && (queryValue.length == 0 || queryValue.length > 256))
-      invalid(controlErrorCode.projectInvalid, 'Connector Action query is invalid.')
-    if (serviceId != null && (serviceId.length == 0 || serviceId.length > 256)) invalid(controlErrorCode.projectInvalid, 'Connector service is invalid.')
-    const actions = queryValue == null ? await service.listConnectorActions(projectId, serviceId) : await service.searchConnectorActions(projectId, queryValue)
-    return response(200, { actions, projectId, version: 1 })
+    if (queryValue != null && serviceId != null) invalid(controlErrorCode.flowInvalid, 'Connector Action query is invalid.')
+    if (queryValue != null && (queryValue.length == 0 || queryValue.length > 256)) invalid(controlErrorCode.flowInvalid, 'Connector Action query is invalid.')
+    if (serviceId != null && (serviceId.length == 0 || serviceId.length > 256)) invalid(controlErrorCode.flowInvalid, 'Connector service is invalid.')
+    const actions = queryValue == null ? await service.listConnectorActions(serviceId) : await service.searchConnectorActions(queryValue)
+    return response(200, { actions, version: 1 })
   })
-
-  app.get('/projects/:projectId/connector/actions/:actionId', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const projectId = context.req.param('projectId')
-    return response(200, {
-      action: await service.getConnectorAction(projectId, text(context.req.param('actionId'), controlErrorCode.projectInvalid)),
-      projectId,
-      version: 1,
-    })
-  })
-
-  app.get('/projects/:projectId/connector/connections/:serviceId', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const projectId = context.req.param('projectId')
+  app.get('/connector/actions/:actionId', async (context) =>
+    response(200, { action: await service.getConnectorAction(text(context.req.param('actionId'), controlErrorCode.flowInvalid)), version: 1 }),
+  )
+  app.get('/connector/connections/:serviceId', async (context) => {
     const serviceId = connectorService(context.req.param('serviceId'))
-    return response(200, { connections: await service.listConnectorConnections(projectId, serviceId), projectId, serviceId, version: 1 })
+    return response(200, { connections: await service.listConnectorConnections(serviceId), serviceId, version: 1 })
+  })
+  app.post('/connector/connections/:serviceId/page', async (context) => {
+    await versionOnly(context.req.raw, controlErrorCode.flowInvalid)
+    return response(200, { url: service.connectorConnectionPage(connectorService(context.req.param('serviceId'))), version: 1 })
   })
 
-  app.post('/projects/:projectId/connector/connections/:serviceId/page', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const body = await requestObject(context.req.raw, controlErrorCode.projectInvalid)
-    exact(body, ['version'], controlErrorCode.projectInvalid)
-    version(body.version, controlErrorCode.projectInvalid)
-    const url = service.connectorConnectionPage(context.req.param('projectId'), connectorService(context.req.param('serviceId')))
-    return response(200, { url, version: 1 })
-  })
-
-  app.get('/projects/:projectId/flows/:flowId/live', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    return response(200, await service.getLive(context.req.param('projectId'), context.req.param('flowId')))
-  })
-
-  app.get('/projects/:projectId/flows/:flowId/triggers', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const projectId = context.req.param('projectId')
+  app.get('/flows/:flowId/live', async (context) => response(200, await service.getLive(context.req.param('flowId'))))
+  app.get('/flows/:flowId/triggers', (context) => {
     const flowId = context.req.param('flowId')
-    return response(200, { bindings: service.listFlowTriggerBindings(projectId, flowId), flowId, projectId, version: 1 })
+    return response(200, { bindings: service.listFlowTriggerBindings(flowId), flowId, version: 1 })
   })
-
-  app.get('/projects/:projectId/flows/:flowId/triggers/:triggerNodeId', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    return response(200, {
-      binding: service.getFlowTriggerBinding(
-        context.req.param('projectId'),
-        context.req.param('flowId'),
-        context.req.param('triggerNodeId'),
-        new URL(context.req.url).origin,
-      ),
+  app.get('/flows/:flowId/triggers/:triggerNodeId', (context) =>
+    response(200, {
+      binding: service.getFlowTriggerBinding(context.req.param('flowId'), context.req.param('triggerNodeId'), new URL(context.req.url).origin),
       version: 1,
-    })
-  })
-
-  app.get('/projects/:projectId/flows/:flowId/triggers/:triggerNodeId/activities', (context) => {
-    const parameters = query(context.req.raw, ['cursor', 'limit'], controlErrorCode.projectInvalid)
-    const limit = pageSize(parameters)
-    const projectId = context.req.param('projectId')
+    }),
+  )
+  app.get('/flows/:flowId/triggers/:triggerNodeId/activities', (context) => {
+    const parameters = query(context.req.raw, ['cursor', 'limit'], controlErrorCode.flowInvalid)
     const flowId = context.req.param('flowId')
     const triggerNodeId = context.req.param('triggerNodeId')
     const cursor = parameters.get('cursor')
-    const after = cursor == null ? undefined : decodeTriggerActivityCursor(cursor, projectId, flowId, triggerNodeId)
-    const { next, page } = service.listFlowTriggerActivities(projectId, flowId, triggerNodeId, limit, after)
-    return response(200, { ...page, ...(next == null ? {} : { nextCursor: encodeTriggerActivityCursor(projectId, flowId, triggerNodeId, next) }) })
+    const after = cursor == null ? undefined : decodeTriggerActivityCursor(cursor, flowId, triggerNodeId)
+    const { next, page } = service.listFlowTriggerActivities(flowId, triggerNodeId, pageSize(parameters), after)
+    return response(200, { ...page, ...(next == null ? {} : { nextCursor: encodeTriggerActivityCursor(flowId, triggerNodeId, next) }) })
+  })
+  app.post('/flows/:flowId/triggers/:triggerNodeId/pause', async (context) => {
+    await versionOnly(context.req.raw, controlErrorCode.flowInvalid)
+    return response(200, service.changeFlowTriggerState(context.req.param('flowId'), context.req.param('triggerNodeId'), 'paused'))
+  })
+  app.post('/flows/:flowId/triggers/:triggerNodeId/resume', async (context) => {
+    await versionOnly(context.req.raw, controlErrorCode.flowInvalid)
+    return response(200, service.changeFlowTriggerState(context.req.param('flowId'), context.req.param('triggerNodeId'), 'active'))
+  })
+  app.post('/flows/:flowId/triggers/:triggerNodeId/test', async (context) => {
+    await versionOnly(context.req.raw, controlErrorCode.flowInvalid)
+    return response(200, await service.testFlowPollTrigger(context.req.param('flowId'), context.req.param('triggerNodeId')))
   })
 
-  app.post('/projects/:projectId/flows/:flowId/triggers/:triggerNodeId/pause', async (context) => {
-    await triggerOperation(context.req.raw)
-    return response(
-      200,
-      service.changeFlowTriggerState(context.req.param('projectId'), context.req.param('flowId'), context.req.param('triggerNodeId'), 'paused'),
-    )
-  })
-
-  app.post('/projects/:projectId/flows/:flowId/triggers/:triggerNodeId/resume', async (context) => {
-    await triggerOperation(context.req.raw)
-    return response(
-      200,
-      service.changeFlowTriggerState(context.req.param('projectId'), context.req.param('flowId'), context.req.param('triggerNodeId'), 'active'),
-    )
-  })
-
-  app.post('/projects/:projectId/flows/:flowId/triggers/:triggerNodeId/test', async (context) => {
-    await triggerOperation(context.req.raw)
-    return response(200, await service.testFlowPollTrigger(context.req.param('projectId'), context.req.param('flowId'), context.req.param('triggerNodeId')))
-  })
-
-  app.get('/projects/:projectId/flows/:flowId/publications', (context) => {
-    const parameters = query(context.req.raw, ['cursor', 'includeTotal', 'limit'], controlErrorCode.projectInvalid)
-    const limit = pageSize(parameters)
-    const projectId = context.req.param('projectId')
+  app.get('/flows/:flowId/publications', (context) => {
+    const parameters = query(context.req.raw, ['cursor', 'includeTotal', 'limit'], controlErrorCode.flowInvalid)
     const flowId = context.req.param('flowId')
     const cursor = parameters.get('cursor')
-    const after = cursor == null ? undefined : decodePublicationCursor(cursor, projectId, flowId)
-    const includeTotal = optionalBoolean(parameters.get('includeTotal'), controlErrorCode.projectInvalid)
-    const { next, page } = service.listPublications(projectId, flowId, limit, after, includeTotal)
-    return response(200, {
-      ...page,
-      ...(next == null ? {} : { nextCursor: encodePublicationCursor(projectId, flowId, next) }),
-    })
+    const after = cursor == null ? undefined : decodePublicationCursor(cursor, flowId)
+    const { next, page } = service.listPublications(
+      flowId,
+      pageSize(parameters),
+      after,
+      optionalBoolean(parameters.get('includeTotal'), controlErrorCode.flowInvalid),
+    )
+    return response(200, { ...page, ...(next == null ? {} : { nextCursor: encodePublicationCursor(flowId, next) }) })
   })
-
-  app.get('/projects/:projectId/presentation', (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    return response(200, service.getPresentation(context.req.param('projectId')))
-  })
-
-  app.put('/projects/:projectId/presentation', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const body = await requestObject(context.req.raw, controlErrorCode.projectInvalid)
-    exact(body, ['expectedRevision', 'value', 'version'], controlErrorCode.projectInvalid)
-    version(body.version, controlErrorCode.projectInvalid)
-    const expectedRevision = positiveInteger(body.expectedRevision, controlErrorCode.projectInvalid)
-    const value = record(body.value, controlErrorCode.projectInvalid) as Readonly<Record<string, JsonValue>>
-    return response(200, service.updatePresentation(context.req.param('projectId'), expectedRevision, value))
-  })
-
-  app.post('/projects/:projectId/revisions/:revisionId/flows/:flowId/check', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const body = await requestObject(context.req.raw, controlErrorCode.projectInvalid)
-    exact(body, ['engineContract', 'version'], controlErrorCode.projectInvalid)
-    version(body.version, controlErrorCode.projectInvalid)
+  app.get('/flows/:flowId/presentation', (context) => response(200, service.getPresentation(context.req.param('flowId'))))
+  app.put('/flows/:flowId/presentation', async (context) => {
+    const body = await requestObject(context.req.raw, controlErrorCode.flowInvalid)
+    exact(body, ['expectedRevision', 'value', 'version'], controlErrorCode.flowInvalid)
+    version(body.version, controlErrorCode.flowInvalid)
     return response(
       200,
-      await service.checkFlow(
-        context.req.param('projectId'),
-        context.req.param('revisionId'),
+      service.updatePresentation(
         context.req.param('flowId'),
-        text(body.engineContract, controlErrorCode.projectInvalid),
+        positiveInteger(body.expectedRevision, controlErrorCode.flowInvalid),
+        record(body.value, controlErrorCode.flowInvalid) as Readonly<Record<string, JsonValue>>,
       ),
     )
   })
-
-  app.post('/projects/:projectId/revisions/:revisionId/flows/:flowId/publications', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const body = await requestObject(context.req.raw, controlErrorCode.projectInvalid)
-    exact(body, ['engineContract', 'expectedLivePublicationId', 'version'], controlErrorCode.projectInvalid)
-    version(body.version, controlErrorCode.projectInvalid)
+  app.post('/flows/:flowId/revisions/:revisionId/check', async (context) => {
+    const body = await requestObject(context.req.raw, controlErrorCode.flowInvalid)
+    exact(body, ['engineContract', 'version'], controlErrorCode.flowInvalid)
+    version(body.version, controlErrorCode.flowInvalid)
+    return response(
+      200,
+      await service.checkFlow(context.req.param('flowId'), context.req.param('revisionId'), text(body.engineContract, controlErrorCode.flowInvalid)),
+    )
+  })
+  app.post('/flows/:flowId/revisions/:revisionId/publications', async (context) => {
+    const body = await requestObject(context.req.raw, controlErrorCode.flowInvalid)
+    exact(body, ['engineContract', 'expectedLivePublicationId', 'version'], controlErrorCode.flowInvalid)
+    version(body.version, controlErrorCode.flowInvalid)
     if (body.expectedLivePublicationId !== null && (typeof body.expectedLivePublicationId != 'string' || body.expectedLivePublicationId.length == 0)) {
-      invalid(controlErrorCode.projectInvalid, 'Expected Live Publication is invalid.')
+      invalid(controlErrorCode.flowInvalid, 'Expected Live Publication is invalid.')
     }
     const committed = await service.publishFlow(
       context.get('actorId'),
-      context.req.param('projectId'),
-      context.req.param('revisionId'),
       context.req.param('flowId'),
-      text(body.engineContract, controlErrorCode.projectInvalid),
+      context.req.param('revisionId'),
+      text(body.engineContract, controlErrorCode.flowInvalid),
       body.expectedLivePublicationId as string | null,
-      idempotencyKey(context.req.raw, controlErrorCode.projectInvalid),
+      idempotencyKey(context.req.raw, controlErrorCode.flowInvalid),
     )
     return response(committed.created ? 201 : 200, committed.publication)
   })
-
-  app.post('/projects/:projectId/flows/:flowId/publications/:publicationId/rollback', async (context) => {
-    query(context.req.raw, [], controlErrorCode.projectInvalid)
-    const body = await requestObject(context.req.raw, controlErrorCode.projectInvalid)
-    exact(body, ['expectedLivePublicationId', 'version'], controlErrorCode.projectInvalid)
-    version(body.version, controlErrorCode.projectInvalid)
+  app.post('/flows/:flowId/publications/:publicationId/rollback', async (context) => {
+    const body = await requestObject(context.req.raw, controlErrorCode.flowInvalid)
+    exact(body, ['expectedLivePublicationId', 'version'], controlErrorCode.flowInvalid)
+    version(body.version, controlErrorCode.flowInvalid)
     const committed = await service.rollbackFlow(
       context.get('actorId'),
-      context.req.param('projectId'),
       context.req.param('flowId'),
       context.req.param('publicationId'),
-      text(body.expectedLivePublicationId, controlErrorCode.projectInvalid),
-      idempotencyKey(context.req.raw, controlErrorCode.projectInvalid),
+      text(body.expectedLivePublicationId, controlErrorCode.flowInvalid),
+      idempotencyKey(context.req.raw, controlErrorCode.flowInvalid),
     )
     return response(committed.created ? 201 : 200, committed.publication)
   })
-
-  app.post('/projects/:projectId/revisions/:revisionId/flows/:flowId/runs', async (context) => {
-    query(context.req.raw, [], controlErrorCode.runInvalid)
+  app.post('/flows/:flowId/revisions/:revisionId/runs', async (context) => {
     const body = await requestObject(context.req.raw, controlErrorCode.runInvalid)
     exact(body, ['engineContract', 'inputs', 'version'], controlErrorCode.runInvalid)
     version(body.version, controlErrorCode.runInvalid)
     const accepted = await service.createDraftRun(
-      context.req.param('projectId'),
-      context.req.param('revisionId'),
       context.req.param('flowId'),
+      context.req.param('revisionId'),
       text(body.engineContract, controlErrorCode.runInvalid),
       record(body.inputs, controlErrorCode.runInvalid) as RunInputs,
       idempotencyKey(context.req.raw, controlErrorCode.runInvalid),
@@ -330,7 +244,6 @@ export function createControlApp(service: ControlService, resolveActor?: Resolve
   })
 
   app.post('/runs', async (context) => {
-    query(context.req.raw, [], controlErrorCode.runInvalid)
     const body = await requestObject(context.req.raw, controlErrorCode.runInvalid)
     exact(body, ['inputs', 'publicationId', 'version'], controlErrorCode.runInvalid)
     version(body.version, controlErrorCode.runInvalid)
@@ -341,48 +254,35 @@ export function createControlApp(service: ControlService, resolveActor?: Resolve
     )
     return response(accepted.created ? 202 : 200, accepted.run)
   })
-
-  app.get('/projects/:projectId/runs', (context) => {
-    const parameters = query(context.req.raw, ['cursor', 'flowId', 'limit', 'status'], controlErrorCode.runInvalid)
-    const limit = pageSize(parameters, controlErrorCode.runInvalid)
+  app.get('/flows/:flowId/runs', (context) => {
+    const parameters = query(context.req.raw, ['cursor', 'limit', 'status'], controlErrorCode.runInvalid)
     const cursor = parameters.get('cursor')
-    const after = cursor == null ? undefined : decodeCursor(cursor, 'runs')
-    const flowId = parameters.get('flowId') ?? undefined
+    const after = cursor == null ? undefined : decodeRunCursor(cursor)
     const status = parameters.get('status')
     if (status != null && !runStatusSet.has(status)) invalid(controlErrorCode.runInvalid, 'Run status is invalid.')
-    const { next, page } = service.listRuns(context.req.param('projectId'), limit, {
+    const { next, page } = service.listRuns(context.req.param('flowId'), pageSize(parameters, controlErrorCode.runInvalid), {
       ...(after == null ? {} : { after }),
-      ...(flowId == null ? {} : { flowId: text(flowId, controlErrorCode.runInvalid) }),
       ...(status == null ? {} : { status: status as RunStatus }),
     })
     return response(200, { ...page, ...(next == null ? {} : { nextCursor: encodeCursor('runs', next) }) })
   })
-
-  app.get('/runs/:runId', (context) => {
-    query(context.req.raw, [], controlErrorCode.runInvalid)
-    return response(200, service.getRun(context.req.param('runId')))
-  })
-
+  app.get('/runs/:runId', (context) => response(200, service.getRun(context.req.param('runId'))))
   app.get('/runs/:runId/events', (context) => {
     const parameters = query(context.req.raw, ['after', 'limit'], controlErrorCode.runInvalid)
-    const after = nonnegativeInteger(parameters.get('after'), 0, controlErrorCode.runInvalid)
-    const limit = pageSize(parameters, controlErrorCode.runInvalid)
-    return response(200, service.getRunEvents(context.req.param('runId'), after, limit))
+    return response(
+      200,
+      service.getRunEvents(
+        context.req.param('runId'),
+        nonnegativeInteger(parameters.get('after'), 0, controlErrorCode.runInvalid),
+        pageSize(parameters, controlErrorCode.runInvalid),
+      ),
+    )
   })
-
-  app.get('/runs/:runId/result', (context) => {
-    query(context.req.raw, [], controlErrorCode.runInvalid)
-    return response(200, service.getRunResult(context.req.param('runId')))
-  })
-
+  app.get('/runs/:runId/result', (context) => response(200, service.getRunResult(context.req.param('runId'))))
   app.post('/runs/:runId/cancel', async (context) => {
-    query(context.req.raw, [], controlErrorCode.runInvalid)
-    const body = await requestObject(context.req.raw, controlErrorCode.runInvalid)
-    exact(body, ['version'], controlErrorCode.runInvalid)
-    version(body.version, controlErrorCode.runInvalid)
+    await versionOnly(context.req.raw, controlErrorCode.runInvalid)
     return response(200, service.cancelRun(context.req.param('runId')))
   })
-
   return app
 }
 
@@ -394,40 +294,33 @@ function response(status: number, body: unknown): Response {
   })
 }
 
-async function triggerOperation(request: Request): Promise<void> {
-  query(request, [], controlErrorCode.projectInvalid)
-  const body = await requestObject(request, controlErrorCode.projectInvalid)
-  exact(body, ['version'], controlErrorCode.projectInvalid)
-  version(body.version, controlErrorCode.projectInvalid)
+async function versionOnly(request: Request, code: InvalidCode): Promise<void> {
+  query(request, [], code)
+  const body = await requestObject(request, code)
+  exact(body, ['version'], code)
+  version(body.version, code)
 }
 
 async function requestObject(request: Request, code: InvalidCode): Promise<Record<string, unknown>> {
-  const bytes = await readBody(request, maxRequestBytes, code)
-  let value: unknown
-  try {
-    value = JSON.parse(new TextDecoder().decode(bytes)) as unknown
-  } catch {
-    return invalid(code, 'Request body must be valid JSON.')
-  }
-  return record(value, code)
-}
-
-async function readBody(request: Request, limit: number, code: InvalidCode): Promise<Uint8Array> {
-  if (request.body == null) return new Uint8Array()
+  if (request.body == null) return invalid(code, 'Request body must be valid JSON.')
   const chunks: Uint8Array[] = []
   let size = 0
   for await (const chunk of request.body) {
     size += chunk.byteLength
-    if (size > limit) invalid(code, 'Request body is too large.')
+    if (size > maxRequestBytes) invalid(code, 'Request body is too large.')
     chunks.push(chunk)
   }
-  const bytes = new Uint8Array(size)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
+  try {
+    const bytes = new Uint8Array(size)
+    let offset = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return record(JSON.parse(new TextDecoder().decode(bytes)) as unknown, code)
+  } catch {
+    return invalid(code, 'Request body must be valid JSON.')
   }
-  return bytes
 }
 
 function query(request: Request, allowed: readonly string[], code: InvalidCode): URLSearchParams {
@@ -457,9 +350,15 @@ function text(value: unknown, code: InvalidCode): string {
   return value
 }
 
+function resourceName(value: unknown): string {
+  const name = text(value, controlErrorCode.flowInvalid)
+  if (name != name.trim() || resourceNameIssue(name) != null) invalid(controlErrorCode.flowInvalid, 'Flow name is invalid.')
+  return name
+}
+
 function connectorService(value: unknown): string {
-  const service = text(value, controlErrorCode.projectInvalid)
-  if (service.length > 256) invalid(controlErrorCode.projectInvalid, 'Connector service is invalid.')
+  const service = text(value, controlErrorCode.flowInvalid)
+  if (service.length > 256) invalid(controlErrorCode.flowInvalid, 'Connector service is invalid.')
   return service
 }
 
@@ -475,7 +374,7 @@ function nonnegativeInteger(value: string | null, fallback: number, code: Invali
   return parsed
 }
 
-function pageSize(parameters: URLSearchParams, code: InvalidCode = controlErrorCode.projectInvalid): number {
+function pageSize(parameters: URLSearchParams, code: InvalidCode = controlErrorCode.flowInvalid): number {
   const value = parameters.get('limit')
   if (value == null) return defaultPageSize
   const parsed = positiveInteger(Number(value), code)
@@ -495,75 +394,49 @@ function idempotencyKey(request: Request, code: InvalidCode): string {
   return value
 }
 
-function encodeCursor(kind: 'projects' | 'runs', position: ProjectPosition | RunPosition): string {
+function encodeCursor(kind: 'flows' | 'runs', position: FlowPosition | RunPosition): string {
   return Buffer.from(JSON.stringify({ kind, ...position })).toString('base64url')
 }
 
-function encodePublicationCursor(projectId: string, flowId: string, position: PublicationPosition): string {
-  return Buffer.from(JSON.stringify({ flowId, kind: 'publications', projectId, ...position })).toString('base64url')
+function encodePublicationCursor(flowId: string, position: PublicationPosition): string {
+  return Buffer.from(JSON.stringify({ flowId, kind: 'publications', ...position })).toString('base64url')
 }
 
-function encodeTriggerActivityCursor(projectId: string, flowId: string, triggerNodeId: string, position: TriggerActivityPosition): string {
-  return Buffer.from(JSON.stringify({ flowId, kind: 'trigger-activities', projectId, triggerNodeId, ...position })).toString('base64url')
+function encodeTriggerActivityCursor(flowId: string, triggerNodeId: string, position: TriggerActivityPosition): string {
+  return Buffer.from(JSON.stringify({ flowId, kind: 'trigger-activities', triggerNodeId, ...position })).toString('base64url')
 }
 
-function decodePublicationCursor(value: string, projectId: string, flowId: string): PublicationPosition {
-  try {
-    const decoded = record(JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown, controlErrorCode.projectInvalid)
-    exact(decoded, ['createdAt', 'flowId', 'kind', 'projectId', 'publicationId'], controlErrorCode.projectInvalid)
-    if (
-      decoded.kind != 'publications' ||
-      decoded.projectId != projectId ||
-      decoded.flowId != flowId ||
-      !Number.isSafeInteger(decoded.createdAt) ||
-      (decoded.createdAt as number) < 0
-    ) {
-      throw new Error()
-    }
-    return { createdAt: decoded.createdAt as number, publicationId: text(decoded.publicationId, controlErrorCode.projectInvalid) }
-  } catch (error) {
-    if (error instanceof ControlError) throw error
-    return invalid(controlErrorCode.projectInvalid, 'Cursor is invalid.')
-  }
+function decodeFlowCursor(value: string): FlowPosition {
+  const decoded = decodeCursor(value, 'flows', ['createdAt', 'flowId', 'kind'])
+  return { createdAt: decoded.createdAt as number, flowId: text(decoded.flowId, controlErrorCode.pageInvalidCursor) }
 }
 
-function decodeTriggerActivityCursor(value: string, projectId: string, flowId: string, triggerNodeId: string): TriggerActivityPosition {
+function decodeRunCursor(value: string): RunPosition {
+  const decoded = decodeCursor(value, 'runs', ['createdAt', 'kind', 'runId'])
+  return { createdAt: decoded.createdAt as number, runId: text(decoded.runId, controlErrorCode.pageInvalidCursor) }
+}
+
+function decodePublicationCursor(value: string, flowId: string): PublicationPosition {
+  const decoded = decodeCursor(value, 'publications', ['createdAt', 'flowId', 'kind', 'publicationId'])
+  if (decoded.flowId != flowId) invalid(controlErrorCode.pageInvalidCursor, 'Cursor is invalid.')
+  return { createdAt: decoded.createdAt as number, publicationId: text(decoded.publicationId, controlErrorCode.pageInvalidCursor) }
+}
+
+function decodeTriggerActivityCursor(value: string, flowId: string, triggerNodeId: string): TriggerActivityPosition {
+  const decoded = decodeCursor(value, 'trigger-activities', ['activityId', 'createdAt', 'flowId', 'kind', 'triggerNodeId'])
+  if (decoded.flowId != flowId || decoded.triggerNodeId != triggerNodeId) invalid(controlErrorCode.pageInvalidCursor, 'Cursor is invalid.')
+  return { activityId: text(decoded.activityId, controlErrorCode.pageInvalidCursor), createdAt: decoded.createdAt as number }
+}
+
+function decodeCursor(value: string, kind: string, keys: readonly string[]): Record<string, unknown> {
   try {
     const decoded = record(JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown, controlErrorCode.pageInvalidCursor)
-    exact(decoded, ['activityId', 'createdAt', 'flowId', 'kind', 'projectId', 'triggerNodeId'], controlErrorCode.pageInvalidCursor)
-    if (
-      decoded.kind != 'trigger-activities' ||
-      decoded.projectId != projectId ||
-      decoded.flowId != flowId ||
-      decoded.triggerNodeId != triggerNodeId ||
-      !Number.isSafeInteger(decoded.createdAt) ||
-      (decoded.createdAt as number) < 0
-    ) {
-      throw new Error()
-    }
-    return { activityId: text(decoded.activityId, controlErrorCode.pageInvalidCursor), createdAt: decoded.createdAt as number }
+    exact(decoded, keys, controlErrorCode.pageInvalidCursor)
+    if (decoded.kind != kind || !Number.isSafeInteger(decoded.createdAt) || (decoded.createdAt as number) < 0) throw new Error()
+    return decoded
   } catch (error) {
     if (error instanceof ControlError) throw error
     return invalid(controlErrorCode.pageInvalidCursor, 'Cursor is invalid.')
-  }
-}
-
-function decodeCursor(value: string, kind: 'projects'): ProjectPosition
-function decodeCursor(value: string, kind: 'runs'): RunPosition
-function decodeCursor(value: string, kind: 'projects' | 'runs'): ProjectPosition | RunPosition {
-  const code = kind == 'projects' ? controlErrorCode.projectInvalid : controlErrorCode.runInvalid
-  try {
-    const decoded = record(JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown, code)
-    if (decoded.kind != kind || !Number.isSafeInteger(decoded.createdAt) || (decoded.createdAt as number) < 0) throw new Error()
-    if (kind == 'projects') {
-      exact(decoded, ['createdAt', 'kind', 'projectId'], code)
-      return { createdAt: decoded.createdAt as number, projectId: text(decoded.projectId, code) }
-    }
-    exact(decoded, ['createdAt', 'kind', 'runId'], code)
-    return { createdAt: decoded.createdAt as number, runId: text(decoded.runId, code) }
-  } catch (error) {
-    if (error instanceof ControlError) throw error
-    return invalid(code, 'Cursor is invalid.')
   }
 }
 

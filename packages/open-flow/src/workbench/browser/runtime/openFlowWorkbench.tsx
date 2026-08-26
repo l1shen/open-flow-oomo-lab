@@ -8,7 +8,7 @@ import { I18nProvider } from 'val-i18n-react'
 import { WorkbenchClient } from './api.ts'
 import { createI18n } from './i18n.ts'
 import { NavigationStore } from './navigation.ts'
-import { FlowBrowser, ProjectBrowser } from './shell/resourceBrowser.tsx'
+import { FlowBrowser } from './shell/resourceBrowser.tsx'
 import { WorkbenchStore } from './stores/workbenchStore.ts'
 
 const FlowWorkspace = lazy(() => import('./flowWorkspace.tsx'))
@@ -30,28 +30,16 @@ interface WorkbenchProps {
 }
 
 function Workbench({ hrefFor, language, navigation, onLanguageChange, store, theme }: WorkbenchProps): ReactElement {
-  const projectId = useVal(store.workspace.$.projectId)
-  const target = useVal(store.workspace.$.target)
+  const flowId = useVal(store.workspace.$.flowId)
   return (
     <div className="app-shell">
-      {projectId == null ? (
-        <ProjectBrowser
-          hrefForProject={(nextProjectId) => hrefFor({ projectId: nextProjectId, view: 'design' })}
-          language={language}
-          onCreateProject={(name) => navigation.createProject(name)}
-          onLanguageChange={onLanguageChange}
-          onSelectProject={(nextProjectId) => void navigation.selectProject(nextProjectId)}
-          store={store}
-        />
-      ) : target == null ? (
+      {flowId == null ? (
         <FlowBrowser
-          hrefForFlow={(flow) => hrefFor({ flowId: flow.flowId, projectId, view: flow.draft == null ? 'publications' : 'design' })}
+          hrefForFlow={(flow) => hrefFor({ flowId: flow.flowId, view: 'design' })}
           language={language}
           onCreateFlow={(name) => navigation.createFlow(name)}
           onLanguageChange={onLanguageChange}
-          onOpenProjects={() => void navigation.openProjects()}
-          onSelectFlow={(flow) => navigation.selectFlow(flow)}
-          projectsHref={hrefFor({ view: 'design' })}
+          onSelectFlow={(flow) => void navigation.selectFlow(flow)}
           store={store}
         />
       ) : (
@@ -64,7 +52,8 @@ function Workbench({ hrefFor, language, navigation, onLanguageChange, store, the
 }
 
 export type {
-  ProjectChangeEvent,
+  FlowCatalogEvent,
+  FlowChangeEvent,
   WorkbenchHost,
   WorkbenchLanguage,
   WorkbenchLocation,
@@ -97,7 +86,8 @@ function Session({ host, hrefFor, language, location, onLanguageChange, onNaviga
     const workbenchStore = new WorkbenchStore(
       new WorkbenchClient(
         (input, init) => host.request(input, init),
-        (projectId, listener) => host.subscribeProject(projectId, listener),
+        (flowId, listener) => host.subscribeFlow(flowId, listener),
+        (listener) => host.subscribeFlowCatalog(listener),
       ),
       preferences,
       () => crypto.randomUUID(),

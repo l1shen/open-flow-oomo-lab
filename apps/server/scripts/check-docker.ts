@@ -1,4 +1,4 @@
-import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { RevisionContent } from '@oomol-lab/open-flow/flow-change'
 
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
@@ -38,12 +38,12 @@ try {
   assert.equal(index.status, 200)
   assert.match(await index.text(), /<title>Open Flow Server<\/title>/)
 
-  const project = await requestJson<{ readonly draftRevisionId: string; readonly projectId: string }>(
+  const flow = await requestJson<{ readonly draftRevisionId: string; readonly flowId: string }>(
     firstOrigin,
-    '/v1/projects',
+    '/v1/flows',
     {
-      body: JSON.stringify({ name: 'Docker smoke project', version: 1 }),
-      headers: { 'content-type': 'application/json', 'cookie': firstCookie, 'idempotency-key': `project-${suffix}` },
+      body: JSON.stringify({ name: 'Docker smoke flow', version: 1 }),
+      headers: { 'content-type': 'application/json', 'cookie': firstCookie, 'idempotency-key': `flow-${suffix}` },
       method: 'POST',
     },
     201,
@@ -51,13 +51,13 @@ try {
   const revision = codeFlow()
   const changed = await requestJson<{ readonly revision: { readonly revisionId: string } }>(
     firstOrigin,
-    `/v1/projects/${project.projectId}/draft/changes`,
+    `/v1/flows/${flow.flowId}/draft/changes`,
     {
       body: JSON.stringify({
-        expectedRevisionId: project.draftRevisionId,
+        expectedRevisionId: flow.draftRevisionId,
         operations: [
           { kind: 'module.create', module: revision.modules.code, moduleId: 'code' },
-          { flow: revision.document.flows.main, flowId: 'main', kind: 'flow.create' },
+          { kind: 'graph.node.create', node: revision.document.graph.nodes.code, nodeId: 'code', target: { kind: 'flow' } },
         ],
         version: 1,
       }),
@@ -68,7 +68,7 @@ try {
   )
   const publication = await requestJson<{ readonly publicationId: string }>(
     firstOrigin,
-    `/v1/projects/${project.projectId}/revisions/${changed.revision.revisionId}/flows/main/publications`,
+    `/v1/flows/${flow.flowId}/revisions/${changed.revision.revisionId}/publications`,
     {
       body: JSON.stringify({ engineContract: 'open-flow-engine/v1', expectedLivePublicationId: null, version: 1 }),
       headers: { 'content-type': 'application/json', 'cookie': firstCookie, 'idempotency-key': `publication-${suffix}` },
@@ -103,13 +103,13 @@ try {
   await waitForHealthy(secondContainer)
   const secondOrigin = await containerOrigin(secondContainer)
   const secondCookie = await login(secondOrigin)
-  const projects = await requestJson<{ readonly projects: readonly { readonly projectId: string }[] }>(
+  const flows = await requestJson<{ readonly flows: readonly { readonly flowId: string }[] }>(
     secondOrigin,
-    '/v1/projects',
+    '/v1/flows',
     { headers: { cookie: secondCookie } },
     200,
   )
-  assert.ok(projects.projects.some((candidate) => candidate.projectId == project.projectId))
+  assert.ok(flows.flows.some((candidate) => candidate.flowId == flow.flowId))
   const restoredRun = await requestJson<{ readonly runId: string; readonly status: string }>(
     secondOrigin,
     `/v1/runs/${accepted.runId}`,
@@ -138,19 +138,14 @@ function codeFlow(): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              code: {
-                concurrency: 1,
-                inputs: {},
-                kind: 'task',
-                task: { inputs: {}, moduleId: 'code', name: 'Code', outputs: { result } },
-              },
-            },
+      graph: {
+        nodes: {
+          code: {
+            concurrency: 1,
+            inputs: {},
+            kind: 'task',
+            task: { inputs: {}, moduleId: 'code', name: 'Code', outputs: { result } },
           },
-          name: 'Main',
         },
       },
       subflows: {},

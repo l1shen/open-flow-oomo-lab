@@ -315,9 +315,9 @@ test('keeps URL-changing Workbench navigation on real links', async () => {
   assert.doesNotMatch(button, /hover:underline/)
   assert.match(browser, /render=\{<a href=/)
   assert.match(browser, /nativeButton=\{false\}/)
-  assert.match(header, /render=\{<a href=\{projectsHref\}/)
-  assert.match(header, /render=\{<a href=\{projectHref\}/)
-  assert.doesNotMatch(header, /<Button[^>]*onClick=\{onOpenProject/)
+  assert.match(header, /render=\{<a href=\{flowsHref\}/)
+  assert.match(header, /render=\{<a href=\{flowHref\}/)
+  assert.doesNotMatch(header, /<Button[^>]*onClick=\{onOpenFlow/)
 })
 
 test('keeps responsive control density on component APIs', async () => {

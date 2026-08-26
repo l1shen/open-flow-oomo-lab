@@ -1,8 +1,8 @@
-import type { RevisionContent as RevisionFixture } from '../src/project/common/change.ts'
+import type { RevisionContent as RevisionFixture } from '../src/flow/common/change.ts'
 
 import { describe, expect, it } from 'vitest'
 import { currentEngineContract, findEngineContract } from '../src/execution/common/runtime.ts'
-import { createRuntimeProgram, prepareFlow, validateFlowInputs, validateModules } from '../src/project/common/semantics.ts'
+import { createRuntimeProgram, prepareFlow, validateFlowInputs, validateModules } from '../src/flow/common/semantics.ts'
 
 const engine = findEngineContract(currentEngineContract)!
 
@@ -10,14 +10,9 @@ function revision(source: string, imports: readonly string[] = [], modules: Revi
   return {
     document: {
       bindings: {},
-      flows: {
-        proof: {
-          graph: {
-            nodes: {
-              task: { concurrency: 1, inputs: {}, kind: 'task', task: { inputs: {}, moduleId: 'module-main', name: 'Main', outputs: {} } },
-            },
-          },
-          name: 'Proof',
+      graph: {
+        nodes: {
+          task: { concurrency: 1, inputs: {}, kind: 'task', task: { inputs: {}, moduleId: 'module-main', name: 'Main', outputs: {} } },
         },
       },
       subflows: {},
@@ -35,8 +30,8 @@ function validate(source: RevisionFixture, moduleIds: readonly string[]) {
   return validateModules(source, moduleIds, engine)
 }
 
-describe('Project semantics', () => {
-  it('accepts declared static Project imports and the unprivileged Platform Library', () => {
+describe('Flow semantics', () => {
+  it('accepts declared static Flow imports and the unprivileged Platform Library', () => {
     const source = revision(
       `import { value } from "./module-helper.mjs"
 import { engineContract, identity } from "open-flow:platform"
@@ -119,7 +114,7 @@ export default () => value`,
       { 'module-helper': { imports: [], name: 'Helper', source: 'export const value = 1' } },
     )
 
-    const result = await prepareFlow(source, 'proof', currentEngineContract)
+    const result = await prepareFlow(source, currentEngineContract)
 
     expect(result).toMatchObject({ kind: 'prepared', validation: { diagnostics: [], valid: true } })
     if (result.kind != 'prepared') return
@@ -133,45 +128,38 @@ export default () => value`,
     expect(createRuntimeProgram(result.flow, 'outside-closure', 'sha256:implementation')).toBeUndefined()
   })
 
-  it('reports unsupported Engine, missing Flow, invalid Flow, and invalid invocation inputs without platform errors', async () => {
-    await expect(prepareFlow(revision('export default () => true'), 'proof', 'unsupported')).resolves.toEqual({ kind: 'engine-unsupported' })
-    await expect(prepareFlow(revision('export default () => true'), 'missing', currentEngineContract)).resolves.toEqual({ kind: 'flow-not-found' })
-    await expect(prepareFlow(revision('export const value = true'), 'proof', currentEngineContract)).resolves.toMatchObject({
+  it('reports unsupported Engine, invalid Flow, and invalid invocation inputs without platform errors', async () => {
+    await expect(prepareFlow(revision('export default () => true'), 'unsupported')).resolves.toEqual({ kind: 'engine-unsupported' })
+    await expect(prepareFlow(revision('export const value = true'), currentEngineContract)).resolves.toMatchObject({
       kind: 'flow-invalid',
       validation: { diagnostics: [expect.objectContaining({ code: 'task.missing-entry' })], valid: false },
     })
-    expect(validateFlowInputs(revision('export default () => true'), 'proof', { missing: {} })).toBe('invalid')
-    expect(validateFlowInputs(revision('export default () => true'), 'missing', {})).toBe('flow-not-found')
+    expect(validateFlowInputs(revision('export default () => true'), { missing: {} })).toBe('invalid')
   })
 
   it('rejects incomplete Connector Capability declarations on inline Tasks', async () => {
     const source = revision('export default () => ({})')
-    const task = source.document.flows.proof!.graph.nodes.task
+    const task = source.document.graph.nodes.task
     if (task?.kind != 'task' || task.task == null) throw new Error('Fixture inline Task is missing.')
     const invalid: RevisionFixture = {
       ...source,
       document: {
         ...source.document,
-        flows: {
-          proof: {
-            ...source.document.flows.proof!,
-            graph: {
-              nodes: {
-                task: {
-                  ...task,
-                  task: { ...task.task, capabilities: [{ action: '', connectionId: 'connection-1', kind: 'connector' }] },
-                },
-              },
+        graph: {
+          nodes: {
+            task: {
+              ...task,
+              task: { ...task.task, capabilities: [{ action: '', connectionId: 'connection-1', kind: 'connector' }] },
             },
           },
         },
       },
     }
 
-    await expect(prepareFlow(invalid, 'proof', currentEngineContract)).resolves.toMatchObject({
+    await expect(prepareFlow(invalid, currentEngineContract)).resolves.toMatchObject({
       kind: 'flow-invalid',
       validation: {
-        diagnostics: [expect.objectContaining({ code: 'task.capability-incomplete', path: '/document/flows/proof/graph/nodes/task/task/capabilities/0' })],
+        diagnostics: [expect.objectContaining({ code: 'task.capability-incomplete', path: '/document/graph/nodes/task/task/capabilities/0' })],
       },
     })
   })

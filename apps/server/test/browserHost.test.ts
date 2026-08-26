@@ -1,4 +1,4 @@
-import type { ProjectChangeEvent } from '@oomol-lab/open-flow/workbench'
+import type { FlowChangeEvent } from '@oomol-lab/open-flow/workbench'
 
 import { afterEach, expect, it, vi } from 'vitest'
 import { createBrowserHost } from '../browser/host.ts'
@@ -7,17 +7,39 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('reads project invalidations from the same-origin SSE stream and stops cleanly', async () => {
-  const event = { kind: 'run.created', flowId: 'main', projectId: 'project/1', runId: 'run-1', version: 1 } as const
+it('uses independent catalog and current Flow SSE connections', async () => {
+  const requests: string[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request) => {
+      requests.push(String(input))
+      return new Response(': connected\n\n', { status: 200 })
+    }),
+  )
+  const host = createBrowserHost(
+    () => {},
+    () => {},
+  )
+  const stopCatalog = host.subscribeFlowCatalog(() => {})
+  const stopFlow = host.subscribeFlow('flow/1', () => {})
+
+  await vi.waitFor(() => expect(requests).toHaveLength(2))
+  stopCatalog()
+  stopFlow()
+  expect(requests).toEqual(['/v1/flows/notifications', '/v1/flows/flow%2F1/notifications'])
+})
+
+it('reads flow invalidations from the same-origin SSE stream and stops cleanly', async () => {
+  const event = { kind: 'run.created', flowId: 'main', runId: 'run-1', version: 1 } as const
   const fetcher = vi.fn(async () => new Response(`: connected\n\ndata: ${JSON.stringify(event)}\n\n`, { status: 200 }))
   vi.stubGlobal('fetch', fetcher)
   const opened = vi.fn()
   let stop: (() => void) | undefined
-  const received = new Promise<ProjectChangeEvent>((resolve) => {
+  const received = new Promise<FlowChangeEvent>((resolve) => {
     stop = createBrowserHost(
       () => {},
       () => {},
-    ).subscribeProject('project/1', (value) => {
+    ).subscribeFlow('flow/1', (value) => {
       if (value == null) opened()
       else {
         stop?.()
@@ -28,7 +50,7 @@ it('reads project invalidations from the same-origin SSE stream and stops cleanl
 
   await expect(received).resolves.toEqual(event)
   expect(opened).toHaveBeenCalledOnce()
-  expect(fetcher).toHaveBeenCalledWith('/v1/projects/project%2F1/notifications', {
+  expect(fetcher).toHaveBeenCalledWith('/v1/flows/flow%2F1/notifications', {
     credentials: 'same-origin',
     headers: { accept: 'text/event-stream' },
     signal: expect.any(AbortSignal),
@@ -37,7 +59,7 @@ it('reads project invalidations from the same-origin SSE stream and stops cleanl
 
 it('reconnects after an SSE stream ends and reads the next stream', async () => {
   vi.useFakeTimers()
-  const event = { kind: 'draft.changed', projectId: 'project-1', revisionId: 'revision-2', version: 1 } as const
+  const event = { flowId: 'flow-1', kind: 'draft.changed', revisionId: 'revision-2', version: 1 } as const
   const fetcher = vi
     .fn()
     .mockResolvedValueOnce(new Response(': connected\n\n', { status: 200 }))
@@ -45,11 +67,11 @@ it('reconnects after an SSE stream ends and reads the next stream', async () => 
   vi.stubGlobal('fetch', fetcher)
   const opened = vi.fn()
   let stop: (() => void) | undefined
-  const received = new Promise<ProjectChangeEvent>((resolve) => {
+  const received = new Promise<FlowChangeEvent>((resolve) => {
     stop = createBrowserHost(
       () => {},
       () => {},
-    ).subscribeProject('project-1', (value) => {
+    ).subscribeFlow('flow-1', (value) => {
       if (value == null) opened()
       else {
         stop?.()
@@ -78,18 +100,18 @@ it('reconnects after an SSE stream ends and reads the next stream', async () => 
 
 it('retries a failed SSE request and reads the recovered stream', async () => {
   vi.useFakeTimers()
-  const event = { kind: 'draft.changed', projectId: 'project-1', revisionId: 'revision-2', version: 1 } as const
+  const event = { flowId: 'flow-1', kind: 'draft.changed', revisionId: 'revision-2', version: 1 } as const
   const fetcher = vi
     .fn()
     .mockRejectedValueOnce(new Error('Connection failed.'))
     .mockResolvedValueOnce(new Response(`: connected\n\ndata: ${JSON.stringify(event)}\n\n`, { status: 200 }))
   vi.stubGlobal('fetch', fetcher)
   let stop: (() => void) | undefined
-  const received = new Promise<ProjectChangeEvent>((resolve) => {
+  const received = new Promise<FlowChangeEvent>((resolve) => {
     stop = createBrowserHost(
       () => {},
       () => {},
-    ).subscribeProject('project-1', (value) => {
+    ).subscribeFlow('flow-1', (value) => {
       if (value != null) {
         stop?.()
         resolve(value)
@@ -118,7 +140,7 @@ it('cancels an SSE reconnect while waiting after the stream ends', async () => {
   const stop = createBrowserHost(
     () => {},
     () => {},
-  ).subscribeProject('project-1', (value) => {
+  ).subscribeFlow('flow-1', (value) => {
     if (value == null) opened()
   })
 
@@ -143,7 +165,7 @@ it('reports an expired session instead of retrying an unauthorized SSE request',
     expired = resolve
   })
 
-  createBrowserHost(() => {}, expired).subscribeProject('project-1', () => {})
+  createBrowserHost(() => {}, expired).subscribeFlow('flow-1', () => {})
   await sessionExpired
   expect(fetcher).toHaveBeenCalledOnce()
 })

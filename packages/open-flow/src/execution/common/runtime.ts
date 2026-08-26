@@ -1,4 +1,4 @@
-import type { CodeModule, JsonValue } from '../../project/common/change.ts'
+import type { CodeModule, JsonValue } from '../../flow/common/change.ts'
 
 import { dequal } from 'dequal/lite'
 import { currentEngineContract } from './engineContract.ts'

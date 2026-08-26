@@ -1,6 +1,6 @@
 import type { I18n } from 'val-i18n'
 import type { ReadonlyVal, Val } from 'value-enhancer'
-import type { TriggerSettings } from '../../../../project/common/nodeChanges.ts'
+import type { TriggerSettings } from '../../../../flow/common/nodeChanges.ts'
 import type { WorkbenchClient, ConnectorConnection, TriggerKeySnapshot } from '../api.ts'
 import type { WorkbenchHost } from '../contract.ts'
 import type { AddNodeOption } from '../designer/addNodeOptions.ts'
@@ -198,20 +198,20 @@ export class TriggerStore {
   }
 
   public readonly browseAddNodeOptions = async (signal: AbortSignal): Promise<readonly AddNodeOption[] | undefined> => {
-    const projectId = this.#workspace.$.projectId.value
-    if (signal.aborted || this.#disposed || projectId == null || this.#workspace.$.target.value?.kind != 'flow') return []
+    const flowId = this.#workspace.$.flowId.value
+    if (signal.aborted || this.#disposed || flowId == null || this.#workspace.$.target.value?.kind != 'flow') return []
     const definitions = await this.#loadCatalog()
-    if (signal.aborted || this.#disposed || projectId != this.#workspace.$.projectId.value) return
+    if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
     return [...definitions.values()].map((definition) => option(definition, this.#i18n))
   }
 
   public readonly provideAddNodeOptions = async (searchTerm: string, signal: AbortSignal): Promise<readonly AddNodeOption[] | undefined> => {
-    const projectId = this.#workspace.$.projectId.value
-    if (signal.aborted || this.#disposed || projectId == null || this.#workspace.$.target.value?.kind != 'flow') return []
+    const flowId = this.#workspace.$.flowId.value
+    if (signal.aborted || this.#disposed || flowId == null || this.#workspace.$.target.value?.kind != 'flow') return []
     const query = searchTerm.trim().toLowerCase()
     if (query.length == 0) return []
     const catalog = await this.#loadCatalog()
-    if (signal.aborted || this.#disposed || projectId != this.#workspace.$.projectId.value) return
+    if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
     const definitions = [...catalog.values()].filter((item) =>
       [item.description, item.displayName, item.key, item.name, item.provider, item.type].some((value) => value.toLowerCase().includes(query)),
     )
@@ -220,24 +220,24 @@ export class TriggerStore {
       const loaded = await Promise.all(
         providers
           .slice(index, index + connectionBatchSize)
-          .map(async (provider) => [provider, connectionCatalog(await this.#client.listConnectorConnections(projectId, provider, signal))] as const),
+          .map(async (provider) => [provider, connectionCatalog(await this.#client.listConnectorConnections(provider, signal))] as const),
       )
-      if (signal.aborted || this.#disposed || projectId != this.#workspace.$.projectId.value) return
+      if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
       this.#set({ catalogs: { ...this.#state.value.catalogs, ...Object.fromEntries(loaded) } })
     }
     return definitions.map((definition) => resolvedOption(definition, this.#state.value.catalogs[definition.provider]!, this.#i18n))
   }
 
   public readonly provideAddNodeOptionChoices = async (optionId: string, signal: AbortSignal): Promise<readonly AddNodeOption[] | undefined> => {
-    const projectId = this.#workspace.$.projectId.value
+    const flowId = this.#workspace.$.flowId.value
     const key = optionId.startsWith(optionPrefix) ? optionId.slice(optionPrefix.length) : undefined
-    if (signal.aborted || this.#disposed || projectId == null || key == null || this.#workspace.$.target.value?.kind != 'flow') return
+    if (signal.aborted || this.#disposed || flowId == null || key == null || this.#workspace.$.target.value?.kind != 'flow') return
     const definition = (await this.#loadCatalog()).get(key)
-    if (signal.aborted || this.#disposed || projectId != this.#workspace.$.projectId.value || definition == null) return
+    if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value || definition == null) return
     let catalog = this.#state.value.catalogs[definition.provider]
     if (catalog == null) {
-      catalog = connectionCatalog(await this.#client.listConnectorConnections(projectId, definition.provider, signal))
-      if (signal.aborted || this.#disposed || projectId != this.#workspace.$.projectId.value) return
+      catalog = connectionCatalog(await this.#client.listConnectorConnections(definition.provider, signal))
+      if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
       this.#set({ catalogs: { ...this.#state.value.catalogs, [definition.provider]: catalog } })
     }
     return choices(definition, catalog, this.#i18n)
@@ -245,38 +245,38 @@ export class TriggerStore {
 
   public async refresh(force = false): Promise<void> {
     const current = this.#refresh.begin()
-    const projectId = this.#workspace.$.projectId.value
+    const flowId = this.#workspace.$.flowId.value
     const selected = target(this.#workspace.$.selection.value, this.#workspace)
     if (this.#disposed) return
-    if (projectId == null || selected == null) {
+    if (flowId == null || selected == null) {
       if (this.#state.value.connectionLoading != null) this.#set({ connectionLoading: undefined })
       return
     }
     if (!force && this.#state.value.catalogs[selected.provider] != null) return
     this.#set({ connectionError: undefined, connectionLoading: selected.provider })
     try {
-      const catalog = connectionCatalog(await this.#client.listConnectorConnections(projectId, selected.provider))
-      if (!this.#current(current, projectId)) return
+      const catalog = connectionCatalog(await this.#client.listConnectorConnections(selected.provider))
+      if (!this.#current(current, flowId)) return
       this.#set({ catalogs: { ...this.#state.value.catalogs, [selected.provider]: catalog } })
     } catch (error) {
-      if (this.#current(current, projectId)) {
+      if (this.#current(current, flowId)) {
         this.#set({ connectionError: { message: errorNotice(error, this.#i18n.t).message, provider: selected.provider } })
       }
     } finally {
-      if (this.#current(current, projectId) && this.#state.value.connectionLoading == selected.provider) this.#set({ connectionLoading: undefined })
+      if (this.#current(current, flowId) && this.#state.value.connectionLoading == selected.provider) this.#set({ connectionLoading: undefined })
     }
   }
 
   public async connect(provider: string): Promise<void> {
-    const projectId = this.#workspace.$.projectId.value
-    if (this.#disposed || projectId == null) return
+    const flowId = this.#workspace.$.flowId.value
+    if (this.#disposed || flowId == null) return
     try {
-      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(projectId, provider))
+      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(provider))
       if (!opened) {
         this.#setNotice({ kind: 'error', message: this.#i18n.t('notice.connectionPopupBlocked') })
         return
       }
-      if (!this.#disposed && projectId == this.#workspace.$.projectId.value) this.#set({ authorizationProvider: provider })
+      if (!this.#disposed && flowId == this.#workspace.$.flowId.value) this.#set({ authorizationProvider: provider })
     } catch (error) {
       if (!this.#disposed) this.#setNotice(errorNotice(error, this.#i18n.t))
     }
@@ -315,7 +315,7 @@ export class TriggerStore {
     if (!this.#disposed) this.#state.set({ ...this.#state.value, ...patch })
   }
 
-  #current(current: () => boolean, projectId: string): boolean {
-    return !this.#disposed && current() && projectId == this.#workspace.$.projectId.value
+  #current(current: () => boolean, flowId: string): boolean {
+    return !this.#disposed && current() && flowId == this.#workspace.$.flowId.value
   }
 }

@@ -9,8 +9,8 @@ import type {
   FlowDesignerViewTriggerField,
   FlowDesignerViewTriggerNode,
 } from '../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
-import type { ConnectorAction, ConnectorConnection, Diagnostic, Draft, Flow, GraphNode, JsonValue, Run, RunEvent, TaskDefinition, TriggerNode } from './api.ts'
-import type { DesignerTarget } from './designer/projectChanges.ts'
+import type { ConnectorAction, ConnectorConnection, Diagnostic, Draft, GraphNode, JsonValue, Run, RunEvent, TaskDefinition, TriggerNode } from './api.ts'
+import type { DesignerTarget } from './designer/flowChanges.ts'
 import type { ResolvedNode, ResolvedSelection, RevisionView } from './revisionView.ts'
 
 import { revisionView } from './revisionView.ts'
@@ -96,10 +96,6 @@ export function connectionCatalog(connections: readonly ConnectorConnection[]): 
   }
 }
 
-export function initialFlow(flows: readonly Flow[], preferredId: string | null): Flow | undefined {
-  return flows.find((flow) => flow.flowId == preferredId && flow.draft != null) ?? flows.find((flow) => flow.draft != null)
-}
-
 function nodeTitle(node: ResolvedNode, t?: TFunction): string {
   if (node.node.name != null) return node.node.name
   switch (node.kind) {
@@ -134,7 +130,7 @@ function finite(value: JsonValue | undefined): number | undefined {
 export function targetPresentation(value: Readonly<Record<string, JsonValue>>, target: DesignerTarget): Readonly<Record<string, JsonValue>> | undefined {
   const designer = record(value.designer)
   if (designer?.version != 1) return undefined
-  return record(record(designer[target.kind == 'flow' ? 'flows' : 'subflows'])?.[target.id])
+  return presentationTarget(designer, target)
 }
 
 function savedPosition(value: Readonly<Record<string, JsonValue>>, target: DesignerTarget, nodeId: string): Point | undefined {
@@ -258,7 +254,7 @@ function conditionOperator(operator: import('./api.ts').ConditionOperator): Flow
 }
 
 function nodeDiagnosticCount(target: DesignerTarget, node: ResolvedNode, diagnostics: readonly Diagnostic[]): number {
-  const graphPath = `/document/${target.kind == 'flow' ? 'flows' : 'subflows'}/${target.id}/graph/nodes/${node.id}`
+  const graphPath = target.kind == 'flow' ? `/document/graph/nodes/${node.id}` : `/document/subflows/${target.id}/graph/nodes/${node.id}`
   const paths = [graphPath]
   if (node.kind == 'task') {
     if (node.node.task != null) paths.push(`${graphPath}/task`)
@@ -277,13 +273,13 @@ function runProjection(
   run: Run | undefined,
   events: readonly RunEvent[],
 ): { readonly nodes: ReadonlyMap<string, FlowDesignerViewNodeRun>; readonly status?: 'idle' | 'running' } {
-  if (target.kind != 'flow' || run?.flowId != target.id || run.revisionId != revision.revision.revisionId) return { nodes: new Map() }
+  if (target.kind != 'flow' || run?.flowId != revision.revision.flowId || run.revisionId != revision.revision.revisionId) return { nodes: new Map() }
   const active = run.status == 'queued' || run.status == 'starting' || run.status == 'running'
   const nodes = new Map<string, FlowDesignerViewNodeRun>()
-  const rootScopeId = events.find((event) => event.kind == 'run.started' && event.payload.flowId == target.id)?.payload.scopeId
+  const rootScopeId = events.find((event) => event.kind == 'run.started' && event.payload.flowId == revision.revision.flowId)?.payload.scopeId
   if (typeof rootScopeId != 'string') return { nodes, status: active ? 'running' : 'idle' }
   for (const event of events) {
-    if (event.payload.scopeId != rootScopeId || event.payload.flowId != target.id) continue
+    if (event.payload.scopeId != rootScopeId || event.payload.flowId != revision.revision.flowId) continue
     const nodeId = event.payload.nodeId
     if (typeof nodeId != 'string') continue
     const current = nodes.get(nodeId)
@@ -343,10 +339,9 @@ function triggerIcon(trigger: TriggerNode): string {
   }
 }
 
-function triggerDiagnosticCount(triggerId: string, flowId: string, diagnostics: readonly Diagnostic[]): number {
-  return diagnostics.filter(
-    (diagnostic) => diagnostic.code != 'trigger.config-incomplete' && diagnostic.path.startsWith(`/document/flows/${flowId}/graph/nodes/${triggerId}`),
-  ).length
+function triggerDiagnosticCount(triggerId: string, diagnostics: readonly Diagnostic[]): number {
+  return diagnostics.filter((diagnostic) => diagnostic.code != 'trigger.config-incomplete' && diagnostic.path.startsWith(`/document/graph/nodes/${triggerId}`))
+    .length
 }
 
 function projectEdges(entries: readonly (readonly [string, GraphNode])[], nodeIds: ReadonlySet<string>, ports: ReadonlyMap<string, NodePorts>): EdgeProjection {
@@ -505,7 +500,7 @@ function triggerConfigFields(trigger: TriggerNode): readonly FlowDesignerViewTri
   )
 }
 
-function triggerDesignerNode(triggerId: string, trigger: TriggerNode, position: Point, flowId: string, diagnostics: readonly Diagnostic[]): DesignerNode {
+function triggerDesignerNode(triggerId: string, trigger: TriggerNode, position: Point, diagnostics: readonly Diagnostic[]): DesignerNode {
   let presentation: FlowDesignerViewTriggerNode['presentation']
   switch (trigger.kind) {
     case 'cron':
@@ -536,7 +531,7 @@ function triggerDesignerNode(triggerId: string, trigger: TriggerNode, position: 
   }
   return {
     description: trigger.description,
-    diagnostics: triggerDiagnosticCount(triggerId, flowId, diagnostics),
+    diagnostics: triggerDiagnosticCount(triggerId, diagnostics),
     icon: triggerIcon(trigger),
     id: triggerId,
     inputs: [],
@@ -645,7 +640,7 @@ export function designerGraph(
     const position = savedPosition(presentation, target, nodeId) ?? { x: 80 + column * 500, y: 80 + row * 240 }
     const resolved = definitions.get(nodeId)!
     if (resolved.kind == 'trigger') {
-      nodes.push(triggerDesignerNode(nodeId, resolved.trigger, position, target.id, diagnostics))
+      nodes.push(triggerDesignerNode(nodeId, resolved.trigger, position, diagnostics))
       continue
     }
     nodes.push(semanticDesignerNode(nodeId, resolved, ports.get(nodeId)!, position, context))
@@ -666,6 +661,20 @@ function designerPresentation(value: Readonly<Record<string, JsonValue>>): Reado
   return designer?.version == 1 ? designer : { version: 1 }
 }
 
+function presentationTarget(designer: Readonly<Record<string, JsonValue>>, target: DesignerTarget): Readonly<Record<string, JsonValue>> | undefined {
+  return target.kind == 'flow' ? record(designer.flow) : record(record(designer.subflows)?.[target.id])
+}
+
+function replacePresentationTarget(
+  designer: Readonly<Record<string, JsonValue>>,
+  target: DesignerTarget,
+  value: Readonly<Record<string, JsonValue>>,
+): Readonly<Record<string, JsonValue>> {
+  if (target.kind == 'flow') return { ...designer, flow: value, version: 1 }
+  const subflows = record(designer.subflows) ?? {}
+  return { ...designer, subflows: { ...subflows, [target.id]: value }, version: 1 }
+}
+
 export function setNodePosition(
   value: Readonly<Record<string, JsonValue>>,
   target: DesignerTarget,
@@ -681,9 +690,7 @@ export function setNodePositions(
   positions: Readonly<Record<string, Point>>,
 ): Readonly<Record<string, JsonValue>> {
   const designer = designerPresentation(value)
-  const collectionName = target.kind == 'flow' ? 'flows' : 'subflows'
-  const collection = record(designer[collectionName]) ?? {}
-  const current = record(collection[target.id]) ?? {}
+  const current = presentationTarget(designer, target) ?? {}
   const nodes = record(current.nodes) ?? {}
   const nextNodes: Record<string, JsonValue> = {
     ...nodes,
@@ -691,11 +698,7 @@ export function setNodePositions(
   }
   return {
     ...value,
-    designer: {
-      ...designer,
-      [collectionName]: { ...collection, [target.id]: { ...current, nodes: nextNodes } },
-      version: 1,
-    },
+    designer: replacePresentationTarget(designer, target, { ...current, nodes: nextNodes }),
   }
 }
 
@@ -707,20 +710,14 @@ export function setComment(
 ): Readonly<Record<string, JsonValue>> {
   const positioned = setNodePositions(value, target, { [nodeId]: comment.position })
   const designer = designerPresentation(positioned)
-  const collectionName = target.kind == 'flow' ? 'flows' : 'subflows'
-  const collection = record(designer[collectionName]) ?? {}
-  const current = record(collection[target.id]) ?? {}
+  const current = presentationTarget(designer, target) ?? {}
   const comments = record(current.comments) ?? {}
   return {
     ...positioned,
-    designer: {
-      ...designer,
-      [collectionName]: {
-        ...collection,
-        [target.id]: { ...current, comments: { ...comments, [nodeId]: { content: comment.content, title: comment.title } } },
-      },
-      version: 1,
-    },
+    designer: replacePresentationTarget(designer, target, {
+      ...current,
+      comments: { ...comments, [nodeId]: { content: comment.content, title: comment.title } },
+    }),
   }
 }
 
@@ -730,9 +727,7 @@ export function removeComments(
   nodeIds: ReadonlySet<string>,
 ): Readonly<Record<string, JsonValue>> {
   const designer = designerPresentation(value)
-  const collectionName = target.kind == 'flow' ? 'flows' : 'subflows'
-  const collection = record(designer[collectionName]) ?? {}
-  const current = record(collection[target.id]) ?? {}
+  const current = presentationTarget(designer, target) ?? {}
   const comments = { ...record(current.comments) }
   const nodes = { ...record(current.nodes) }
   for (const nodeId of nodeIds) {
@@ -741,11 +736,7 @@ export function removeComments(
   }
   return {
     ...value,
-    designer: {
-      ...designer,
-      [collectionName]: { ...collection, [target.id]: { ...current, comments, nodes } },
-      version: 1,
-    },
+    designer: replacePresentationTarget(designer, target, { ...current, comments, nodes }),
   }
 }
 
@@ -761,19 +752,13 @@ export function setFlowViewport(
   const currentViewport = savedViewport(value, target)
   if (currentViewport.x == viewport.x && currentViewport.y == viewport.y && currentViewport.zoom == viewport.zoom) return value
   const designer = designerPresentation(value)
-  const collectionName = target.kind == 'flow' ? 'flows' : 'subflows'
-  const collection = record(designer[collectionName]) ?? {}
-  const current = record(collection[target.id]) ?? {}
+  const current = presentationTarget(designer, target) ?? {}
   return {
     ...value,
-    designer: {
-      ...designer,
-      [collectionName]: {
-        ...collection,
-        [target.id]: { ...current, viewport: { x: viewport.x, y: viewport.y, zoom: viewport.zoom } },
-      },
-      version: 1,
-    },
+    designer: replacePresentationTarget(designer, target, {
+      ...current,
+      viewport: { x: viewport.x, y: viewport.y, zoom: viewport.zoom },
+    }),
   }
 }
 

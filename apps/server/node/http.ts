@@ -1,4 +1,4 @@
-import type { JsonValue, TriggerNode } from '@oomol-lab/open-flow/project-change'
+import type { JsonValue, TriggerNode } from '@oomol-lab/open-flow/flow-change'
 import type { Logger } from 'pino'
 import type { ResolveControlActor } from './control.ts'
 import type { OperatorSession } from './operator.ts'
@@ -98,16 +98,19 @@ export function createServerApp(service: ServerService, options: ServerAppOption
   app.all('/v1/integrations/*', (context) => integration(service, context.req.raw, logger, context.get('requestId'), admitCallback))
   app.all('/v1/webhooks', (context) => webhook(service, context.req.raw, logger, context.get('requestId'), admitCallback))
   app.all('/v1/webhooks/*', (context) => webhook(service, context.req.raw, logger, context.get('requestId'), admitCallback))
-  app.get('/v1/projects/:projectId/notifications', async (context) => {
-    const actor = await resolveActor?.(context.req.raw)
+  const authenticateNotifications = async (request: Request): Promise<void> => {
+    const actor = await resolveActor?.(request)
     if (actor == null || actor.length == 0) throw new ControlError(controlErrorCode.authenticationRequired, 'Authentication is required.')
-    return new Response(projectNotifications(service, context.req.param('projectId'), [context.req.raw.signal, options.shutdownSignal]), {
-      headers: {
-        'cache-control': 'no-cache',
-        'connection': 'keep-alive',
-        'content-type': 'text/event-stream',
-      },
-    })
+  }
+  app.get('/v1/flows/notifications', async (context) => {
+    await authenticateNotifications(context.req.raw)
+    return notificationResponse(notifications((listener) => service.subscribeFlowCatalog(listener), [context.req.raw.signal, options.shutdownSignal]))
+  })
+  app.get('/v1/flows/:flowId/notifications', async (context) => {
+    await authenticateNotifications(context.req.raw)
+    return notificationResponse(
+      notifications((listener) => service.subscribeFlow(context.req.param('flowId'), listener), [context.req.raw.signal, options.shutdownSignal]),
+    )
   })
   app.route('/v1', createControlApp(service.control, resolveActor))
 
@@ -160,7 +163,16 @@ export function createServerApp(service: ServerService, options: ServerAppOption
   return app
 }
 
-function projectNotifications(service: ServerService, projectId: string, signals: readonly (AbortSignal | undefined)[]): ReadableStream<Uint8Array> {
+function notificationResponse(body: ReadableStream<Uint8Array>): Response {
+  return new Response(body, {
+    headers: { 'cache-control': 'no-cache', 'connection': 'keep-alive', 'content-type': 'text/event-stream' },
+  })
+}
+
+function notifications<Event>(
+  subscribe: (listener: (event: Event) => void) => () => void,
+  signals: readonly (AbortSignal | undefined)[],
+): ReadableStream<Uint8Array> {
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined
   let closed = false
   let unsubscribe: (() => void) | undefined
@@ -181,7 +193,7 @@ function projectNotifications(service: ServerService, projectId: string, signals
     },
     start(streamController) {
       controller = streamController
-      unsubscribe = service.subscribeProject(projectId, (event) => {
+      unsubscribe = subscribe((event) => {
         if (!closed) streamController.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
       })
       if (signals.some((signal) => signal?.aborted)) return abort()

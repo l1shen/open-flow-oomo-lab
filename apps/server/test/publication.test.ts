@@ -1,4 +1,4 @@
-import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { RevisionContent } from '@oomol-lab/open-flow/flow-change'
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -26,29 +26,24 @@ function revision(name = 'Incoming', webhook = true): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              marker: {
-                concurrency: 1,
-                inputs: {},
-                kind: 'value',
-                values: { ready: { jsonSchema: { type: 'boolean' }, nullable: false, value: true } },
-              },
-              ...(webhook
-                ? {
-                    incoming: {
-                      inputsDef: [{ handle: 'message', ...message }],
-                      kind: 'webhook' as const,
-                      name,
-                      options: { responseData: name, responseStatusCode: 202 },
-                    },
-                  }
-                : {}),
-            },
+      graph: {
+        nodes: {
+          marker: {
+            concurrency: 1,
+            inputs: {},
+            kind: 'value',
+            values: { ready: { jsonSchema: { type: 'boolean' }, nullable: false, value: true } },
           },
-          name: 'Main',
+          ...(webhook
+            ? {
+                incoming: {
+                  inputsDef: [{ handle: 'message', ...message }],
+                  kind: 'webhook' as const,
+                  name,
+                  options: { responseData: name, responseStatusCode: 202 },
+                },
+              }
+            : {}),
         },
       },
       subflows: {},
@@ -71,7 +66,6 @@ function publish(
   return service.publishFlow({
     ...input,
     flowId: 'main',
-    projectId: 'project-a',
   })
 }
 
@@ -88,13 +82,12 @@ describe('Server Publication and Webhook target', () => {
     })
     if (accepted.kind != 'published') throw new Error('Initial Publication unexpectedly conflicted.')
 
-    const endpointId = service.webhookEndpoint('project-a', 'main', 'incoming')
+    const endpointId = service.webhookEndpoint('main', 'incoming')
     expect(endpointId).toMatch(/^endpoint_[0-9a-f]{32}$/)
     const target = service.webhookTarget(endpointId!)
     expect(target).toMatchObject({
       endpointId,
       flowId: 'main',
-      projectId: 'project-a',
       publicationId: accepted.publicationId,
       revision: content,
       revisionId: 'revision-a',
@@ -109,7 +102,6 @@ describe('Server Publication and Webhook target', () => {
       'endpointId',
       'engineContract',
       'flowId',
-      'projectId',
       'publicationId',
       'revision',
       'revisionDigest',
@@ -155,7 +147,7 @@ describe('Server Publication and Webhook target', () => {
     } as const
     const first = await publish(service, firstInput)
     if (first.kind != 'published') throw new Error('Initial Publication unexpectedly conflicted.')
-    const endpointId = service.webhookEndpoint('project-a', 'main', 'incoming')!
+    const endpointId = service.webhookEndpoint('main', 'incoming')!
 
     await expect(
       publish(service, {
@@ -174,7 +166,7 @@ describe('Server Publication and Webhook target', () => {
       revisionId: 'revision-b',
     })
     if (second.kind != 'published') throw new Error('Second Publication unexpectedly conflicted.')
-    expect(service.webhookEndpoint('project-a', 'main', 'incoming')).toBe(endpointId)
+    expect(service.webhookEndpoint('main', 'incoming')).toBe(endpointId)
     expect(service.webhookTarget(endpointId)).toMatchObject({
       publicationId: second.publicationId,
       revisionId: 'revision-b',
@@ -206,7 +198,7 @@ describe('Server Publication and Webhook target', () => {
       revisionId: 'revision-a',
     })
     if (first.kind != 'published') throw new Error('Initial Publication unexpectedly conflicted.')
-    const endpointId = service.webhookEndpoint('project-a', 'main', 'incoming')!
+    const endpointId = service.webhookEndpoint('main', 'incoming')!
 
     const retired = await publish(service, {
       expectedLivePublicationId: first.publicationId,
@@ -215,7 +207,7 @@ describe('Server Publication and Webhook target', () => {
       revisionId: 'revision-b',
     })
     if (retired.kind != 'published') throw new Error('Retirement Publication unexpectedly conflicted.')
-    expect(service.webhookEndpoint('project-a', 'main', 'incoming')).toBeUndefined()
+    expect(service.webhookEndpoint('main', 'incoming')).toBeUndefined()
     expect(service.webhookTarget(endpointId)).toBeUndefined()
 
     const restored = await publish(service, {
@@ -225,14 +217,14 @@ describe('Server Publication and Webhook target', () => {
       revisionId: 'revision-c',
     })
     if (restored.kind != 'published') throw new Error('Restored Publication unexpectedly conflicted.')
-    expect(service.webhookEndpoint('project-a', 'main', 'incoming')).toBe(endpointId)
+    expect(service.webhookEndpoint('main', 'incoming')).toBe(endpointId)
     expect(service.webhookTarget(endpointId)).toMatchObject({ publicationId: restored.publicationId, runtimeVersion: 3 })
 
     await service.close()
     services.delete(service)
     service = ServerService.open(file)
     services.add(service)
-    expect(service.webhookEndpoint('project-a', 'main', 'incoming')).toBe(endpointId)
+    expect(service.webhookEndpoint('main', 'incoming')).toBe(endpointId)
     expect(service.webhookTarget(endpointId)).toMatchObject({
       publicationId: restored.publicationId,
       revisionId: 'revision-c',
@@ -251,7 +243,7 @@ describe('Server Publication and Webhook target', () => {
       revisionId: 'revision-a',
     })
     if (first.kind != 'published') throw new Error('Initial Publication unexpectedly conflicted.')
-    const endpointId = service.webhookEndpoint('project-a', 'main', 'incoming')!
+    const endpointId = service.webhookEndpoint('main', 'incoming')!
     const stale = service.webhookTarget(endpointId)!
 
     const second = await publish(service, {
@@ -265,29 +257,5 @@ describe('Server Publication and Webhook target', () => {
     await expect(service.acceptWebhookTarget(stale, 'delivery-during-publish', { message: 'hello' })).resolves.toBeUndefined()
     const accepted = await service.acceptWebhookTarget(service.webhookTarget(endpointId)!, 'delivery-during-publish', { message: 'hello' })
     expect(accepted).toMatchObject({ created: true, kind: 'accepted', status: 'queued' })
-  })
-
-  it('rejects an invalid target before creating any publication state', async () => {
-    const service = ServerService.open(await databaseFile())
-    services.add(service)
-    await expect(
-      service.publishFlow({
-        expectedLivePublicationId: null,
-        flowId: 'missing',
-        idempotencyKey: 'publish-invalid',
-        projectId: 'project-a',
-        revision: revision(),
-        revisionId: 'revision-invalid',
-      }),
-    ).rejects.toMatchObject({ code: 'flow-not-found' })
-
-    const accepted = await publish(service, {
-      expectedLivePublicationId: null,
-      idempotencyKey: 'publish-valid',
-      revision: revision(),
-      revisionId: 'revision-a',
-    })
-    expect(accepted).toMatchObject({ created: true, kind: 'published' })
-    expect(service.webhookTarget(service.webhookEndpoint('project-a', 'main', 'incoming')!)).toMatchObject({ runtimeVersion: 1 })
   })
 })

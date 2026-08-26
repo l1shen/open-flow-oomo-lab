@@ -1,12 +1,15 @@
-import type { Publication } from '../../../control/common/api.ts'
-import type { ChangeOperation, JsonValue, RevisionContent } from '../../../project/common/change.ts'
-import type { ProjectChangeEvent, WorkbenchHost } from './contract.ts'
+import type { JsonValue } from '../../../flow/common/change.ts'
+import type { FlowCatalogEvent, FlowChangeEvent, WorkbenchHost } from './contract.ts'
 
 import { ControlClient } from '../../../control/common/api.ts'
 
 export { ApiError } from '../../../control/common/api.ts'
 export type {
   DraftRun,
+  Draft,
+  DraftChange,
+  DraftSync,
+  Diagnostic,
   ConnectorAction,
   ConnectorConnection,
   ConnectorProvider,
@@ -14,8 +17,10 @@ export type {
   LiveRun,
   Publication,
   PublicationPage,
-  Project,
-  ProjectPage,
+  Flow,
+  FlowCheck,
+  FlowPage,
+  RevisionMetadata,
   Run,
   RunCancellation,
   RunDetails,
@@ -48,7 +53,7 @@ export type {
   InputPortDefinition,
   JsonValue,
   PortDefinition,
-  ProjectDocument,
+  FlowDocument,
   SubflowNode,
   TaskDefinition,
   TaskNode,
@@ -57,43 +62,7 @@ export type {
   TriggerSchedule,
   ValueNode,
   WebhookOptions,
-} from '../../../project/common/change.ts'
-
-export interface RevisionMetadata {
-  readonly actorId: string
-  readonly createdAt: string
-  readonly digest: string
-  readonly modelVersion: number
-  readonly parentRevisionId: string | null
-  readonly projectId: string
-  readonly revisionId: string
-  readonly version: 1
-}
-
-export interface Draft extends RevisionMetadata {
-  readonly content: RevisionContent
-}
-
-export interface DraftFlow {
-  readonly closureDigest: string
-  readonly flowId: string
-  readonly name: string
-}
-
-export interface DraftChange {
-  readonly draftFlows: readonly DraftFlow[]
-  readonly revision: RevisionMetadata
-  readonly version: 1
-}
-
-export type DraftSync =
-  | {
-      readonly draftFlows: readonly DraftFlow[]
-      readonly kind: 'changes'
-      readonly revisions: readonly { readonly operations: readonly ChangeOperation[]; readonly revision: RevisionMetadata }[]
-      readonly version: 1
-    }
-  | { readonly draft: Draft; readonly draftFlows: readonly DraftFlow[]; readonly kind: 'snapshot'; readonly version: 1 }
+} from '../../../flow/common/change.ts'
 
 export interface Presentation {
   readonly revision: number
@@ -102,71 +71,40 @@ export interface Presentation {
   readonly version: 1
 }
 
-export interface Diagnostic {
-  readonly code: string
-  readonly column: number
-  readonly line: number
-  readonly message: string
-  readonly path: string
-}
-
-export interface FlowCheck {
-  readonly closureDigest: string
-  readonly diagnostics: readonly Diagnostic[]
-  readonly engineContract: string
-  readonly flowId: string
-  readonly modelVersion: number
-  readonly projectId: string
-  readonly revisionDigest: string
-  readonly revisionId: string
-  readonly valid: boolean
-  readonly version: 1
-}
-
-export interface Flow {
-  readonly draft: {
-    readonly closureDigest: string
-    readonly name: string
-    readonly revisionDigest: string
-    readonly revisionId: string
-  } | null
-  readonly flowId: string
-  readonly hasUnpublishedChanges: boolean
-  readonly live: {
-    readonly publication: Publication
-    readonly revision: number
-    readonly status: 'runnable' | 'suspended'
-  } | null
-}
-
 type Fetcher = WorkbenchHost['request']
-type ProjectSubscriber = WorkbenchHost['subscribeProject']
-type RunCreatedEvent = Extract<ProjectChangeEvent, { readonly kind: 'run.created' }>
+type FlowSubscriber = WorkbenchHost['subscribeFlow']
+type FlowCatalogSubscriber = WorkbenchHost['subscribeFlowCatalog']
+type RunCreatedEvent = Extract<FlowChangeEvent, { readonly kind: 'run.created' }>
 
 const segment = encodeURIComponent
 
 export class WorkbenchClient extends ControlClient {
   constructor(
     fetcher: Fetcher,
-    private readonly subscribeProject: ProjectSubscriber = () => () => {},
+    private readonly subscribeFlow: FlowSubscriber = () => () => {},
+    private readonly subscribeFlowCatalog: FlowCatalogSubscriber = () => () => {},
   ) {
     super(fetcher)
   }
 
-  watchProject(projectId: string, changed: (revisionId?: string) => void, runCreated: (event: RunCreatedEvent) => void = () => {}): () => void {
-    return this.subscribeProject(projectId, (event?: ProjectChangeEvent) => {
+  watchFlowCatalog(changed: (event?: FlowCatalogEvent) => void): () => void {
+    return this.subscribeFlowCatalog(changed)
+  }
+
+  watchFlow(flowId: string, changed: (revisionId?: string) => void, runCreated: (event: RunCreatedEvent) => void = () => {}): () => void {
+    return this.subscribeFlow(flowId, (event?: FlowChangeEvent) => {
       if (event == null) changed()
       else if (event.kind == 'draft.changed') changed(event.revisionId)
       else runCreated(event)
     })
   }
 
-  async getPresentation(projectId: string): Promise<Presentation> {
-    return await this.request(`/v1/projects/${segment(projectId)}/presentation`)
+  async getPresentation(flowId: string): Promise<Presentation> {
+    return await this.request(`/v1/flows/${segment(flowId)}/presentation`)
   }
 
-  async updatePresentation(projectId: string, expectedRevision: number, value: Readonly<Record<string, JsonValue>>): Promise<Presentation> {
-    return await this.request(`/v1/projects/${segment(projectId)}/presentation`, {
+  async updatePresentation(flowId: string, expectedRevision: number, value: Readonly<Record<string, JsonValue>>): Promise<Presentation> {
+    return await this.request(`/v1/flows/${segment(flowId)}/presentation`, {
       body: JSON.stringify({ expectedRevision, value, version: 1 }),
       method: 'PUT',
     })

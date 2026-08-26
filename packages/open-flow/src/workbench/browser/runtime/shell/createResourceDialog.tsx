@@ -2,7 +2,7 @@ import type { FormEvent, ReactElement } from 'react'
 
 import { useEffect, useRef, useState } from 'react'
 import { useTranslate } from 'val-i18n-react'
-import { resourceNameIssue, resourceNameMaxLength } from '../../../../project/common/change.ts'
+import { resourceNameIssue, resourceNameMaxLength } from '../../../../flow/common/change.ts'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../../../../ui/browser/dialog.tsx'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '../../../../ui/browser/field.tsx'

@@ -1,4 +1,4 @@
-import type { JsonValue, WebhookInputDefinition, WebhookOptions } from '../../project/common/change.ts'
+import type { JsonValue, WebhookInputDefinition, WebhookOptions } from '../../flow/common/change.ts'
 
 import { dequal } from 'dequal/lite'
 
@@ -180,7 +180,7 @@ export const webhookConformanceCases: readonly WebhookConformanceCase[] = [
         },
       },
     },
-    name: 'prevents Project responses from becoming executable or controlling deployment headers',
+    name: 'prevents Flow responses from becoming executable or controlling deployment headers',
     async verify(harness) {
       await response(
         await call(harness),

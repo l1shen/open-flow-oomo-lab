@@ -1,9 +1,9 @@
 import type { Diagnostic, FlowCheck, GraphNode } from '../api.ts'
 import type { ResolvedSelection, RevisionView } from '../revisionView.ts'
-import type { DesignerTarget } from './projectChanges.ts'
+import type { DesignerTarget } from './flowChanges.ts'
 
 export type InspectorSection = 'account' | 'condition' | 'inputs' | 'module' | 'node' | 'task' | 'trigger'
-export type DiagnosticScope = 'code' | 'flow' | 'node' | 'project' | 'task'
+export type DiagnosticScope = 'code' | 'flow' | 'node' | 'task'
 
 export interface DiagnosticLocation {
   readonly nodeId: string
@@ -25,11 +25,6 @@ function within(path: string, candidate: string): boolean {
   return candidate == path || candidate.startsWith(`${path}/`)
 }
 
-export function diagnosticFlow(revision: RevisionView, target: DesignerTarget): string | undefined {
-  if (target.kind == 'flow') return target.id
-  return revision.flowIdsUsingSubflow(target.id)[0]
-}
-
 export function deriveInspectorDiagnostics(
   revision: RevisionView | undefined,
   target: DesignerTarget | undefined,
@@ -38,7 +33,7 @@ export function deriveInspectorDiagnostics(
 ): readonly Diagnostic[] {
   if (revision == null || target == null || diagnostics == null) return []
   if (selection != null) return diagnosticsForNode(target, selection, diagnostics.diagnostics)
-  const targetPath = `/document/${target.kind == 'flow' ? 'flows' : 'subflows'}/${target.id}`
+  const targetPath = target.kind == 'flow' ? '/document/graph' : `/document/subflows/${target.id}`
   return diagnostics.diagnostics.filter((diagnostic) => within(targetPath, diagnostic.path))
 }
 
@@ -47,8 +42,7 @@ function scope(path: string): DiagnosticScope {
   if (/\/graph\/nodes\/[^/]+\/task(?:\/|$)/.test(path)) return 'task'
   if (path.includes('/graph/nodes/')) return 'node'
   if (path.startsWith('/document/tasks/')) return 'task'
-  if (path.startsWith('/document/flows/')) return 'flow'
-  return 'project'
+  return 'flow'
 }
 
 function nodeSection(node: GraphNode, suffix: string): InspectorSection {
@@ -62,7 +56,7 @@ function nodeSection(node: GraphNode, suffix: string): InspectorSection {
 
 function location(revision: RevisionView | undefined, target: DesignerTarget | undefined, diagnostic: Diagnostic): DiagnosticLocation | undefined {
   if (revision == null || target == null) return
-  const graphPrefix = `/document/${target.kind == 'flow' ? 'flows' : 'subflows'}/${target.id}/graph/nodes/`
+  const graphPrefix = target.kind == 'flow' ? '/document/graph/nodes/' : `/document/subflows/${target.id}/graph/nodes/`
   if (diagnostic.path.startsWith(graphPrefix)) {
     const path = diagnostic.path.slice(graphPrefix.length)
     const slash = path.indexOf('/')
@@ -109,7 +103,7 @@ export function diagnosticItems(
 }
 
 function diagnosticsForNode(target: DesignerTarget, node: ResolvedSelection, diagnostics: readonly Diagnostic[]): readonly Diagnostic[] {
-  const nodePath = `/document/${target.kind == 'flow' ? 'flows' : 'subflows'}/${target.id}/graph/nodes/${node.id}`
+  const nodePath = target.kind == 'flow' ? `/document/graph/nodes/${node.id}` : `/document/subflows/${target.id}/graph/nodes/${node.id}`
   const paths = [nodePath]
   if (node.kind == 'task') {
     if (node.node.task != null) paths.push(`${nodePath}/task`)

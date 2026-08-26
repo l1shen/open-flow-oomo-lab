@@ -1,5 +1,6 @@
 import type {
   BindingSource,
+  FlowDocument,
   FlowSource,
   Graph,
   GraphNode,
@@ -8,10 +9,9 @@ import type {
   JsonValue,
   NodeSource,
   PortDefinition,
-  ProjectDocument,
   RevisionContent,
   TriggerNode,
-} from '@oomol-lab/open-flow/project-change'
+} from '@oomol-lab/open-flow/flow-change'
 import type { EngineContract } from '../../execution/common/engineContract.ts'
 import type { RuntimeProgram } from '../../execution/common/runtime.ts'
 
@@ -36,9 +36,7 @@ function entries<T>(value: Readonly<Record<string, T>>): readonly (readonly [str
     .map((key) => [key, value[key]!] as const)
 }
 
-export async function flowClosure(content: RevisionContent, flowId: string): Promise<SemanticClosure | undefined> {
-  const flow = content.document.flows[flowId]
-  if (flow == null) return
+export async function flowClosure(content: RevisionContent): Promise<SemanticClosure> {
   const bindings = new Set<string>()
   const inputBindings = new Set<string>()
   const modules = new Set<string>()
@@ -101,11 +99,11 @@ export async function flowClosure(content: RevisionContent, flowId: string): Pro
     if (subflow != null) visitGraph(subflow.graph)
   }
 
-  visitGraph(flow.graph)
+  visitGraph(content.document.graph)
 
   const bytes = canonicalJsonBytes({
     bindings: Object.fromEntries([...bindings].toSorted().map((id) => [id, content.document.bindings[id] ?? null])),
-    flow: { graph: canonicalGraph(flow.graph), id: flowId, name: flow.name },
+    graph: canonicalGraph(content.document.graph),
     kind: 'open-flow-semantic-closure',
     modelVersion: content.modelVersion,
     modules: Object.fromEntries([...modules].toSorted().map((id) => [id, content.modules[id] == null ? null : canonicalModule(content.modules[id])])),
@@ -462,7 +460,7 @@ function schemaAssignable(sourceSchema: JsonValue, targetSchema: JsonValue): boo
   return source.additionalProperties === false || target.additionalProperties !== false
 }
 
-function validateTrigger(triggerId: string, trigger: TriggerNode, document: ProjectDocument, path: string, diagnostics: Diagnostic[]): void {
+function validateTrigger(triggerId: string, trigger: TriggerNode, document: FlowDocument, path: string, diagnostics: Diagnostic[]): void {
   if (trigger.kind == 'webhook') {
     const handles = new Set<string>()
     for (const [index, input] of trigger.inputsDef.entries()) {
@@ -498,7 +496,7 @@ function validateTrigger(triggerId: string, trigger: TriggerNode, document: Proj
   }
 }
 
-function nodeInputPorts(document: ProjectDocument, node: GraphNode): Readonly<Record<string, InputPortDefinition>> {
+function nodeInputPorts(document: FlowDocument, node: GraphNode): Readonly<Record<string, InputPortDefinition>> {
   switch (node.kind) {
     case 'condition':
       return { [node.input.handle]: node.input }
@@ -516,7 +514,7 @@ function nodeInputPorts(document: ProjectDocument, node: GraphNode): Readonly<Re
   }
 }
 
-function nodeOutputPorts(document: ProjectDocument, node: GraphNode): Readonly<Record<string, PortDefinition>> {
+function nodeOutputPorts(document: FlowDocument, node: GraphNode): Readonly<Record<string, PortDefinition>> {
   switch (node.kind) {
     case 'condition': {
       const outputs = [...node.cases.map((condition) => condition.output), ...(node.defaultOutput == null ? [] : [node.defaultOutput])]
@@ -539,7 +537,7 @@ function nodeOutputPorts(document: ProjectDocument, node: GraphNode): Readonly<R
 function checkSource(
   source: BindingSource | FlowSource | NodeSource,
   graph: Graph,
-  document: ProjectDocument,
+  document: FlowDocument,
   flowInputs: ReadonlySet<string> | undefined,
   targetInput: InputPortDefinition | undefined,
   path: string,
@@ -611,7 +609,7 @@ function checkCycles(graph: Graph, path: string, diagnostics: Diagnostic[]): voi
 
 function validateGraph(
   graph: Graph,
-  document: ProjectDocument,
+  document: FlowDocument,
   flowInputs: ReadonlySet<string> | undefined,
   allowTriggers: boolean,
   path: string,
@@ -671,7 +669,7 @@ function validateGraph(
   checkCycles(graph, path, diagnostics)
 }
 
-function validateSubflowCycles(document: ProjectDocument, flowId: string, diagnostics: Diagnostic[]): void {
+function validateSubflowCycles(document: FlowDocument, diagnostics: Diagnostic[]): void {
   const visited = new Set<string>()
   const stack: string[] = []
 
@@ -697,13 +695,12 @@ function validateSubflowCycles(document: ProjectDocument, flowId: string, diagno
     }
   }
 
-  visitGraph(document.flows[flowId]!.graph, `/document/flows/${flowId}/graph`)
+  visitGraph(document.graph, '/document/graph')
 }
 
-function validateProjectGraph(revision: RevisionContent, flowId: string, closure: SemanticClosure): readonly Diagnostic[] {
+function validateFlowGraph(revision: RevisionContent, closure: SemanticClosure): readonly Diagnostic[] {
   const diagnostics: Diagnostic[] = []
-  const flow = revision.document.flows[flowId]!
-  validateGraph(flow.graph, revision.document, undefined, true, `/document/flows/${flowId}/graph`, diagnostics)
+  validateGraph(revision.document.graph, revision.document, undefined, true, '/document/graph', diagnostics)
   for (const subflowId of [...closure.dependencies.subflows].toSorted()) {
     const subflow = revision.document.subflows[subflowId]
     if (subflow == null) continue
@@ -715,16 +712,15 @@ function validateProjectGraph(revision: RevisionContent, flowId: string, closure
         checkSource(source, subflow.graph, revision.document, inputs, undefined, `${path}/outputs/${handle}/sources`, diagnostics)
     }
   }
-  validateSubflowCycles(revision.document, flowId, diagnostics)
+  validateSubflowCycles(revision.document, diagnostics)
   return diagnostics
 }
 
-export type FlowInputsValidation = 'flow-not-found' | 'invalid' | 'valid'
+export type FlowInputsValidation = 'invalid' | 'valid'
 
-export function validateFlowInputs(revision: RevisionContent, flowId: string, value: unknown): FlowInputsValidation {
+export function validateFlowInputs(revision: RevisionContent, value: unknown): FlowInputsValidation {
   if (value == null || typeof value != 'object' || Array.isArray(value)) return 'invalid'
-  const graph = revision.document.flows[flowId]?.graph
-  if (graph == null) return 'flow-not-found'
+  const graph = revision.document.graph
   for (const [nodeId, candidate] of Object.entries(value)) {
     const node = graph.nodes[nodeId]
     if (node == null || !('inputs' in node) || candidate == null || typeof candidate != 'object' || Array.isArray(candidate)) {
@@ -836,13 +832,12 @@ export function validateModules(revision: RevisionContent, moduleIds: readonly s
   return validateModuleGraph(revision, moduleIds, engine).diagnostics.toSorted(compareDiagnostics)
 }
 
-export async function validateFlow(revision: RevisionContent, flowId: string, engine: EngineContract): Promise<FlowValidation | undefined> {
-  if (revision.document.flows[flowId] == null) return
-  const closure = (await flowClosure(revision, flowId))!
+export async function validateFlow(revision: RevisionContent, engine: EngineContract): Promise<FlowValidation> {
+  const closure = await flowClosure(revision)
   const checked = validateModuleGraph(revision, [...closure.dependencies.modules], engine)
-  checked.diagnostics.push(...validateProjectGraph(revision, flowId, closure))
+  checked.diagnostics.push(...validateFlowGraph(revision, closure))
   const graphs = [
-    [`/document/flows/${flowId}/graph`, revision.document.flows[flowId]!.graph] as const,
+    ['/document/graph', revision.document.graph] as const,
     ...[...closure.dependencies.subflows].toSorted().flatMap((subflowId) => {
       const subflow = revision.document.subflows[subflowId]
       return subflow == null ? [] : [[`/document/subflows/${subflowId}/graph`, subflow.graph] as const]
@@ -911,32 +906,28 @@ export async function validateFlow(revision: RevisionContent, flowId: string, en
 export interface PreparedFlow {
   readonly closureDigest: string
   readonly engineContract: string
-  readonly flow: ProjectDocument['flows'][string]
-  readonly flowId: string
+  readonly graph: Graph
   readonly modules: RevisionContent['modules']
-  readonly subflows: ProjectDocument['subflows']
-  readonly tasks: ProjectDocument['tasks']
+  readonly subflows: FlowDocument['subflows']
+  readonly tasks: FlowDocument['tasks']
 }
 
 export type PrepareFlowResult =
   | { readonly kind: 'engine-unsupported' }
   | { readonly kind: 'flow-invalid'; readonly validation: FlowValidation }
-  | { readonly kind: 'flow-not-found' }
   | { readonly flow: PreparedFlow; readonly kind: 'prepared'; readonly validation: FlowValidation }
 
-export async function prepareFlow(revision: RevisionContent, flowId: string, engineContract: string): Promise<PrepareFlowResult> {
+export async function prepareFlow(revision: RevisionContent, engineContract: string): Promise<PrepareFlowResult> {
   const engine = findEngineContract(engineContract)
   if (engine == null) return { kind: 'engine-unsupported' }
-  const validation = await validateFlow(revision, flowId, engine)
-  if (validation == null) return { kind: 'flow-not-found' }
+  const validation = await validateFlow(revision, engine)
   if (!validation.valid) return { kind: 'flow-invalid', validation }
   const { closure } = validation
   return {
     flow: {
       closureDigest: closure.digest,
       engineContract,
-      flow: revision.document.flows[flowId]!,
-      flowId,
+      graph: revision.document.graph,
       modules: Object.fromEntries([...closure.dependencies.modules].toSorted().map((id) => [id, revision.modules[id]!])),
       subflows: Object.fromEntries([...closure.dependencies.subflows].toSorted().map((id) => [id, revision.document.subflows[id]!])),
       tasks: Object.fromEntries([...closure.dependencies.tasks].toSorted().map((id) => [id, revision.document.tasks[id]!])),

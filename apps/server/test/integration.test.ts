@@ -1,5 +1,5 @@
+import type { JsonValue, RevisionContent } from '@oomol-lab/open-flow/flow-change'
 import type { IntegrationDefinition } from '@oomol-lab/open-flow/integration-trigger'
-import type { JsonValue, RevisionContent } from '@oomol-lab/open-flow/project-change'
 import type { DestinationStream, Logger } from 'pino'
 
 import { IntegrationConnectionError, PermanentIntegrationError, TransientIntegrationError } from '@oomol-lab/open-flow/integration-trigger'
@@ -67,31 +67,26 @@ function revision(mode: 'connection' | 'permanent' | 'ready' | 'transient'): Rev
   return {
     document: {
       bindings: { connection: { kind: 'connection', target: 'connection-main' } },
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              integration: {
-                bindingId: 'connection',
-                config: { mode },
-                definition: snapshot,
-                kind: 'integration',
-                name: 'Integration runtime test',
-              },
-              task: {
-                concurrency: 1,
-                inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'integration', output: 'payload' }] } },
-                kind: 'task',
-                task: {
-                  inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
-                  moduleId: 'module-main',
-                  name: 'Main',
-                  outputs: {},
-                },
-              },
+      graph: {
+        nodes: {
+          integration: {
+            bindingId: 'connection',
+            config: { mode },
+            definition: snapshot,
+            kind: 'integration',
+            name: 'Integration runtime test',
+          },
+          task: {
+            concurrency: 1,
+            inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'integration', output: 'payload' }] } },
+            kind: 'task',
+            task: {
+              inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
+              moduleId: 'module-main',
+              name: 'Main',
+              outputs: {},
             },
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -111,7 +106,6 @@ async function publish(
     expectedLivePublicationId,
     flowId: 'main',
     idempotencyKey: next('publish'),
-    projectId: 'project-main',
     revision: revision(mode),
     revisionId: next('revision'),
   })
@@ -174,7 +168,7 @@ describe('Server Integration reconciliation', () => {
       expect(calls).toBe(1)
       await service.tickIntegration(new Date(at + 1_000).toISOString())
       expect(calls).toBe(2)
-      expect(service.integrationState('project-main', 'main', 'integration')?.health).toBe('initializing')
+      expect(service.integrationState('main', 'integration')?.health).toBe('initializing')
       expect(captured.output().match(/"category":"trigger.integration.retrying"/g)).toHaveLength(1)
       expect(captured.output()).not.toContain('"retry"')
     } finally {
@@ -200,17 +194,17 @@ describe('Server Integration reconciliation', () => {
     try {
       let publicationId = await publish(service, 'connection', null)
       await service.tickIntegration(new Date(now).toISOString())
-      expect(service.integrationState('project-main', 'main', 'integration')?.health).toBe('needs_reauth')
+      expect(service.integrationState('main', 'integration')?.health).toBe('needs_reauth')
 
       now += 1_000
       publicationId = await publish(service, 'permanent', publicationId)
       await service.tickIntegration(new Date(now).toISOString())
-      expect(service.integrationState('project-main', 'main', 'integration')?.health).toBe('failed')
+      expect(service.integrationState('main', 'integration')?.health).toBe('failed')
 
       now += 1_000
       publicationId = await publish(service, 'ready', publicationId)
       await service.tickIntegration(new Date(now).toISOString())
-      expect(service.integrationState('project-main', 'main', 'integration')?.health).toBe('healthy')
+      expect(service.integrationState('main', 'integration')?.health).toBe('healthy')
       const database = new DatabaseSync(file, { readOnly: true })
       expect(database.prepare('SELECT error_code AS errorCode, kind FROM trigger_activities ORDER BY created_at DESC, activity_id DESC').all()).toEqual([
         { errorCode: null, kind: 'health.recovered' },
@@ -265,7 +259,7 @@ describe('Server Integration callback fencing', () => {
     try {
       let publicationId = await publish(service, 'ready', null)
       await service.tickIntegration(new Date(now).toISOString())
-      const endpointId = service.integrationEndpoint('project-main', 'main', 'integration')!
+      const endpointId = service.integrationEndpoint('main', 'integration')!
       const app = createServerApp(service)
       const pending = app.request(`http://server.local/v1/integrations/${endpointId}`, {
         body: JSON.stringify({ deliveryId: 'delivery-main' }),
@@ -293,7 +287,7 @@ describe('Server Integration callback fencing', () => {
       const outcomes = await Promise.allSettled([service.receiveIntegrationTarget(first, input), service.receiveIntegrationTarget(second, input)])
       expect(outcomes.filter((outcome) => outcome.status == 'fulfilled').map((outcome) => outcome.value.status)).toEqual([202])
       expect(outcomes.filter((outcome) => outcome.status == 'rejected').map((outcome) => outcome.reason)).toEqual([expect.any(TransientIntegrationError)])
-      expect(service.integrationState('project-main', 'main', 'integration')?.checkpoint).toEqual({ deliveryId: 'delivery-main' })
+      expect(service.integrationState('main', 'integration')?.checkpoint).toEqual({ deliveryId: 'delivery-main' })
     } finally {
       await service.close()
     }

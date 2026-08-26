@@ -66,21 +66,21 @@ function createManifest(version: string): object {
         types: './dist/common/provider-triggers.d.ts',
         import: './dist/common/provider-triggers.js',
       },
-      './project-authoring': {
-        types: './dist/browser/project-authoring.d.ts',
-        import: './dist/browser/project-authoring.js',
+      './flow-authoring': {
+        types: './dist/browser/flow-authoring.d.ts',
+        import: './dist/browser/flow-authoring.js',
       },
-      './project-change': {
-        types: './dist/browser/project-change.d.ts',
-        import: './dist/browser/project-change.js',
+      './flow-change': {
+        types: './dist/browser/flow-change.d.ts',
+        import: './dist/browser/flow-change.js',
       },
-      './project-encoding': {
-        types: './dist/common/project-encoding.d.ts',
-        import: './dist/common/project-encoding.js',
+      './flow-encoding': {
+        types: './dist/common/flow-encoding.d.ts',
+        import: './dist/common/flow-encoding.js',
       },
-      './project-semantics': {
-        types: './dist/common/project-semantics.d.ts',
-        import: './dist/common/project-semantics.js',
+      './flow-semantics': {
+        types: './dist/common/flow-semantics.d.ts',
+        import: './dist/common/flow-semantics.js',
       },
       './run-lifecycle': {
         types: './dist/common/run-lifecycle.d.ts',

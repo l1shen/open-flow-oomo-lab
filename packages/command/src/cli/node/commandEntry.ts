@@ -12,10 +12,8 @@ declare const openFlowVersionBuildConstant: string
 
 export interface OpenFlowCommandHost {
   readonly cloudRequest?: (path: string, init?: RequestInit) => Promise<Response>
-  getWorkbenchUrl?(projectId: string, flowId?: string): Promise<string>
-  getProject?(): Promise<string | undefined>
+  getWorkbenchUrl?(flowId?: string): Promise<string>
   readonly language?: string
-  setProject?(projectId: string): Promise<void>
 }
 
 async function openExternalUrl(url: string): Promise<void> {
@@ -34,7 +32,7 @@ export async function runOpenFlowCommand(args: readonly string[], host: OpenFlow
     process.stdout.write(args.includes('--json') ? `${JSON.stringify({ version: openFlowVersionBuildConstant })}\n` : `${openFlowVersionBuildConstant}\n`)
     return 0
   }
-  if (host.cloudRequest == null || host.getProject == null || host.getWorkbenchUrl == null || host.setProject == null) {
+  if (host.cloudRequest == null || host.getWorkbenchUrl == null) {
     process.stderr.write('Open Flow Control API is not configured in this CLI host.\n')
     return 1
   }
@@ -42,9 +40,7 @@ export async function runOpenFlowCommand(args: readonly string[], host: OpenFlow
     args,
     {
       request: host.cloudRequest,
-      getProject: host.getProject,
       getWorkbenchUrl: host.getWorkbenchUrl,
-      setProject: host.setProject,
     },
     {
       env: process.env,

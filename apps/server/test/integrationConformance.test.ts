@@ -1,5 +1,5 @@
+import type { JsonValue, RevisionContent } from '@oomol-lab/open-flow/flow-change'
 import type { IntegrationConformanceFixture, IntegrationConformanceHarness, IntegrationDefinition } from '@oomol-lab/open-flow/integration-trigger'
-import type { JsonValue, RevisionContent } from '@oomol-lab/open-flow/project-change'
 
 import { integrationCallbackSecret, integrationConformanceCases } from '@oomol-lab/open-flow/integration-trigger'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -44,34 +44,29 @@ function revision(fixture: IntegrationConformanceFixture, enabled = true): Revis
   return {
     document: {
       bindings: enabled ? { connection: { kind: 'connection', target: fixture.connectionId } } : {},
-      flows: {
-        main: {
-          graph: {
-            nodes: enabled
-              ? {
-                  integration: {
-                    bindingId: 'connection',
-                    config: fixture.config,
-                    definition: snapshot,
-                    kind: 'integration',
-                    name: 'Integration conformance trigger',
-                  },
-                  task: {
-                    concurrency: 1,
-                    inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'integration', output: 'payload' }] } },
-                    kind: 'task',
-                    task: {
-                      inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
-                      moduleId: 'module-main',
-                      name: 'Main',
-                      outputs: {},
-                    },
-                  },
-                }
-              : {},
-          },
-          name: 'Main',
-        },
+      graph: {
+        nodes: enabled
+          ? {
+              integration: {
+                bindingId: 'connection',
+                config: fixture.config,
+                definition: snapshot,
+                kind: 'integration',
+                name: 'Integration conformance trigger',
+              },
+              task: {
+                concurrency: 1,
+                inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'integration', output: 'payload' }] } },
+                kind: 'task',
+                task: {
+                  inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
+                  moduleId: 'module-main',
+                  name: 'Main',
+                  outputs: {},
+                },
+              },
+            }
+          : {},
       },
       subflows: {},
       tasks: {},
@@ -108,13 +103,12 @@ async function createHarness(fixture: IntegrationConformanceFixture): Promise<In
     expectedLivePublicationId: null,
     flowId: 'main',
     idempotencyKey: next('publish'),
-    projectId: 'project-main',
     revision: revision(fixture),
     revisionId,
   })
   if (published.kind != 'published') throw new Error('Initial Server Integration conformance Publication conflicted.')
   let publicationId = published.publicationId
-  const endpointId = service.integrationEndpoint('project-main', 'main', 'integration')
+  const endpointId = service.integrationEndpoint('main', 'integration')
   if (endpointId == null) throw new Error('Server Integration conformance endpoint was not created.')
   let app = createServerApp(service)
   const endpointUrl = `${publicOrigin}/v1/integrations/${endpointId}`
@@ -136,7 +130,6 @@ async function createHarness(fixture: IntegrationConformanceFixture): Promise<In
         expectedLivePublicationId: publicationId,
         flowId: 'main',
         idempotencyKey: next('publish'),
-        projectId: 'project-main',
         revision: revision(fixture),
         revisionId,
       })
@@ -158,7 +151,6 @@ async function createHarness(fixture: IntegrationConformanceFixture): Promise<In
         expectedLivePublicationId: publicationId,
         flowId: 'main',
         idempotencyKey: next('publish'),
-        projectId: 'project-main',
         revision: revision(fixture, false),
         revisionId,
       })
@@ -166,7 +158,7 @@ async function createHarness(fixture: IntegrationConformanceFixture): Promise<In
       publicationId = retired.publicationId
     },
     async state() {
-      const state = service.integrationState('project-main', 'main', 'integration')
+      const state = service.integrationState('main', 'integration')
       if (state == null || (state.health != 'healthy' && state.health != 'initializing')) {
         throw new Error('Server Integration conformance binding has an unexpected state.')
       }

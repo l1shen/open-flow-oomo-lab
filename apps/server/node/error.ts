@@ -8,7 +8,7 @@ export const serverErrorCode = {
   internal: 'internal',
   operatorInvalid: 'operator.invalid',
   operatorNotConfigured: 'operator.not-configured',
-  projectRevisionStorageConflict: 'project.revision-storage-conflict',
+  flowRevisionStorageConflict: 'flow.revision-storage-conflict',
   requestInvalid: 'request.invalid',
 } as const
 
@@ -22,7 +22,7 @@ const errorMetadata = {
   [serverErrorCode.internal]: { status: 500 },
   [serverErrorCode.operatorInvalid]: { status: 400 },
   [serverErrorCode.operatorNotConfigured]: { status: 503 },
-  [serverErrorCode.projectRevisionStorageConflict]: { status: 409 },
+  [serverErrorCode.flowRevisionStorageConflict]: { status: 409 },
   [serverErrorCode.requestInvalid]: { status: 400 },
 } as const satisfies Record<ErrorCode, { readonly status: number }>
 

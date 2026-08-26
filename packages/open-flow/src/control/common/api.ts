@@ -1,28 +1,28 @@
 import type { RunStatus } from '../../execution/common/runLifecycle.ts'
-import type { ChangeOperation, InputPortDefinition, JsonValue, PortDefinition, RevisionContent, TriggerKeySnapshot } from '../../project/common/change.ts'
+import type { ChangeOperation, InputPortDefinition, JsonValue, PortDefinition, RevisionContent, TriggerKeySnapshot } from '../../flow/common/change.ts'
 
-export type { JsonValue, TriggerKeySnapshot } from '../../project/common/change.ts'
+export type { JsonValue, TriggerKeySnapshot } from '../../flow/common/change.ts'
 export type { RunStatus } from '../../execution/common/runLifecycle.ts'
 export { controlErrorCode, controlErrorMetadata, type ControlErrorCode } from './errors.ts'
-export type { ProjectChangeEvent } from './projectNotifications.ts'
+export type { FlowCatalogEvent, FlowChangeEvent } from './flowNotifications.ts'
 
 import { runStatuses } from '../../execution/common/runLifecycle.ts'
 
 export type ControlRequest = (path: string, init?: RequestInit) => Promise<Response>
 
-export interface Project {
+export interface Flow {
   readonly createdAt: string
   readonly draftRevisionId: string
+  readonly flowId: string
   readonly name: string
-  readonly projectId: string
   readonly status: 'active' | 'retiring'
   readonly updatedAt: string
   readonly version: 1
 }
 
-export interface ProjectPage {
+export interface FlowPage {
+  readonly flows: readonly Flow[]
   readonly nextCursor?: string
-  readonly projects: readonly Project[]
   readonly total?: number
   readonly version: 1
 }
@@ -45,7 +45,6 @@ export interface TriggerBinding {
   readonly kind: 'cron' | 'integration' | 'poll' | 'webhook'
   readonly lastErrorCode?: string
   readonly operatorState: 'active' | 'paused'
-  readonly projectId: string
   readonly runtimeVersion: number
   readonly triggerNodeId: string
   readonly updatedAt: string
@@ -119,7 +118,7 @@ export interface RevisionMetadata {
   readonly digest: string
   readonly modelVersion: number
   readonly parentRevisionId: string | null
-  readonly projectId: string
+  readonly flowId: string
   readonly revisionId: string
   readonly version: 1
 }
@@ -128,26 +127,18 @@ export interface Draft extends RevisionMetadata {
   readonly content: RevisionContent
 }
 
-export interface DraftFlow {
-  readonly closureDigest: string
-  readonly flowId: string
-  readonly name: string
-}
-
 export interface DraftChange {
-  readonly draftFlows: readonly DraftFlow[]
   readonly revision: RevisionMetadata
   readonly version: 1
 }
 
 export type DraftSync =
   | {
-      readonly draftFlows: readonly DraftFlow[]
       readonly kind: 'changes'
       readonly revisions: readonly { readonly operations: readonly ChangeOperation[]; readonly revision: RevisionMetadata }[]
       readonly version: 1
     }
-  | { readonly draft: Draft; readonly draftFlows: readonly DraftFlow[]; readonly kind: 'snapshot'; readonly version: 1 }
+  | { readonly draft: Draft; readonly kind: 'snapshot'; readonly version: 1 }
 
 export interface Publication {
   readonly actorId: string
@@ -157,28 +148,11 @@ export interface Publication {
   readonly flowId: string
   readonly modelVersion: number
   readonly operation: 'publish' | 'rollback'
-  readonly projectId: string
   readonly publicationId: string
   readonly revisionDigest: string
   readonly revisionId: string
   readonly sourcePublicationId?: string
   readonly version: 1
-}
-
-export interface Flow {
-  readonly draft: {
-    readonly closureDigest: string
-    readonly name: string
-    readonly revisionDigest: string
-    readonly revisionId: string
-  } | null
-  readonly flowId: string
-  readonly hasUnpublishedChanges: boolean
-  readonly live: {
-    readonly publication: Publication
-    readonly revision: number
-    readonly status: 'runnable' | 'suspended'
-  } | null
 }
 
 export interface Diagnostic {
@@ -195,7 +169,6 @@ export interface FlowCheck {
   readonly engineContract: string
   readonly flowId: string
   readonly modelVersion: number
-  readonly projectId: string
   readonly revisionDigest: string
   readonly revisionId: string
   readonly valid: boolean
@@ -205,7 +178,6 @@ export interface FlowCheck {
 export interface Live {
   readonly flowId: string
   readonly hasUnpublishedChanges: boolean
-  readonly projectId: string
   readonly publication: Publication | null
   readonly revision: number
   readonly status: 'not-published' | 'runnable' | 'suspended'
@@ -223,7 +195,6 @@ export interface Run {
   readonly createdAt: string
   readonly finishedAt?: string
   readonly flowId: string
-  readonly projectId: string
   readonly revisionId: string
   readonly runId: string
   readonly source: 'draft' | 'live' | 'trigger'
@@ -252,8 +223,8 @@ export type TriggerRun = RunDetailsBase & {
 export type RunDetails = DraftRun | LiveRun | TriggerRun
 
 export interface RunPage {
+  readonly flowId: string
   readonly nextCursor?: string
-  readonly projectId: string
   readonly runs: readonly Run[]
   readonly version: 1
 }
@@ -539,7 +510,6 @@ function triggerBinding(value: unknown): TriggerBinding {
     kind: kind as TriggerBinding['kind'],
     ...(source.lastErrorCode == null ? {} : { lastErrorCode: string(source.lastErrorCode) }),
     operatorState: operatorState as TriggerBinding['operatorState'],
-    projectId: string(source.projectId),
     runtimeVersion,
     triggerNodeId: string(source.triggerNodeId),
     updatedAt: string(source.updatedAt),
@@ -595,7 +565,7 @@ function pollTriggerTestResult(value: unknown): PollTriggerTestResult {
   }
 }
 
-function project(value: unknown): Project {
+function flow(value: unknown): Flow {
   const source = record(value)
   const status = source.status
   if (source.version != 1) return invalidResponse()
@@ -603,24 +573,24 @@ function project(value: unknown): Project {
   return {
     createdAt: string(source.createdAt),
     draftRevisionId: string(source.draftRevisionId),
+    flowId: string(source.flowId),
     name: string(source.name),
-    projectId: string(source.projectId),
-    status: status as Project['status'],
+    status: status as Flow['status'],
     updatedAt: string(source.updatedAt),
     version: 1,
   }
 }
 
-function projectPage(value: unknown): ProjectPage {
+function flowPage(value: unknown): FlowPage {
   const source = record(value)
-  if (source.version != 1 || !Array.isArray(source.projects)) return invalidResponse()
+  if (source.version != 1 || !Array.isArray(source.flows)) return invalidResponse()
   const nextCursor = source.nextCursor
   const total = source.total
   if (nextCursor != null && typeof nextCursor != 'string') return invalidResponse()
   if (total != null && !Number.isSafeInteger(total)) return invalidResponse()
   return {
     ...(nextCursor == null ? {} : { nextCursor }),
-    projects: source.projects.map(project),
+    flows: source.flows.map(flow),
     ...(total == null ? {} : { total: total as number }),
     version: 1,
   }
@@ -634,9 +604,9 @@ function revisionMetadata(value: unknown): RevisionMetadata {
     actorId: string(source.actorId),
     createdAt: string(source.createdAt),
     digest: string(source.digest),
+    flowId: string(source.flowId),
     modelVersion: integer(source.modelVersion),
     parentRevisionId,
-    projectId: string(source.projectId),
     revisionId: string(source.revisionId),
     version: 1,
   }
@@ -651,28 +621,18 @@ function draft(value: unknown): Draft {
   return { ...revisionMetadata(source), content: source.content as RevisionContent }
 }
 
-function draftFlows(value: unknown): readonly DraftFlow[] {
-  if (!Array.isArray(value)) return invalidResponse()
-  return value.map((candidate) => {
-    const source = record(candidate)
-    return { closureDigest: string(source.closureDigest), flowId: string(source.flowId), name: string(source.name) }
-  })
-}
-
 function draftChange(value: unknown): DraftChange {
   const source = record(value)
   if (source.version != 1) return invalidResponse()
-  return { draftFlows: draftFlows(source.draftFlows), revision: revisionMetadata(source.revision), version: 1 }
+  return { revision: revisionMetadata(source.revision), version: 1 }
 }
 
 function draftSync(value: unknown): DraftSync {
   const source = record(value)
   if (source.version != 1) return invalidResponse()
-  const flows = draftFlows(source.draftFlows)
-  if (source.kind == 'snapshot') return { draft: draft(source.draft), draftFlows: flows, kind: 'snapshot', version: 1 }
+  if (source.kind == 'snapshot') return { draft: draft(source.draft), kind: 'snapshot', version: 1 }
   if (source.kind != 'changes' || !Array.isArray(source.revisions)) return invalidResponse()
   return {
-    draftFlows: flows,
     kind: 'changes',
     revisions: source.revisions.map((candidate) => {
       const change = record(candidate)
@@ -701,50 +661,12 @@ function publication(value: unknown): Publication {
     flowId: string(source.flowId),
     modelVersion: integer(source.modelVersion),
     operation: operation as Publication['operation'],
-    projectId: string(source.projectId),
     publicationId: string(source.publicationId),
     revisionDigest: string(source.revisionDigest),
     revisionId: string(source.revisionId),
     ...(sourcePublicationId == null ? {} : { sourcePublicationId }),
     version: 1,
   }
-}
-
-function flow(value: unknown): Flow {
-  const source = record(value)
-  const draftSource = source.draft == null ? null : record(source.draft)
-  const liveSource = source.live == null ? null : record(source.live)
-  const liveStatus = liveSource?.status
-  if (typeof source.hasUnpublishedChanges != 'boolean') return invalidResponse()
-  if (liveSource != null && liveStatus != 'runnable' && liveStatus != 'suspended') return invalidResponse()
-  return {
-    draft:
-      draftSource == null
-        ? null
-        : {
-            closureDigest: string(draftSource.closureDigest),
-            name: string(draftSource.name),
-            revisionDigest: string(draftSource.revisionDigest),
-            revisionId: string(draftSource.revisionId),
-          },
-    flowId: string(source.flowId),
-    hasUnpublishedChanges: source.hasUnpublishedChanges,
-    live:
-      liveSource == null
-        ? null
-        : {
-            publication: publication(liveSource.publication),
-            revision: integer(liveSource.revision),
-            status: liveStatus as NonNullable<Flow['live']>['status'],
-          },
-  }
-}
-
-function flowPage(value: unknown): readonly Flow[] {
-  const source = record(value)
-  if (source.version != 1 || !Array.isArray(source.flows)) return invalidResponse()
-  string(source.projectId)
-  return source.flows.map(flow)
 }
 
 function diagnostic(value: unknown): Diagnostic {
@@ -767,7 +689,6 @@ function flowCheck(value: unknown): FlowCheck {
     engineContract: string(source.engineContract),
     flowId: string(source.flowId),
     modelVersion: integer(source.modelVersion),
-    projectId: string(source.projectId),
     revisionDigest: string(source.revisionDigest),
     revisionId: string(source.revisionId),
     valid: source.valid,
@@ -786,7 +707,6 @@ function live(value: unknown): Live {
   return {
     flowId: string(source.flowId),
     hasUnpublishedChanges: source.hasUnpublishedChanges,
-    projectId: string(source.projectId),
     publication: candidate === null ? null : publication(candidate),
     revision: integer(source.revision),
     status: status as Live['status'],
@@ -827,7 +747,6 @@ function run(value: unknown): Run {
     createdAt: string(source.createdAt),
     ...(finishedAt == null ? {} : { finishedAt }),
     flowId: string(source.flowId),
-    projectId: string(source.projectId),
     revisionId: string(source.revisionId),
     runId: string(source.runId),
     source: kind as Run['source'],
@@ -873,8 +792,8 @@ function runPage(value: unknown): RunPage {
   if (source.version != 1 || !Array.isArray(source.runs)) return invalidResponse()
   if (nextCursor != null && typeof nextCursor != 'string') return invalidResponse()
   return {
+    flowId: string(source.flowId),
     ...(nextCursor == null ? {} : { nextCursor }),
-    projectId: string(source.projectId),
     runs: source.runs.map(run),
     version: 1,
   }
@@ -973,18 +892,18 @@ function operationKey(operation: string): string {
 export class ControlClient {
   constructor(private readonly requestControl: ControlRequest) {}
 
-  async listProjects(options: { readonly cursor?: string; readonly includeTotal?: boolean; readonly limit?: number } = {}): Promise<ProjectPage> {
+  async listFlows(options: { readonly cursor?: string; readonly includeTotal?: boolean; readonly limit?: number } = {}): Promise<FlowPage> {
     const parameters = new URLSearchParams()
     if (options.cursor != null) parameters.set('cursor', options.cursor)
     if (options.limit != null) parameters.set('limit', String(options.limit))
     if (options.includeTotal != null) parameters.set('includeTotal', String(options.includeTotal))
     const query = parameters.size == 0 ? '' : `?${parameters}`
-    return projectPage(await this.request(`/v1/projects${query}`))
+    return flowPage(await this.request(`/v1/flows${query}`))
   }
 
-  async createProject(name: string, idempotencyKey = `project-${crypto.randomUUID()}`): Promise<Project> {
-    return project(
-      await this.request('/v1/projects', {
+  async createFlow(name: string, idempotencyKey = `flow-${crypto.randomUUID()}`): Promise<Flow> {
+    return flow(
+      await this.request('/v1/flows', {
         body: JSON.stringify({ name, version: 1 }),
         headers: { 'idempotency-key': idempotencyKey },
         method: 'POST',
@@ -992,12 +911,21 @@ export class ControlClient {
     )
   }
 
-  async getProject(projectId: string): Promise<Project> {
-    return project(await this.request(`/v1/projects/${segment(projectId)}`))
+  async getFlow(flowId: string): Promise<Flow> {
+    return flow(await this.request(`/v1/flows/${segment(flowId)}`))
   }
 
-  async deleteProject(projectId: string): Promise<Project> {
-    return project(await this.request(`/v1/projects/${segment(projectId)}`, { method: 'DELETE' }))
+  async renameFlow(flowId: string, name: string): Promise<Flow> {
+    return flow(
+      await this.request(`/v1/flows/${segment(flowId)}`, {
+        body: JSON.stringify({ name, version: 1 }),
+        method: 'PATCH',
+      }),
+    )
+  }
+
+  async deleteFlow(flowId: string): Promise<Flow> {
+    return flow(await this.request(`/v1/flows/${segment(flowId)}`, { method: 'DELETE' }))
   }
 
   async listTriggerKeys(signal?: AbortSignal): Promise<readonly TriggerKeySummary[]> {
@@ -1018,20 +946,19 @@ export class ControlClient {
     return triggerKey(source.definition)
   }
 
-  async listFlowTriggerBindings(projectId: string, flowId: string): Promise<readonly TriggerBinding[]> {
-    const source = record(await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/triggers`))
-    if (source.version != 1 || string(source.projectId) != projectId || string(source.flowId) != flowId || !Array.isArray(source.bindings)) {
+  async listFlowTriggerBindings(flowId: string): Promise<readonly TriggerBinding[]> {
+    const source = record(await this.request(`/v1/flows/${segment(flowId)}/triggers`))
+    if (source.version != 1 || string(source.flowId) != flowId || !Array.isArray(source.bindings)) {
       return invalidResponse()
     }
     return source.bindings.map(triggerBinding)
   }
 
-  async getFlowTriggerBinding(projectId: string, flowId: string, triggerNodeId: string): Promise<TriggerBindingDetail> {
-    return triggerBindingDetail(await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}`))
+  async getFlowTriggerBinding(flowId: string, triggerNodeId: string): Promise<TriggerBindingDetail> {
+    return triggerBindingDetail(await this.request(`/v1/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}`))
   }
 
   async listFlowTriggerActivities(
-    projectId: string,
     flowId: string,
     triggerNodeId: string,
     options: { readonly cursor?: string; readonly limit?: number } = {},
@@ -1040,89 +967,83 @@ export class ControlClient {
     if (options.cursor != null) parameters.set('cursor', options.cursor)
     if (options.limit != null) parameters.set('limit', String(options.limit))
     const query = parameters.size == 0 ? '' : `?${parameters}`
-    return triggerActivityPage(
-      await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}/activities${query}`),
-    )
+    return triggerActivityPage(await this.request(`/v1/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}/activities${query}`))
   }
 
-  async pauseFlowTrigger(projectId: string, flowId: string, triggerNodeId: string): Promise<TriggerBinding> {
+  async pauseFlowTrigger(flowId: string, triggerNodeId: string): Promise<TriggerBinding> {
     return triggerBinding(
-      await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}/pause`, {
+      await this.request(`/v1/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}/pause`, {
         body: JSON.stringify({ version: 1 }),
         method: 'POST',
       }),
     )
   }
 
-  async resumeFlowTrigger(projectId: string, flowId: string, triggerNodeId: string): Promise<TriggerBinding> {
+  async resumeFlowTrigger(flowId: string, triggerNodeId: string): Promise<TriggerBinding> {
     return triggerBinding(
-      await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}/resume`, {
+      await this.request(`/v1/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}/resume`, {
         body: JSON.stringify({ version: 1 }),
         method: 'POST',
       }),
     )
   }
 
-  async testFlowPollTrigger(projectId: string, flowId: string, triggerNodeId: string): Promise<PollTriggerTestResult> {
+  async testFlowPollTrigger(flowId: string, triggerNodeId: string): Promise<PollTriggerTestResult> {
     return pollTriggerTestResult(
-      await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}/test`, {
+      await this.request(`/v1/flows/${segment(flowId)}/triggers/${segment(triggerNodeId)}/test`, {
         body: JSON.stringify({ version: 1 }),
         method: 'POST',
       }),
     )
   }
 
-  async getDraft(projectId: string): Promise<Draft> {
-    return draft(await this.request(`/v1/projects/${segment(projectId)}/draft`))
+  async getDraft(flowId: string): Promise<Draft> {
+    return draft(await this.request(`/v1/flows/${segment(flowId)}/draft`))
   }
 
-  async syncDraft(projectId: string, fromRevisionId?: string): Promise<DraftSync> {
+  async syncDraft(flowId: string, fromRevisionId?: string): Promise<DraftSync> {
     const query = fromRevisionId == null ? '' : `?fromRevisionId=${segment(fromRevisionId)}`
-    return draftSync(await this.request(`/v1/projects/${segment(projectId)}/draft/sync${query}`))
+    return draftSync(await this.request(`/v1/flows/${segment(flowId)}/draft/sync${query}`))
   }
 
-  async getRevision(projectId: string, revisionId: string): Promise<Draft> {
-    return draft(await this.request(`/v1/projects/${segment(projectId)}/revisions/${segment(revisionId)}`))
+  async getRevision(flowId: string, revisionId: string): Promise<Draft> {
+    return draft(await this.request(`/v1/flows/${segment(flowId)}/revisions/${segment(revisionId)}`))
   }
 
-  async listFlows(projectId: string): Promise<readonly Flow[]> {
-    return flowPage(await this.request(`/v1/projects/${segment(projectId)}/flows`))
-  }
-
-  async listConnectorProviders(projectId: string, signal?: AbortSignal): Promise<readonly ConnectorProvider[]> {
-    const source = record(await this.request(`/v1/projects/${segment(projectId)}/connector/providers`, { signal }))
-    exact(source, ['projectId', 'providers', 'version'])
-    if (source.version != 1 || string(source.projectId) != projectId || !Array.isArray(source.providers)) return invalidResponse()
+  async listConnectorProviders(signal?: AbortSignal): Promise<readonly ConnectorProvider[]> {
+    const source = record(await this.request('/v1/connector/providers', { signal }))
+    exact(source, ['providers', 'version'])
+    if (source.version != 1 || !Array.isArray(source.providers)) return invalidResponse()
     return source.providers.map(connectorProvider)
   }
 
-  async listConnectorActions(projectId: string, serviceId?: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
-    return await this.connectorActions(projectId, serviceId == null ? {} : { service: serviceId }, signal)
+  async listConnectorActions(serviceId?: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
+    return await this.connectorActions(serviceId == null ? {} : { service: serviceId }, signal)
   }
 
-  async searchConnectorActions(projectId: string, query: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
-    return await this.connectorActions(projectId, { q: query.trim() }, signal)
+  async searchConnectorActions(query: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
+    return await this.connectorActions({ q: query.trim() }, signal)
   }
 
-  async getConnectorAction(projectId: string, actionId: string, signal?: AbortSignal): Promise<ConnectorAction> {
-    const source = record(await this.request(`/v1/projects/${segment(projectId)}/connector/actions/${segment(actionId)}`, { signal }))
-    exact(source, ['action', 'projectId', 'version'])
-    if (source.version != 1 || string(source.projectId) != projectId) return invalidResponse()
+  async getConnectorAction(actionId: string, signal?: AbortSignal): Promise<ConnectorAction> {
+    const source = record(await this.request(`/v1/connector/actions/${segment(actionId)}`, { signal }))
+    exact(source, ['action', 'version'])
+    if (source.version != 1) return invalidResponse()
     return connectorAction(source.action)
   }
 
-  async listConnectorConnections(projectId: string, serviceId: string, signal?: AbortSignal): Promise<readonly ConnectorConnection[]> {
-    const source = record(await this.request(`/v1/projects/${segment(projectId)}/connector/connections/${segment(serviceId)}`, { signal }))
-    exact(source, ['connections', 'projectId', 'serviceId', 'version'])
-    if (source.version != 1 || string(source.projectId) != projectId || string(source.serviceId) != serviceId || !Array.isArray(source.connections)) {
+  async listConnectorConnections(serviceId: string, signal?: AbortSignal): Promise<readonly ConnectorConnection[]> {
+    const source = record(await this.request(`/v1/connector/connections/${segment(serviceId)}`, { signal }))
+    exact(source, ['connections', 'serviceId', 'version'])
+    if (source.version != 1 || string(source.serviceId) != serviceId || !Array.isArray(source.connections)) {
       return invalidResponse()
     }
     return source.connections.map(connection)
   }
 
-  async createConnectorConnectionPage(projectId: string, serviceId: string): Promise<string> {
+  async createConnectorConnectionPage(serviceId: string): Promise<string> {
     const source = record(
-      await this.request(`/v1/projects/${segment(projectId)}/connector/connections/${segment(serviceId)}/page`, {
+      await this.request(`/v1/connector/connections/${segment(serviceId)}/page`, {
         body: JSON.stringify({ version: 1 }),
         method: 'POST',
       }),
@@ -1138,30 +1059,29 @@ export class ControlClient {
     }
   }
 
-  async changeDraft(projectId: string, expectedRevisionId: string, operations: readonly ChangeOperation[]): Promise<DraftChange> {
+  async changeDraft(flowId: string, expectedRevisionId: string, operations: readonly ChangeOperation[]): Promise<DraftChange> {
     return draftChange(
-      await this.request(`/v1/projects/${segment(projectId)}/draft/changes`, {
+      await this.request(`/v1/flows/${segment(flowId)}/draft/changes`, {
         body: JSON.stringify({ expectedRevisionId, operations, version: 1 }),
         method: 'POST',
       }),
     )
   }
 
-  async checkFlow(projectId: string, revisionId: string, flowId: string): Promise<FlowCheck> {
+  async checkFlow(flowId: string, revisionId: string): Promise<FlowCheck> {
     return flowCheck(
-      await this.request(`/v1/projects/${segment(projectId)}/revisions/${segment(revisionId)}/flows/${segment(flowId)}/check`, {
+      await this.request(`/v1/flows/${segment(flowId)}/revisions/${segment(revisionId)}/check`, {
         body: JSON.stringify({ engineContract: 'open-flow-engine/v1', version: 1 }),
         method: 'POST',
       }),
     )
   }
 
-  async getLive(projectId: string, flowId: string): Promise<Live> {
-    return live(await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/live`))
+  async getLive(flowId: string): Promise<Live> {
+    return live(await this.request(`/v1/flows/${segment(flowId)}/live`))
   }
 
   async listPublications(
-    projectId: string,
     flowId: string,
     options: { readonly cursor?: string; readonly includeTotal?: boolean; readonly limit?: number } = {},
   ): Promise<PublicationPage> {
@@ -1170,12 +1090,12 @@ export class ControlClient {
     if (options.limit != null) parameters.set('limit', String(options.limit))
     if (options.includeTotal != null) parameters.set('includeTotal', String(options.includeTotal))
     const query = parameters.size == 0 ? '' : `?${parameters}`
-    return publicationPage(await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/publications${query}`))
+    return publicationPage(await this.request(`/v1/flows/${segment(flowId)}/publications${query}`))
   }
 
-  async createDraftRun(projectId: string, revisionId: string, flowId: string, options: RunOptions = {}): Promise<DraftRun> {
+  async createDraftRun(flowId: string, revisionId: string, options: RunOptions = {}): Promise<DraftRun> {
     const created = runDetails(
-      await this.request(`/v1/projects/${segment(projectId)}/revisions/${segment(revisionId)}/flows/${segment(flowId)}/runs`, {
+      await this.request(`/v1/flows/${segment(flowId)}/revisions/${segment(revisionId)}/runs`, {
         body: JSON.stringify({ engineContract: 'open-flow-engine/v1', inputs: options.inputs ?? {}, version: 1 }),
         headers: { 'idempotency-key': options.idempotencyKey ?? operationKey('run') },
         method: 'POST',
@@ -1195,15 +1115,9 @@ export class ControlClient {
     return created.source == 'live' ? created : invalidResponse()
   }
 
-  async publishFlow(
-    projectId: string,
-    revisionId: string,
-    flowId: string,
-    expectedLivePublicationId: string | null,
-    options: PublicationOptions = {},
-  ): Promise<Publication> {
+  async publishFlow(flowId: string, revisionId: string, expectedLivePublicationId: string | null, options: PublicationOptions = {}): Promise<Publication> {
     return publication(
-      await this.request(`/v1/projects/${segment(projectId)}/revisions/${segment(revisionId)}/flows/${segment(flowId)}/publications`, {
+      await this.request(`/v1/flows/${segment(flowId)}/revisions/${segment(revisionId)}/publications`, {
         body: JSON.stringify({ engineContract: 'open-flow-engine/v1', expectedLivePublicationId, version: 1 }),
         headers: { 'idempotency-key': options.idempotencyKey ?? operationKey('publication') },
         method: 'POST',
@@ -1211,15 +1125,9 @@ export class ControlClient {
     )
   }
 
-  async rollbackFlow(
-    projectId: string,
-    flowId: string,
-    publicationId: string,
-    expectedLivePublicationId: string,
-    options: PublicationOptions = {},
-  ): Promise<Publication> {
+  async rollbackFlow(flowId: string, publicationId: string, expectedLivePublicationId: string, options: PublicationOptions = {}): Promise<Publication> {
     return publication(
-      await this.request(`/v1/projects/${segment(projectId)}/flows/${segment(flowId)}/publications/${segment(publicationId)}/rollback`, {
+      await this.request(`/v1/flows/${segment(flowId)}/publications/${segment(publicationId)}/rollback`, {
         body: JSON.stringify({ expectedLivePublicationId, version: 1 }),
         headers: { 'idempotency-key': options.idempotencyKey ?? operationKey('publication') },
         method: 'POST',
@@ -1231,17 +1139,13 @@ export class ControlClient {
     return runDetails(await this.request(`/v1/runs/${segment(runId)}`))
   }
 
-  async listRuns(
-    projectId: string,
-    options: { readonly cursor?: string; readonly flowId?: string; readonly limit?: number; readonly status?: RunStatus } = {},
-  ): Promise<RunPage> {
+  async listRuns(flowId: string, options: { readonly cursor?: string; readonly limit?: number; readonly status?: RunStatus } = {}): Promise<RunPage> {
     const parameters = new URLSearchParams()
     if (options.cursor != null) parameters.set('cursor', options.cursor)
-    if (options.flowId != null) parameters.set('flowId', options.flowId)
     if (options.limit != null) parameters.set('limit', String(options.limit))
     if (options.status != null) parameters.set('status', options.status)
     const query = parameters.size == 0 ? '' : `?${parameters}`
-    return runPage(await this.request(`/v1/projects/${segment(projectId)}/runs${query}`))
+    return runPage(await this.request(`/v1/flows/${segment(flowId)}/runs${query}`))
   }
 
   async getRunEvents(runId: string, options: { readonly after?: number; readonly limit?: number } = {}): Promise<RunEvents> {
@@ -1265,14 +1169,14 @@ export class ControlClient {
     )
   }
 
-  private async connectorActions(projectId: string, parameters: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
+  private async connectorActions(parameters: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
     const query = Object.entries(parameters)
       .map(([key, value]) => `${segment(key)}=${segment(value)}`)
       .join('&')
     const suffix = query == '' ? '' : `?${query}`
-    const source = record(await this.request(`/v1/projects/${segment(projectId)}/connector/actions${suffix}`, { signal }))
-    exact(source, ['actions', 'projectId', 'version'])
-    if (source.version != 1 || string(source.projectId) != projectId || !Array.isArray(source.actions)) return invalidResponse()
+    const source = record(await this.request(`/v1/connector/actions${suffix}`, { signal }))
+    exact(source, ['actions', 'version'])
+    if (source.version != 1 || !Array.isArray(source.actions)) return invalidResponse()
     return source.actions.map(connectorAction)
   }
 

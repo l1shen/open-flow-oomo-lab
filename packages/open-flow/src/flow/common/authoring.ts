@@ -1,5 +1,4 @@
 export { connect, disconnect } from './edgeChanges.ts'
-export { createFlow, deleteFlow, renameFlow } from './flowChanges.ts'
 export { imports as moduleImports, rename as renameModule, replaceSource as replaceModuleSource } from './moduleChanges.ts'
 export {
   createBuiltinTrigger,

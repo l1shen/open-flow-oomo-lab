@@ -13,8 +13,8 @@ import type { ConditionOperator, JsonValue } from '../api.ts'
 import type { WorkbenchTheme } from '../contract.ts'
 import type { DesignerEdge, DesignerGraph, DesignerViewport, Point } from '../workspace.ts'
 import type { AddNodeOption } from './addNodeOptions.ts'
-import type { ConditionSettings, DesignerTarget } from './projectChanges.ts'
-import type { WebhookSettings } from './projectChanges.ts'
+import type { ConditionSettings, DesignerTarget } from './flowChanges.ts'
+import type { WebhookSettings } from './flowChanges.ts'
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLang, useTranslate } from 'val-i18n-react'
@@ -246,7 +246,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
     setSelectedEdge(undefined)
     setAddNodeRequest(undefined)
     dynamicOptions.current.clear()
-  }, [target?.id, target?.kind])
+  }, [target?.kind == 'subflow' ? target.id : undefined, target?.kind])
 
   useImperativeHandle(
     ref,
@@ -312,7 +312,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
         dark={theme == 'dark'}
         editable={!disabled}
         focusNodeRequest={focusNodeRequest}
-        identity={target == null ? 'empty' : `${target.kind}:${target.id}`}
+        identity={target == null ? 'empty' : target.kind == 'flow' ? 'flow' : `subflow:${target.id}`}
         isValidConnection={isValidConnection}
         language={language}
         model={model}

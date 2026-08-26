@@ -1,4 +1,4 @@
-import type { RevisionContent } from '@oomol-lab/open-flow/project-change'
+import type { RevisionContent } from '@oomol-lab/open-flow/flow-change'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import { spawn } from 'node:child_process'
@@ -21,19 +21,14 @@ function hangingFlow(): RevisionContent {
   return {
     document: {
       bindings: {},
-      flows: {
-        main: {
-          graph: {
-            nodes: {
-              task: {
-                concurrency: 1,
-                inputs: {},
-                kind: 'task',
-                task: { inputs: {}, moduleId: 'main', name: 'Main', outputs: {} },
-              },
-            },
+      graph: {
+        nodes: {
+          task: {
+            concurrency: 1,
+            inputs: {},
+            kind: 'task',
+            task: { inputs: {}, moduleId: 'main', name: 'Main', outputs: {} },
           },
-          name: 'Main',
         },
       },
       subflows: {},
@@ -137,20 +132,20 @@ it('recovers a process crash after the start barrier as one indeterminate termin
   let app = await start(directory)
   const cookie = await operatorCookie(app.origin)
   const revision = hangingFlow()
-  const project = await json<{ readonly draftRevisionId: string; readonly projectId: string }>(
-    await fetch(`${app.origin}/v1/projects`, {
+  const flow = await json<{ readonly draftRevisionId: string; readonly flowId: string }>(
+    await fetch(`${app.origin}/v1/flows`, {
       body: JSON.stringify({ name: 'Crash recovery', version: 1 }),
-      headers: { 'content-type': 'application/json', cookie, 'idempotency-key': 'crash-project' },
+      headers: { 'content-type': 'application/json', cookie, 'idempotency-key': 'crash-flow' },
       method: 'POST',
     }),
   )
   const changed = await json<{ readonly revision: { readonly revisionId: string } }>(
-    await fetch(`${app.origin}/v1/projects/${project.projectId}/draft/changes`, {
+    await fetch(`${app.origin}/v1/flows/${flow.flowId}/draft/changes`, {
       body: JSON.stringify({
-        expectedRevisionId: project.draftRevisionId,
+        expectedRevisionId: flow.draftRevisionId,
         operations: [
           { kind: 'module.create', module: revision.modules.main, moduleId: 'main' },
-          { flow: revision.document.flows.main, flowId: 'main', kind: 'flow.create' },
+          { kind: 'graph.node.create', node: revision.document.graph.nodes.task, nodeId: 'task', target: { kind: 'flow' } },
         ],
         version: 1,
       }),
@@ -159,7 +154,7 @@ it('recovers a process crash after the start barrier as one indeterminate termin
     }),
   )
   const accepted = await json<{ readonly runId: string }>(
-    await fetch(`${app.origin}/v1/projects/${project.projectId}/revisions/${changed.revision.revisionId}/flows/main/runs`, {
+    await fetch(`${app.origin}/v1/flows/${flow.flowId}/revisions/${changed.revision.revisionId}/runs`, {
       body: JSON.stringify({ engineContract: 'open-flow-engine/v1', inputs: {}, version: 1 }),
       headers: { 'content-type': 'application/json', cookie, 'idempotency-key': 'crash' },
       method: 'POST',
@@ -214,8 +209,8 @@ it('serves the compiled Workbench and authenticates the Control API in the real 
 
   await expect(json(await fetch(`${app.origin}/auth/session`))).resolves.toEqual({ authenticated: false, configured: true, version: 1 })
   const cookie = await operatorCookie(app.origin)
-  const projects = await fetch(`${app.origin}/v1/projects`, { headers: { cookie } })
-  expect(projects.status).toBe(200)
-  await expect(projects.json()).resolves.toMatchObject({ projects: [], version: 1 })
+  const flows = await fetch(`${app.origin}/v1/flows`, { headers: { cookie } })
+  expect(flows.status).toBe(200)
+  await expect(flows.json()).resolves.toMatchObject({ flows: [], version: 1 })
   await expect(terminate(app.child)).resolves.toEqual({ code: 0, signal: null })
 })

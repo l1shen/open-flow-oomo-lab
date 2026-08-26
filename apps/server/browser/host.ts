@@ -1,4 +1,4 @@
-import type { ProjectChangeEvent, WorkbenchHost, WorkbenchNotification } from '@oomol-lab/open-flow/workbench'
+import type { FlowCatalogEvent, FlowChangeEvent, WorkbenchHost, WorkbenchNotification } from '@oomol-lab/open-flow/workbench'
 
 const reconnectDelayMs = 1_000
 
@@ -22,34 +22,38 @@ export function createBrowserHost(notify: (notification: WorkbenchNotification |
       if (response.status == 401) sessionExpired()
       return response
     },
-    subscribeProject(projectId, listener) {
-      const cancellation = new AbortController()
-      void followProject(projectId, listener, cancellation.signal, sessionExpired)
-      return () => cancellation.abort()
+    subscribeFlow(flowId, listener) {
+      return follow(`/v1/flows/${encodeURIComponent(flowId)}/notifications`, listener, decodeFlowEvent, sessionExpired)
+    },
+    subscribeFlowCatalog(listener) {
+      return follow('/v1/flows/notifications', listener, decodeCatalogEvent, sessionExpired)
     },
   }
 }
 
-async function followProject(
-  projectId: string,
-  listener: (event?: ProjectChangeEvent) => void,
+function follow<Event>(path: string, listener: (event?: Event) => void, decode: (value: unknown) => Event | undefined, sessionExpired: () => void): () => void {
+  const cancellation = new AbortController()
+  void readConnections(path, listener, decode, cancellation.signal, sessionExpired)
+  return () => cancellation.abort()
+}
+
+async function readConnections<Event>(
+  path: string,
+  listener: (event?: Event) => void,
+  decode: (value: unknown) => Event | undefined,
   signal: AbortSignal,
   sessionExpired: () => void,
 ): Promise<void> {
   while (!signal.aborted) {
     try {
-      const response = await fetch(`/v1/projects/${encodeURIComponent(projectId)}/notifications`, {
-        credentials: 'same-origin',
-        headers: { accept: 'text/event-stream' },
-        signal,
-      })
+      const response = await fetch(path, { credentials: 'same-origin', headers: { accept: 'text/event-stream' }, signal })
       if (response.status == 401) {
         sessionExpired()
         return
       }
-      if (!response.ok || response.body == null) throw new Error(`Project notification request returned ${response.status}.`)
+      if (!response.ok || response.body == null) throw new Error(`Notification request returned ${response.status}.`)
       listener()
-      await readProjectEvents(response.body, projectId, listener, signal)
+      await readEvents(response.body, listener, decode, signal)
     } catch {
       if (signal.aborted) return
     }
@@ -57,10 +61,10 @@ async function followProject(
   }
 }
 
-async function readProjectEvents(
+async function readEvents<Event>(
   body: ReadableStream<Uint8Array>,
-  projectId: string,
-  listener: (event: ProjectChangeEvent) => void,
+  listener: (event: Event) => void,
+  decode: (value: unknown) => Event | undefined,
   signal: AbortSignal,
 ): Promise<void> {
   const reader = body.getReader()
@@ -80,7 +84,9 @@ async function readProjectEvents(
           .filter((line) => line.startsWith('data:'))
           .map((line) => line.slice(5).trimStart())
           .join('\n')
-        if (data.length > 0) dispatchProjectEvent(data, projectId, listener)
+        if (data.length == 0) continue
+        const event = decode(JSON.parse(data) as unknown)
+        if (event != null) listener(event)
       }
     }
   } finally {
@@ -89,11 +95,16 @@ async function readProjectEvents(
   }
 }
 
-function dispatchProjectEvent(data: string, projectId: string, listener: (event: ProjectChangeEvent) => void): void {
-  const value = JSON.parse(data) as Partial<ProjectChangeEvent>
-  if (value.version != 1 || value.projectId != projectId) return
-  if (value.kind == 'draft.changed' && typeof value.revisionId == 'string') listener(value as ProjectChangeEvent)
-  else if (value.kind == 'run.created' && typeof value.flowId == 'string' && typeof value.runId == 'string') listener(value as ProjectChangeEvent)
+function decodeCatalogEvent(value: unknown): FlowCatalogEvent | undefined {
+  const event = value as Partial<FlowCatalogEvent>
+  if (event.version == 1 && event.kind == 'flows.changed') return event as FlowCatalogEvent
+}
+
+function decodeFlowEvent(value: unknown): FlowChangeEvent | undefined {
+  const event = value as Partial<FlowChangeEvent>
+  if (event.version != 1 || typeof event.flowId != 'string') return
+  if (event.kind == 'draft.changed' && typeof event.revisionId == 'string') return event as FlowChangeEvent
+  if (event.kind == 'run.created' && typeof event.runId == 'string') return event as FlowChangeEvent
 }
 
 async function reconnectDelay(signal: AbortSignal): Promise<void> {

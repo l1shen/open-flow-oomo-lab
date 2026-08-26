@@ -78,7 +78,7 @@ Workbench 和 API 位于 `http://127.0.0.1:3000`。最终镜像默认监听 `0.0
 | `OPEN_FLOW_INTEGRATION_CALLBACK_KEY`           | 派生 Integration callback secret 的至少 32 UTF-8 bytes 密钥。                  |
 | `OPEN_FLOW_RUN_EVENT_RETENTION_DAYS`           | terminal Run 详细事件的保留天数；默认 `30`。                                   |
 | `OPEN_FLOW_MAX_PENDING_RUNS`                   | 全部署尚未 terminal 的 Run 上限；默认 `1000`。                                 |
-| `OPEN_FLOW_MAX_CONCURRENT_RUNS`                | 全部署同时执行的 Run 上限；同一 Project 最多执行一个；默认 `4`。               |
+| `OPEN_FLOW_MAX_CONCURRENT_RUNS`                | 全部署同时执行的 Run 上限；同一 Flow 最多执行一个；默认 `4`。                  |
 | `OPEN_FLOW_RUN_TIMEOUT_MS`                     | 单个 Run 从开始执行到 terminal 的最长毫秒数；默认 `1800000`。                  |
 | `OPEN_FLOW_CALLBACK_REQUESTS_PER_MINUTE`       | 每个 Webhook 或 Integration endpoint 的每分钟请求上限；默认 `120`。            |
 | `OPEN_FLOW_OPERATOR_LOGIN_ATTEMPTS_PER_MINUTE` | 全部署每分钟允许的 operator 登录尝试数；默认 `10`。                            |
@@ -106,7 +106,7 @@ Callback 请求限流只为已存在的 endpoint 建立内存窗口，超过限�
 镜像的 Docker `HEALTHCHECK` 请求 `GET /healthz`，只表示 Server 进程能够响应。部署入口应另外使用 `GET /readyz` 判断是否接收新流量；Server 尚未
 启动、Run/Trigger/Maintenance 后台处理已停止或配置的外部 Connector 不可用时，readiness 返回 503，但 liveness 仍保持 200。
 
-收到 `SIGINT` 或 `SIGTERM` 后，Server 先结束所有 Project notification SSE、停止接收新连接，再等待现有请求和运行时工作完成。连接在 30 秒内未结束时
+收到 `SIGINT` 或 `SIGTERM` 后，Server 先结束所有 Flow notification SSE、停止接收新连接，再等待现有请求和运行时工作完成。连接在 30 秒内未结束时
 会被强制关闭；因此容器编排器的 termination grace period 应大于 30 秒。
 
 检查状态：

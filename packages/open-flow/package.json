@@ -1,6 +1,6 @@
 {
   "name": "@oomol-lab/open-flow",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "Portable contracts and shared browser runtime for Open Flow.",
   "keywords": [
     "ai",
@@ -30,10 +30,10 @@
     "./integration-trigger": "./src/trigger/common/integration.ts",
     "./poll-trigger": "./src/trigger/common/poll.ts",
     "./provider-triggers": "./src/trigger/providers/definitions.ts",
-    "./project-authoring": "./src/project/common/authoring.ts",
-    "./project-change": "./src/project/common/change.ts",
-    "./project-encoding": "./src/project/common/encoding.ts",
-    "./project-semantics": "./src/project/common/semantics.ts",
+    "./flow-authoring": "./src/flow/common/authoring.ts",
+    "./flow-change": "./src/flow/common/change.ts",
+    "./flow-encoding": "./src/flow/common/encoding.ts",
+    "./flow-semantics": "./src/flow/common/semantics.ts",
     "./run-lifecycle": "./src/execution/common/runLifecycle.ts",
     "./run-events": "./src/execution/common/events.ts",
     "./runtime-contract": "./src/execution/common/runtime.ts",
@@ -49,7 +49,7 @@
     "format": "oxfmt README.md NOTICE src test scripts vitest.config.ts package.json tsconfig.json",
     "lint": "oxlint --deny-warnings src test scripts vitest.config.ts",
     "test": "bun run test:vitest",
-    "test:coverage": "vitest run --config vitest.config.ts --coverage src/project/common test/project-encoding.test.ts test/project-semantics.test.ts test/provider-triggers.test.ts test/run-events.test.ts test/scheduler.test.ts",
+    "test:coverage": "vitest run --config vitest.config.ts --coverage src/flow/common test/flow-encoding.test.ts test/flow-semantics.test.ts test/provider-triggers.test.ts test/run-events.test.ts test/scheduler.test.ts",
     "test:vitest": "vitest run --config vitest.config.ts src test",
     "test:package": "bun scripts/check-npm-package.ts"
   },

@@ -35,7 +35,7 @@ try {
   const entryPath = path.join(extractedRoot, commandArtifactEntryFile)
   assert.ok(((await stat(entryPath)).mode & 0o111) != 0)
   const entrySource = await readFile(entryPath, 'utf8')
-  assert.doesNotMatch(entrySource, /src\/(?:compiler|project\/node|runtime|workbench)\//)
+  assert.doesNotMatch(entrySource, /src\/(?:compiler|flow\/node|runtime|workbench)\//)
   const version = await execFileAsync(process.execPath, [entryPath, '--version', '--json'])
   assert.equal(version.stderr, '')
   assert.deepEqual(JSON.parse(version.stdout), { version: decoded.manifest.openFlowVersion })
@@ -51,31 +51,14 @@ try {
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line).kind),
-    ['project.list', 'project.use', 'flow.create', 'flow.check'],
+    ['flow.create', 'flow.check'],
   )
 
   const second = await runSmoke(entryPath, secondCwd, true)
   assert.equal(second.stderr, '')
-  assert.deepEqual(JSON.parse(second.stdout), {
-    flows: [
-      {
-        draft: {
-          closureDigest: 'closure-2',
-          name: 'Main',
-          revisionDigest: 'digest-revision-2',
-          revisionId: 'revision-2',
-        },
-        flowId: 'flow-1',
-        hasUnpublishedChanges: true,
-        live: null,
-      },
-    ],
-    kind: 'flow.list',
-    project: project('revision-2'),
-    version: 1,
-  })
+  assert.deepEqual(JSON.parse(second.stdout), { flows: [flow()], kind: 'flow.list', version: 1 })
 
-  console.log('Verified deterministic Command Artifact v2 and Control API CLI smoke tests from two working directories.')
+  console.log('Verified deterministic Command Artifact v2 and Flow Control API CLI smoke tests from two working directories.')
 } finally {
   await rm(directory, { force: true, recursive: true })
 }
@@ -88,8 +71,7 @@ async function buildCommandArchive(): Promise<Uint8Array> {
 }
 
 async function runSmoke(entryPath: string, cwd: string, readOnly: boolean): Promise<{ readonly stderr: string; readonly stdout: string }> {
-  const script = smokeScript(pathToFileURL(entryPath).href, readOnly)
-  return await execFileAsync(process.execPath, ['-e', script], {
+  return await execFileAsync(process.execPath, ['-e', smokeScript(pathToFileURL(entryPath).href, readOnly)], {
     cwd,
     env: { ...process.env, BUN_CONFIG_NO_INSTALL: '1' },
   })
@@ -101,68 +83,45 @@ import assert from 'node:assert/strict'
 
 const entry = await import(${JSON.stringify(entryUrl)})
 assert.equal('requiredBunVersion' in entry, false)
-const project = ${JSON.stringify(project(readOnly ? 'revision-2' : 'revision-1'))}
-const revision = ${JSON.stringify(revision())}
-let selectedProject = ${readOnly ? JSON.stringify('project-1') : 'undefined'}
 let flow = ${readOnly ? JSON.stringify(flow()) : 'undefined'}
 const requests = []
 const host = {
   async cloudRequest(path, init = {}) {
     requests.push({ path, init })
-    if (path === '/v1/projects?limit=100') {
-      return Response.json({ projects: [project], version: 1 })
+    if (path === '/v1/flows?limit=100') return Response.json({ flows: flow == null ? [] : [flow], version: 1 })
+    if (path === '/v1/flows/Main') {
+      return Response.json({ error: { code: 'flow.not-found', message: 'Missing.' }, version: 1 }, { status: 404 })
     }
-    if (path === '/v1/projects/project-1') return Response.json(project)
-    if (path === '/v1/projects/project-1/flows') {
-      return Response.json({ flows: flow == null ? [] : [flow], projectId: 'project-1', version: 1 })
-    }
-    if (path === '/v1/projects/project-1/draft/changes') {
+    if (path === '/v1/flows' && init.method === 'POST') {
       const body = JSON.parse(String(init.body))
-      assert.equal(body.expectedRevisionId, 'revision-1')
-      assert.equal(body.operations.length, 1)
-      assert.equal(body.operations[0].kind, 'flow.create')
       flow = {
-        draft: {
-          closureDigest: 'closure-2',
-          name: body.operations[0].flow.name,
-          revisionDigest: 'digest-revision-2',
-          revisionId: 'revision-2',
-        },
-        flowId: body.operations[0].flowId,
-        hasUnpublishedChanges: true,
-        live: null,
-      }
-      return Response.json({
-        draftFlows: [{ closureDigest: 'closure-2', flowId: flow.flowId, name: flow.draft.name }],
-        revision,
+        createdAt: '2026-08-14T00:00:00.000Z',
+        draftRevisionId: 'revision-1',
+        flowId: 'flow-1',
+        name: body.name,
+        status: 'active',
+        updatedAt: '2026-08-14T00:00:00.000Z',
         version: 1,
-      })
+      }
+      return Response.json(flow, { status: 201 })
     }
-    if (path.startsWith('/v1/projects/project-1/revisions/revision-2/flows/') && path.endsWith('/check')) {
+    if (path === '/v1/flows/flow-1/revisions/revision-1/check') {
       return Response.json({
-        closureDigest: 'closure-2',
+        closureDigest: 'closure-1',
         diagnostics: [],
         engineContract: 'open-flow-engine/v1',
-        flowId: flow.flowId,
+        flowId: 'flow-1',
         modelVersion: 1,
-        projectId: 'project-1',
-        revisionDigest: 'digest-revision-2',
-        revisionId: 'revision-2',
+        revisionDigest: 'digest-revision-1',
+        revisionId: 'revision-1',
         valid: true,
         version: 1,
       })
     }
     throw new Error(\`Unexpected Control API request: \${init.method ?? 'GET'} \${path}\`)
   },
-  async getProject() {
-    return selectedProject
-  },
-  async getWorkbenchUrl(projectId, flowId) {
-    return 'https://console.example/team/example/flows/' + encodeURIComponent(projectId)
-      + (flowId == null ? '' : '/flows/' + encodeURIComponent(flowId) + '/design')
-  },
-  async setProject(projectId) {
-    selectedProject = projectId
+  async getWorkbenchUrl(flowId) {
+    return 'https://console.example/team/example/flows' + (flowId == null ? '' : '/' + encodeURIComponent(flowId))
   },
 }
 
@@ -170,55 +129,25 @@ const commands = ${JSON.stringify(
     readOnly
       ? [['list', '--json']]
       : [
-          ['project', 'list', '--json'],
-          ['project', 'use', 'project-1', '--json'],
           ['create', 'Main', '--json'],
           ['check', 'Main', '--json'],
         ],
   )}
 for (const args of commands) assert.equal(await entry.runOpenFlowCommand(args, host), 0)
-assert.equal(selectedProject, 'project-1')
-const changes = requests.filter(({ path }) => path.endsWith('/draft/changes'))
-assert.equal(changes.length, ${readOnly ? 0 : 1})
-if (changes.length === 1) assert.equal(new Headers(changes[0].init.headers).has('idempotency-key'), false)
+const creations = requests.filter(({ path, init }) => path === '/v1/flows' && init.method === 'POST')
+assert.equal(creations.length, ${readOnly ? 0 : 1})
+if (creations.length === 1) assert.equal(new Headers(creations[0].init.headers).has('idempotency-key'), true)
 `
-}
-
-function project(revisionId: string) {
-  return {
-    createdAt: '2026-08-14T00:00:00.000Z',
-    draftRevisionId: revisionId,
-    name: 'Example',
-    projectId: 'project-1',
-    status: 'active',
-    updatedAt: '2026-08-14T00:00:00.000Z',
-    version: 1,
-  }
-}
-
-function revision() {
-  return {
-    actorId: 'actor-1',
-    createdAt: '2026-08-14T00:00:01.000Z',
-    digest: 'digest-revision-2',
-    modelVersion: 1,
-    parentRevisionId: 'revision-1',
-    projectId: 'project-1',
-    revisionId: 'revision-2',
-    version: 1,
-  }
 }
 
 function flow() {
   return {
-    draft: {
-      closureDigest: 'closure-2',
-      name: 'Main',
-      revisionDigest: 'digest-revision-2',
-      revisionId: 'revision-2',
-    },
+    createdAt: '2026-08-14T00:00:00.000Z',
+    draftRevisionId: 'revision-1',
     flowId: 'flow-1',
-    hasUnpublishedChanges: true,
-    live: null,
+    name: 'Main',
+    status: 'active',
+    updatedAt: '2026-08-14T00:00:00.000Z',
+    version: 1,
   }
 }

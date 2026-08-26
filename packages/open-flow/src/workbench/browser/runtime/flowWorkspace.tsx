@@ -3,7 +3,7 @@ import type { FlowDesignerViewInput, FlowDesignerViewOutput } from '../../../des
 import type { JsonValue } from './api.ts'
 import type { WorkbenchLanguage, WorkbenchLocation, WorkbenchTheme } from './contract.ts'
 import type { AddNodeOption } from './designer/addNodeOptions.ts'
-import type { CodeTaskPorts } from './designer/projectChanges.ts'
+import type { CodeTaskPorts } from './designer/flowChanges.ts'
 import type { WorkbenchDesignerHandle } from './designer/workbenchDesigner.tsx'
 
 import { useEffect, useRef, useState } from 'react'
@@ -122,7 +122,7 @@ function Editor({
   const draft = useVal(store.workspace.$.draft)
   const inspectorDiagnostics = useVal(store.workspace.$.inspectorDiagnostics)
   const nodeFocus = useVal(store.workspace.$.nodeFocus)
-  const projectId = useVal(store.workspace.$.projectId)
+  const flowId = useVal(store.workspace.$.flowId)
   const revision = useVal(store.workspace.$.revision)
   const selectedDesignerNode = useVal(store.$.selectedDesignerNode)
   const selection = useVal(store.workspace.$.selection)
@@ -156,7 +156,7 @@ function Editor({
     focusInspectorOnOpen.current = false
     opener.current = undefined
     setContextPanelMode(undefined)
-  }, [projectId, target?.id, target?.kind])
+  }, [flowId, target?.kind == 'subflow' ? target.id : undefined, target?.kind])
 
   useEffect(() => {
     if (diagnosticFocus == null) return
@@ -341,22 +341,20 @@ export default function FlowWorkspace({
   const handledExternalRun = useRef<string>()
   const view = useVal(navigation.$.view)
   const draft = useVal(store.workspace.$.draft)
-  const projectId = useVal(store.workspace.$.projectId)
+  const flowId = useVal(store.workspace.$.flowId)
   const submitting = useVal(store.runRequests.$.submitting)
   const externalRunId = useVal(store.runs.$.externalRunId)
-  const target = useVal(store.workspace.$.target)
-  const flowId = target?.kind == 'flow' ? target.id : undefined
   const draftReady = draft != null
 
   useEffect(() => {
-    if (view == 'runs' && projectId != null) void store.runs.load(projectId, flowId)
-  }, [flowId, projectId, store, view])
+    if (view == 'runs' && flowId != null) void store.runs.load(flowId)
+  }, [flowId, store, view])
 
   useEffect(() => {
-    if (view == 'publications' && projectId != null && flowId != null) void store.publications.load(projectId, flowId)
-  }, [flowId, projectId, store, view])
+    if (view == 'publications' && flowId != null) void store.publications.load(flowId)
+  }, [flowId, store, view])
 
-  useEffect(() => store.runRequests.dismissInputs(), [draft?.revisionId, flowId, projectId, store])
+  useEffect(() => store.runRequests.dismissInputs(), [draft?.revisionId, flowId, store])
 
   useEffect(() => {
     if (submitting == null || !draftReady) return
@@ -374,7 +372,7 @@ export default function FlowWorkspace({
   }, [externalRunId, view])
 
   const revealRun = (): void => {
-    if (store.workspace.$.targetFlow.value?.draft == null) {
+    if (store.workspace.$.draft.value == null) {
       navigation.open('runs')
     } else {
       navigation.open('design')
@@ -399,11 +397,11 @@ export default function FlowWorkspace({
         <WorkspaceHeader
           activeView={view}
           language={language}
-          projectHref={hrefFor({ projectId: projectId!, view: 'design' })}
-          projectsHref={hrefFor({ view: 'design' })}
+          flowHref={hrefFor({ flowId: flowId!, view: 'design' })}
+          flowsHref={hrefFor({ view: 'design' })}
           onOpenDesign={() => navigation.open('design')}
-          onOpenProject={() => navigation.openProject()}
-          onOpenProjects={() => void navigation.openProjects()}
+          onOpenFlow={() => navigation.openMainFlow()}
+          onOpenFlows={() => void navigation.openFlows()}
           onOpenPublications={() => {
             store.runRequests.dismissInputs()
             navigation.open('publications')

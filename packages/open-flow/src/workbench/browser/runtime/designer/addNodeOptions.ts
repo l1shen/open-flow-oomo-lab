@@ -1,7 +1,7 @@
 import type { TFunction } from 'val-i18n'
 import type { ConnectorAction, Draft, JsonValue, TriggerKeySnapshot } from '../api.ts'
 import type { RevisionView } from '../revisionView.ts'
-import type { AddNodeIntent, DesignerTarget } from './projectChanges.ts'
+import type { AddNodeIntent, DesignerTarget } from './flowChanges.ts'
 
 interface AddNodePort {
   readonly description?: string

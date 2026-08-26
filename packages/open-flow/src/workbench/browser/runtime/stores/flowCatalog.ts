@@ -1,6 +1,6 @@
 import type { I18n } from 'val-i18n'
 import type { ReadonlyVal, Val } from 'value-enhancer'
-import type { WorkbenchClient, Project } from '../api.ts'
+import type { WorkbenchClient, Flow } from '../api.ts'
 import type { Current } from './latest.ts'
 import type { SetNotice } from './workbenchNotice.ts'
 
@@ -17,17 +17,17 @@ interface State {
   readonly loadingMore: boolean
   readonly loadMoreFailed: boolean
   readonly nextCursor?: string
-  readonly projects: readonly Project[]
+  readonly flows: readonly Flow[]
   readonly total?: number
 }
 
-export interface ProjectCatalog$ {
+export interface FlowCatalog$ {
   readonly failed: ReadonlyVal<boolean>
   readonly loading: ReadonlyVal<boolean>
   readonly loadingMore: ReadonlyVal<boolean>
   readonly loadMoreFailed: ReadonlyVal<boolean>
   readonly nextCursor: ReadonlyVal<string | undefined>
-  readonly projects: ReadonlyVal<readonly Project[]>
+  readonly flows: ReadonlyVal<readonly Flow[]>
   readonly total: ReadonlyVal<number | undefined>
 }
 
@@ -37,17 +37,17 @@ const initialState: State = {
   loading: true,
   loadingMore: false,
   loadMoreFailed: false,
-  projects: [],
+  flows: [],
 }
 
-export class ProjectCatalog {
+export class FlowCatalog {
   readonly #client: WorkbenchClient
   readonly #i18n: I18n
   readonly #session = new Latest()
   readonly #setNotice: SetNotice
   readonly #state: Val<State> = val(initialState)
   #disposed = false
-  public readonly $: ProjectCatalog$
+  public readonly $: FlowCatalog$
 
   public constructor(client: WorkbenchClient, setNotice: SetNotice, i18n: I18n) {
     this.#client = client
@@ -59,7 +59,7 @@ export class ProjectCatalog {
       loadingMore: derive(this.#state, (state) => state.loadingMore),
       loadMoreFailed: derive(this.#state, (state) => state.loadMoreFailed),
       nextCursor: derive(this.#state, (state) => state.nextCursor),
-      projects: derive(this.#state, (state) => state.projects),
+      flows: derive(this.#state, (state) => state.flows),
       total: derive(this.#state, (state) => state.total),
     }
   }
@@ -85,8 +85,8 @@ export class ProjectCatalog {
     return this.#session.capture()
   }
 
-  public project(projectId: string): Project | undefined {
-    return this.#state.value.projects.find((project) => project.projectId == projectId)
+  public flow(flowId: string): Flow | undefined {
+    return this.#state.value.flows.find((flow) => flow.flowId == flowId)
   }
 
   public async reload(): Promise<void> {
@@ -98,17 +98,17 @@ export class ProjectCatalog {
       loadingMore: false,
       loadMoreFailed: false,
       nextCursor: undefined,
-      projects: [],
+      flows: [],
       total: undefined,
     })
     try {
-      const page = await this.#client.listProjects({ includeTotal: true, limit: pageLimit })
+      const page = await this.#client.listFlows({ includeTotal: true, limit: pageLimit })
       if (!current()) return
       this.#set({
         loaded: true,
         loading: false,
         nextCursor: page.nextCursor,
-        projects: page.projects,
+        flows: page.flows,
         total: page.total,
       })
     } catch (error) {
@@ -124,13 +124,13 @@ export class ProjectCatalog {
     const current = this.#session.capture()
     this.#set({ loadingMore: true, loadMoreFailed: false })
     try {
-      const page = await this.#client.listProjects({ cursor: nextCursor, limit: pageLimit })
+      const page = await this.#client.listFlows({ cursor: nextCursor, limit: pageLimit })
       if (!current()) return
-      const seen = new Set(this.#state.value.projects.map((project) => project.projectId))
+      const seen = new Set(this.#state.value.flows.map((flow) => flow.flowId))
       this.#set({
         loadingMore: false,
         nextCursor: page.nextCursor,
-        projects: [...this.#state.value.projects, ...page.projects.filter((project) => !seen.has(project.projectId))],
+        flows: [...this.#state.value.flows, ...page.flows.filter((flow) => !seen.has(flow.flowId))],
       })
     } catch (error) {
       if (!current()) return
@@ -139,30 +139,35 @@ export class ProjectCatalog {
     }
   }
 
-  public async create(name: string): Promise<Project | undefined> {
-    const project = await this.#client.createProject(name)
+  public async create(name: string): Promise<Flow | undefined> {
+    const flow = await this.#client.createFlow(name)
     if (this.#disposed) return
     this.#set({
-      projects: [...this.#state.value.projects, project],
+      flows: [...this.#state.value.flows, flow],
       total: this.#state.value.total == null ? undefined : this.#state.value.total + 1,
     })
-    return project
+    return flow
   }
 
-  public include(project: Project): void {
-    if (this.project(project.projectId) == null) this.#set({ projects: [...this.#state.value.projects, project] })
+  public include(flow: Flow): void {
+    const index = this.#state.value.flows.findIndex((candidate) => candidate.flowId == flow.flowId)
+    if (index < 0) {
+      this.#set({ flows: [...this.#state.value.flows, flow] })
+      return
+    }
+    this.#set({ flows: this.#state.value.flows.with(index, flow) })
   }
 
-  public remove(projectId: string): void {
+  public remove(flowId: string): void {
     this.#set({
-      projects: this.#state.value.projects.filter((project) => project.projectId != projectId),
+      flows: this.#state.value.flows.filter((flow) => flow.flowId != flowId),
       total: this.#state.value.total == null ? undefined : this.#state.value.total - 1,
     })
   }
 
-  public advanceHead(projectId: string, revisionId: string): void {
+  public advanceHead(flowId: string, revisionId: string): void {
     this.#set({
-      projects: this.#state.value.projects.map((project) => (project.projectId == projectId ? { ...project, draftRevisionId: revisionId } : project)),
+      flows: this.#state.value.flows.map((flow) => (flow.flowId == flowId ? { ...flow, draftRevisionId: revisionId } : flow)),
     })
   }
 

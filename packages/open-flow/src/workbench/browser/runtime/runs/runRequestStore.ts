@@ -19,7 +19,7 @@ interface RequestState {
   readonly submitting?: RunSource
 }
 
-type Client = Pick<WorkbenchClient, 'createDraftRun' | 'createLiveRun' | 'getRevision'>
+type Client = Pick<WorkbenchClient, 'createDraftRun' | 'createLiveRun' | 'getLive' | 'getRevision'>
 
 export interface RunRequest$ {
   readonly inputRequest: ReadonlyVal<RunInputRequest | undefined>
@@ -37,7 +37,7 @@ export interface RunInputRequest {
   readonly attempted: boolean
   readonly flow: Flow
   readonly groups: readonly RunInputGroup[]
-  readonly projectId: string
+  readonly publicationId?: string
   readonly revisionId: string
   readonly source: RunSource
   readonly valid: ReadonlyVal<boolean>
@@ -69,10 +69,10 @@ function nodeTitle(node: ResolvedNode): string {
   return node.id
 }
 
-async function inputGroups(draft: Draft, flowId: string, language: ReadonlyVal<string>): Promise<readonly RunInputGroup[]> {
+async function inputGroups(draft: Draft, language: ReadonlyVal<string>): Promise<readonly RunInputGroup[]> {
   const { FlowRunInputEditorStore } = await import('../../flowRunInputEditorStore.ts')
   const revision = revisionView(draft)
-  const graph = revision.graph({ id: flowId, kind: 'flow' })
+  const graph = revision.graph({ kind: 'flow' })
   if (graph == null) return []
   return Object.entries(graph.nodes)
     .toSorted(([left], [right]) => left.localeCompare(right))
@@ -138,22 +138,22 @@ export class RunRequestStore {
     this.#disposeInputRequest(request)
   }
 
-  public async requestDraft(projectId: string, flow: Flow, draft: Draft): Promise<RunRequestOutcome> {
-    if (flow.draft == null) return 'unavailable'
+  public async requestDraft(flow: Flow, draft: Draft): Promise<RunRequestOutcome> {
     const current = this.#requests.begin()
-    return await this.#request('draft', projectId, flow, draft, flow.draft.revisionId, current)
+    return await this.#request('draft', flow, draft, draft.revisionId, current)
   }
 
-  public async requestLive(projectId: string, flow: Flow): Promise<RunRequestOutcome> {
-    const revisionId = flow.live?.publication.revisionId
-    if (revisionId == null) return 'unavailable'
+  public async requestLive(flow: Flow): Promise<RunRequestOutcome> {
     const current = this.#requests.begin()
     this.#setNotice(undefined)
     this.#set({ starting: true })
     try {
-      const revision = await this.#client.getRevision(projectId, revisionId)
+      const live = await this.#client.getLive(flow.flowId)
+      const publication = live.publication
+      if (publication == null) return 'unavailable'
+      const revision = await this.#client.getRevision(flow.flowId, publication.revisionId)
       if (!current()) return 'unavailable'
-      return await this.#request('live', projectId, flow, revision, revisionId, current)
+      return await this.#request('live', flow, revision, publication.revisionId, current, publication.publicationId)
     } catch (error) {
       if (current()) this.#setNotice(errorNotice(error, this.#i18n.t))
       return 'unavailable'
@@ -178,18 +178,18 @@ export class RunRequestStore {
     const inputs = Object.fromEntries(request.groups.map((group) => [group.nodeId, group.editor.values()])) as Readonly<
       Record<string, Readonly<Record<string, JsonValue>>>
     >
-    const started = await this.#start(request.source, request.projectId, request.flow, request.revisionId, inputs)
+    const started = await this.#start(request.source, request.flow, request.revisionId, inputs, request.publicationId)
     if (started && this.#state.value.inputRequest === request) this.dismissInputs()
     return started
   }
 
-  async #request(source: RunSource, projectId: string, flow: Flow, revision: Draft, revisionId: string, current: Current): Promise<RunRequestOutcome> {
+  async #request(source: RunSource, flow: Flow, revision: Draft, revisionId: string, current: Current, publicationId?: string): Promise<RunRequestOutcome> {
     const previous = this.#state.value.inputRequest
     this.#set({ inputRequest: undefined, starting: true, submitting: source })
     this.#disposeInputRequest(previous)
     let groups: readonly RunInputGroup[]
     try {
-      groups = await inputGroups(revision, flow.flowId, this.#i18n.lang$)
+      groups = await inputGroups(revision, this.#i18n.lang$)
     } catch (error) {
       if (current()) this.#set({ starting: false, submitting: undefined })
       throw error
@@ -198,33 +198,37 @@ export class RunRequestStore {
       for (const group of groups) group.editor.dispose()
       return 'unavailable'
     }
-    if (groups.length == 0) return (await this.#start(source, projectId, flow, revisionId)) ? 'started' : 'unavailable'
+    if (groups.length == 0) return (await this.#start(source, flow, revisionId, {}, publicationId)) ? 'started' : 'unavailable'
     const valid = compute((get) => groups.every((group) => get(group.editor.valid$)))
-    this.#set({ inputRequest: { attempted: false, flow, groups, projectId, revisionId, source, valid }, starting: false, submitting: undefined })
+    this.#set({
+      inputRequest: { attempted: false, flow, groups, ...(publicationId == null ? {} : { publicationId }), revisionId, source, valid },
+      starting: false,
+      submitting: undefined,
+    })
     return 'input'
   }
 
   async #start(
     source: RunSource,
-    projectId: string,
     flow: Flow,
     revisionId: string,
     inputs: Readonly<Record<string, Readonly<Record<string, JsonValue>>>> = {},
+    publicationId?: string,
   ): Promise<boolean> {
-    if ((source == 'draft' && flow.draft == null) || (source == 'live' && flow.live == null)) return false
+    if (source == 'live' && publicationId == null) return false
     const alive = this.#lifetime.capture()
     const current = this.#runs.prepareStart()
     this.#setNotice(undefined)
     this.#set({ starting: true, submitting: source })
-    const target = source == 'draft' ? { flowId: flow.flowId, projectId, revisionId } : { publicationId: flow.live!.publication.publicationId }
+    const target = source == 'draft' ? { flowId: flow.flowId, revisionId } : { publicationId: publicationId! }
     const signature = JSON.stringify({ inputs, source, ...target })
     const attempt = this.#attempt?.signature == signature ? this.#attempt : { key: this.#identity(), signature }
     this.#attempt = attempt
     try {
       const run =
         source == 'draft'
-          ? await this.#client.createDraftRun(projectId, revisionId, flow.flowId, { idempotencyKey: attempt.key, inputs })
-          : await this.#client.createLiveRun(flow.live!.publication.publicationId, { idempotencyKey: attempt.key, inputs })
+          ? await this.#client.createDraftRun(flow.flowId, revisionId, { idempotencyKey: attempt.key, inputs })
+          : await this.#client.createLiveRun(publicationId!, { idempotencyKey: attempt.key, inputs })
       if (!alive() || !current()) return false
       this.#attempt = undefined
       return this.#runs.follow(run, current)
