@@ -298,9 +298,9 @@ export const controlApiConformanceCases: readonly ControlApiConformanceCase[] = 
   {
     name: 'rejects invalid and missing Flow control targets',
     async verify(harness) {
-      const missingFlow = 'flow_missing'
-      const missingRevision = 'revision_missing'
-      const missingRun = 'run_missing'
+      const missingFlow = '00000000-0000-7000-8000-000000000001'
+      const missingRevision = '00000000-0000-7000-8000-000000000002'
+      const missingRun = '00000000-0000-7000-8000-000000000003'
       await error(await request(harness, `/v1/flows/${missingFlow}`), 404, 'flow.not-found', 'Read missing Flow')
       await error(
         await request(harness, `/v1/flows/${missingFlow}`, { body: JSON.stringify({ name: 'Missing', version: 1 }), method: 'PATCH' }),
@@ -383,18 +383,23 @@ export const publicationControlApiConformanceCases: readonly ControlApiConforman
         'Publish unsupported Engine',
       )
       await error(
-        await publishRequest(harness, flowId, 'revision_missing', publicationId, 'missing-revision-publication'),
+        await publishRequest(harness, flowId, '00000000-0000-7000-8000-000000000002', publicationId, 'missing-revision-publication'),
         404,
         'flow.not-found',
         'Publish missing Revision',
       )
       await error(
-        await rollbackRequest(harness, flowId, 'publication_missing', publicationId, 'missing-rollback'),
+        await rollbackRequest(harness, flowId, '00000000-0000-7000-8000-000000000004', publicationId, 'missing-rollback'),
         404,
         'publication.not-found',
         'Rollback missing Publication',
       )
-      await error(await liveRunRequest(harness, 'publication_missing', 'missing-publication-run'), 404, 'publication.not-found', 'Run missing Publication')
+      await error(
+        await liveRunRequest(harness, '00000000-0000-7000-8000-000000000004', 'missing-publication-run'),
+        404,
+        'publication.not-found',
+        'Run missing Publication',
+      )
     },
   },
   {
