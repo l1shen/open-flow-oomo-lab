@@ -57,6 +57,10 @@
   color: var(--widget-font-color);
   font-size: var(--base-font-size);
   box-shadow: none;
+
+  [data-slot='tooltip-arrow'] {
+    display: none;
+  }
 }
 
 .question {

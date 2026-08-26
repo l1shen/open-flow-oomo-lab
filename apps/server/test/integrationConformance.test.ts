@@ -59,10 +59,10 @@ function revision(fixture: IntegrationConformanceFixture, enabled = true): Revis
                 inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'integration', output: 'payload' }] } },
                 kind: 'task',
                 task: {
-                  inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
+                  inputs: [{ handle: 'event', jsonSchema: snapshot.payloadSchema, nullable: false }],
                   moduleId: 'module-main',
                   name: 'Main',
-                  outputs: {},
+                  outputs: [],
                 },
               },
             }

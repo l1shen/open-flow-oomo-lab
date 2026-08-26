@@ -15,6 +15,7 @@
     "build": "bun run --workspaces --if-present build",
     "check": "bun run format -- --check && bun run --workspaces --if-present check",
     "dev": "bun run dev:server",
+    "dev:designer": "bun run --filter @oomol-lab/open-flow designer:dev",
     "dev:server": "bun run --filter @oomol-lab/open-flow-server dev",
     "format": "oxfmt .",
     "lint": "bun run --workspaces --if-present lint",

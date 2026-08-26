@@ -43,7 +43,12 @@ function webhookFlow(): RevisionContent {
             concurrency: 1,
             inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'incoming', output: 'payload' }] } },
             kind: 'task',
-            task: { inputs: { event: payloadPort }, moduleId: 'capture', name: 'Capture', outputs: { message: stringPort } },
+            task: {
+              inputs: [{ ...payloadPort, handle: 'event' }],
+              moduleId: 'capture',
+              name: 'Capture',
+              outputs: [{ ...stringPort, handle: 'message' }],
+            },
           },
           incoming: {
             inputsDef: [{ handle: 'message', ...stringPort }],

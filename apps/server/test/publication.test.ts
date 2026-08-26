@@ -32,7 +32,7 @@ function revision(name = 'Incoming', webhook = true): RevisionContent {
             concurrency: 1,
             inputs: {},
             kind: 'value',
-            values: { ready: { jsonSchema: { type: 'boolean' }, nullable: false, value: true } },
+            values: [{ handle: 'ready', jsonSchema: { type: 'boolean' }, nullable: false, value: true }],
           },
           ...(webhook
             ? {

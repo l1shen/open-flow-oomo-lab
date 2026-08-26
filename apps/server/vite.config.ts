@@ -12,6 +12,6 @@ export default defineConfig({
   build: { outDir: 'dist/public' },
   plugins: [twemojiCollectionPlugin(), tailwindcss(), UnoCSS(designerUnoConfig), react()],
   server: {
-    proxy: { [serverPathPattern]: { target: process.env.OPEN_FLOW_DEV_API_ORIGIN ?? 'http://127.0.0.1:3000' } },
+    proxy: { [serverPathPattern]: { target: process.env.OPEN_FLOW_DEV_API_ORIGIN ?? 'http://127.0.0.1:3001' } },
   },
 })

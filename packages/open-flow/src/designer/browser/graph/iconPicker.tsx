@@ -6,6 +6,7 @@ import { useCallback, useEffect } from 'react'
 import { useLang } from 'val-i18n-react'
 import { useIsMounted } from '../base/react.ts'
 import { IconPicker } from '../icons/IconPicker/IconPicker.tsx'
+import { useGetStaticPopupContainer } from './ReactFlowContainer/useGetPopupContainer.ts'
 
 export interface OpenIconPicker {
   (setIcon: (icon: string) => void, placement?: 'top' | 'bottom'): void
@@ -17,6 +18,7 @@ let iconPickerInstance: IDisposable | undefined
 export function useOpenIconPicker(): OpenIconPicker {
   const lang = useLang()
   const isMounted = useIsMounted()
+  const getPopupContainer = useGetStaticPopupContainer()
 
   useEffect(() => () => iconPickerInstance?.dispose(), [])
 
@@ -33,13 +35,14 @@ export function useOpenIconPicker(): OpenIconPicker {
           locale: lang,
           emoji: true,
           className: styles.iconPicker,
+          popupContainer: getPopupContainer(anchor),
         }))
         if (result && isMounted()) {
           setIcon(encodeIcon(result))
         }
       }
     },
-    [isMounted, lang],
+    [getPopupContainer, isMounted, lang],
   )
 
   return openIconPicker

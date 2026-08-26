@@ -3,16 +3,56 @@ import { ChevronRightIcon, CheckIcon } from 'lucide-react'
 import * as React from 'react'
 import { cn } from './utils.ts'
 
-function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
-  return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+const DropdownMenuHandle = React.createContext<ReturnType<typeof MenuPrimitive.createHandle> | null>(null)
+
+function DropdownMenu({ handle: providedHandle, onOpenChange, ...props }: MenuPrimitive.Root.Props) {
+  const [handle] = React.useState(() => providedHandle ?? MenuPrimitive.createHandle())
+  return (
+    <DropdownMenuHandle.Provider value={handle}>
+      <MenuPrimitive.Root
+        data-slot="dropdown-menu"
+        handle={handle}
+        onOpenChange={(open, eventDetails) => {
+          if (!open && eventDetails.reason == 'trigger-hover') {
+            eventDetails.cancel()
+            return
+          }
+          onOpenChange?.(open, eventDetails)
+        }}
+        {...props}
+      />
+    </DropdownMenuHandle.Provider>
+  )
 }
 
 function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
   return <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
 }
 
-function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
-  return <MenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />
+function DropdownMenuTrigger({ handle: providedHandle, id: providedId, onClick, onMouseDown, ...props }: MenuPrimitive.Trigger.Props) {
+  const rootHandle = React.useContext(DropdownMenuHandle)
+  const generatedId = React.useId()
+  const handle = providedHandle ?? rootHandle
+  const id = providedId ?? generatedId
+
+  return (
+    <MenuPrimitive.Trigger
+      data-slot="dropdown-menu-trigger"
+      handle={handle ?? undefined}
+      id={id}
+      onClick={(event) => {
+        onClick?.(event)
+        if (event.detail == 0 || event.defaultPrevented || event.baseUIHandlerPrevented || handle == null) return
+        if (handle.isOpen) handle.close()
+        else handle.open(id)
+      }}
+      onMouseDown={(event) => {
+        onMouseDown?.(event)
+        event.preventBaseUIHandler()
+      }}
+      {...props}
+    />
+  )
 }
 
 function DropdownMenuContent({

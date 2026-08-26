@@ -109,6 +109,7 @@ the required runtime API.
 
 ```dotenv
 OPEN_FLOW_CONNECTOR_ORIGIN=http://open-connector:3000
+# Optional when the local Connector has runtime authentication disabled.
 OPEN_FLOW_CONNECTOR_TOKEN=replace-with-a-scoped-runtime-token
 OPEN_FLOW_CONNECTOR_CONSOLE_ORIGIN=https://connector.example.com
 ```
@@ -148,8 +149,9 @@ bun run dev
 ```
 
 Open the development Workbench at
-[http://127.0.0.1:5173](http://127.0.0.1:5173). Its API requests are proxied to the Server at
-`http://127.0.0.1:3000`.
+[http://localhost:5174](http://localhost:5174). Its API requests are proxied to the Server at
+`http://127.0.0.1:3001`. Development uses `http://localhost:3000` as the Connector origin by default;
+set `OPEN_FLOW_CONNECTOR_ORIGIN` to override it. The Connector token remains optional.
 
 The first development run creates an operator token at
 `apps/server/.open-flow-dev/operator-token`. Later runs reuse it, so restarting the development

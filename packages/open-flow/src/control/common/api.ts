@@ -292,13 +292,14 @@ interface PublicationOptions {
 }
 
 export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
+  readonly code: string
+  readonly status: number
+
+  constructor(status: number, code: string, message: string) {
     super(message)
+    this.code = code
     this.name = 'ApiError'
+    this.status = status
   }
 }
 
@@ -890,7 +891,11 @@ function operationKey(operation: string): string {
 }
 
 export class ControlClient {
-  constructor(private readonly requestControl: ControlRequest) {}
+  private readonly requestControl: ControlRequest
+
+  constructor(requestControl: ControlRequest) {
+    this.requestControl = requestControl
+  }
 
   async listFlows(options: { readonly cursor?: string; readonly includeTotal?: boolean; readonly limit?: number } = {}): Promise<FlowPage> {
     const parameters = new URLSearchParams()

@@ -185,10 +185,15 @@
 .menu {
   max-width: 200px;
   max-height: min(360px, calc(100vh - 24px));
+  padding: 4px;
+  border-radius: 4px;
+  background: var(--widget-popup-background);
+  box-shadow: 0 2px 16px var(--contextmenu-shadow);
   font-size: var(--base-font-size);
 
   :global([data-slot='dropdown-menu-item']),
   :global([data-slot='dropdown-menu-sub-trigger']) {
     padding: 4px 8px;
+    border-radius: var(--widget-radius);
   }
 }

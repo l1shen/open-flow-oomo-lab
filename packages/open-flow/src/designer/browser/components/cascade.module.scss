@@ -11,10 +11,10 @@
   margin-top: -0.5em;
   color: var(--brand-highlight-color);
   pointer-events: none;
+}
 
-  + :global([data-slot='combobox-root']) :global([data-slot='combobox-input']) {
-    padding-left: 1.5em;
-  }
+.loadingState :global(.react-select__value-container) {
+  padding-left: 1.5em;
 }
 
 .title {
@@ -39,10 +39,21 @@
     border-radius: var(--widget-radius);
     pointer-events: none;
   }
+
+  &:has(:global(.react-select__control--menu-is-open))::after {
+    border-bottom-width: 0;
+    border-radius: var(--widget-radius) var(--widget-radius) 0 0;
+  }
+
+  :global(.react-select-container) :global(.react-select__control--menu-is-open) + :global(.react-select__menu) {
+    border-right-color: var(--widget-error-color);
+    border-bottom-color: var(--widget-error-color);
+    border-left-color: var(--widget-error-color);
+  }
 }
 
 .isSuffix {
-  margin-left: 4px;
+  padding-left: 4px;
 
   &.warning::after {
     left: 4px;

@@ -13,6 +13,7 @@ import type {
 import type {
   CodeModule,
   GraphNode,
+  InputPort,
   InputPortDefinition,
   PortDefinition,
   RevisionContent,
@@ -937,7 +938,7 @@ export function triggerSchedule(every: string | undefined, cron: string | undefi
   if (timezone != null) throw new CliError('trigger.schedule-invalid', 'Timezone requires cron.')
 }
 
-export function withInputValues(action: ConnectorAction, values: Readonly<Record<string, JsonValue | undefined>>): ConnectorAction['inputs'] {
+export function withInputValues(action: ConnectorAction, values: Readonly<Record<string, JsonValue | undefined>>): readonly InputPort[] {
   const inputs = { ...action.inputs }
   for (const [handle, value] of Object.entries(values)) {
     const input = inputs[handle]
@@ -945,7 +946,7 @@ export function withInputValues(action: ConnectorAction, values: Readonly<Record
     const { value: _value, ...rest } = input
     inputs[handle] = value === undefined ? rest : { ...rest, value }
   }
-  return inputs
+  return Object.entries(inputs).map(([handle, input]) => Object.assign({ handle }, input))
 }
 
 export async function runInputs(args: ParsedArguments, runtime: Runtime): Promise<Readonly<Record<string, Readonly<Record<string, JsonValue>>>>> {

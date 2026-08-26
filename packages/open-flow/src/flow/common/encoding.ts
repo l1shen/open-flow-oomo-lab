@@ -5,10 +5,10 @@ import type {
   GraphNode,
   InlineTaskDefinition,
   InputMapping,
-  InputPortDefinition,
+  InputPort,
   JsonValue,
   OutputMapping,
-  PortDefinition,
+  Port,
   RevisionContent,
   TriggerKeySnapshot,
   TriggerNode,
@@ -49,17 +49,18 @@ function entries<T>(value: Readonly<Record<string, T>>): readonly (readonly [str
     .map((key) => [key, value[key]!] as const)
 }
 
-function canonicalPort(value: InputPortDefinition | PortDefinition): { readonly [key: string]: JsonValue } {
+function canonicalPort(value: InputPort | Port): { readonly [key: string]: JsonValue } {
   return {
     ...(value.description == null ? {} : { description: value.description }),
+    handle: value.handle,
     jsonSchema: value.jsonSchema,
     nullable: value.nullable,
-    ...(Object.hasOwn(value, 'value') ? { value: (value as InputPortDefinition).value! } : {}),
+    ...(Object.hasOwn(value, 'value') ? { value: (value as InputPort).value! } : {}),
   }
 }
 
-export function canonicalPorts(value: Readonly<Record<string, InputPortDefinition | PortDefinition>>): JsonValue {
-  return Object.fromEntries(entries(value).map(([handle, definition]) => [handle, canonicalPort(definition)]))
+export function canonicalPorts(value: readonly (InputPort | Port)[]): JsonValue {
+  return value.map(canonicalPort)
 }
 
 function canonicalInputMapping(value: InputMapping): JsonValue {
@@ -75,18 +76,14 @@ function canonicalInputs(value: Readonly<Record<string, InputMapping>>): JsonVal
   return Object.fromEntries(entries(value).map(([handle, mapping]) => [handle, canonicalInputMapping(mapping)]))
 }
 
-export function canonicalOutputs(value: Readonly<Record<string, OutputMapping & PortDefinition>>): JsonValue {
-  return Object.fromEntries(
-    entries(value).map(([handle, output]) => [
-      handle,
-      {
-        ...(output.description == null ? {} : { description: output.description }),
-        jsonSchema: output.jsonSchema,
-        nullable: output.nullable,
-        sources: output.sources.map((source) => ({ ...source })),
-      },
-    ]),
-  )
+export function canonicalOutputs(value: readonly (OutputMapping & Port)[]): JsonValue {
+  return value.map((output) => ({
+    ...(output.description == null ? {} : { description: output.description }),
+    handle: output.handle,
+    jsonSchema: output.jsonSchema,
+    nullable: output.nullable,
+    sources: output.sources.map((source) => ({ ...source })),
+  }))
 }
 
 function canonicalNode(value: GraphNode): JsonValue {
@@ -94,6 +91,7 @@ function canonicalNode(value: GraphNode): JsonValue {
   const common = {
     concurrency: value.concurrency,
     ...(value.description == null ? {} : { description: value.description }),
+    ...(value.icon == null ? {} : { icon: value.icon }),
     inputs: canonicalInputs(value.inputs),
     ...(value.name == null ? {} : { name: value.name }),
     ...(value.timeoutMs == null ? {} : { timeoutMs: value.timeoutMs }),
@@ -199,6 +197,7 @@ function canonicalTriggerSchedule(value: TriggerSchedule): JsonValue {
 function canonicalTriggerNode(trigger: TriggerNode): JsonValue {
   const common = (kind: TriggerNode['kind']): { readonly [key: string]: JsonValue } => ({
     ...(trigger.description == null ? {} : { description: trigger.description }),
+    ...(trigger.icon == null ? {} : { icon: trigger.icon }),
     kind,
     name: trigger.name,
   })

@@ -3,8 +3,6 @@ import styles from './input.module.scss'
 import { clsx } from 'clsx'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '../../../ui/browser/button.tsx'
-import { Input as ShadcnInput } from '../../../ui/browser/input.tsx'
-import { Textarea } from '../../../ui/browser/textarea.tsx'
 import { stopEvent } from '../base/dom.ts'
 import { forwardRef2 } from '../base/react.ts'
 import { isFunction, MAX_I32 } from '../base/trivial.ts'
@@ -171,11 +169,7 @@ export const Input: <Clear extends boolean = false>(props: InputProps<Clear> & R
     }
     sharedProps['aria-label'] = props.ariaLabel
 
-    const input = props.multiline ? (
-      <Textarea ref={ref as React.Ref<HTMLTextAreaElement>} {...(sharedProps as any)} />
-    ) : (
-      <ShadcnInput ref={ref} {...sharedProps} />
-    )
+    const input = props.multiline ? <textarea ref={ref as React.Ref<HTMLTextAreaElement>} {...(sharedProps as any)} /> : <input ref={ref} {...sharedProps} />
 
     useEffect(() => {
       if (wrapperRef.current && props.onResize) {

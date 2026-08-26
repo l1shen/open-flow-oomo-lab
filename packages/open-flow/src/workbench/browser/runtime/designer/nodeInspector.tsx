@@ -10,7 +10,7 @@ import type { TriggerStore } from '../stores/triggerStore.ts'
 import type { ModuleEditorStatus } from '../stores/workspaceModel.ts'
 import type { WorkspaceStore } from '../stores/workspaceStore.ts'
 import type { DiagnosticFocus } from './diagnostics.ts'
-import type { DesignerTarget, TaskSettings } from './flowChanges.ts'
+import type { DesignerTarget, SubflowSettings, TaskSettings } from './flowChanges.ts'
 
 import { useEffect, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
@@ -38,10 +38,10 @@ function json(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
 
-function objectValue(value: string, label: string, t: TFunction): Readonly<Record<string, never>> {
+function arrayValue<Value extends readonly unknown[]>(value: string, label: string, t: TFunction): Value {
   const parsed = JSON.parse(value) as unknown
-  if (parsed == null || typeof parsed != 'object' || Array.isArray(parsed)) throw new TypeError(t('inspector.errors.jsonObject', { label }))
-  return parsed as Readonly<Record<string, never>>
+  if (!Array.isArray(parsed)) throw new TypeError(t('inspector.errors.portDefinitions', { label }))
+  return parsed as unknown as Value
 }
 
 function codeStatusLabel(status: ModuleEditorStatus, t: TFunction): string {
@@ -425,11 +425,11 @@ function TaskDefinition({
                 </Field>
                 <Field>
                   <FieldLabel>{t('inspector.task.inputPorts')}</FieldLabel>
-                  <FieldDescription className="reference-value">{Object.keys(task.inputs).join(', ') || t('common.none')}</FieldDescription>
+                  <FieldDescription className="reference-value">{task.inputs.map((port) => port.handle).join(', ') || t('common.none')}</FieldDescription>
                 </Field>
                 <Field>
                   <FieldLabel>{t('inspector.task.outputPorts')}</FieldLabel>
-                  <FieldDescription className="reference-value">{Object.keys(task.outputs).join(', ') || t('common.none')}</FieldDescription>
+                  <FieldDescription className="reference-value">{task.outputs.map((port) => port.handle).join(', ') || t('common.none')}</FieldDescription>
                 </Field>
               </>
             )}
@@ -475,8 +475,8 @@ function SubflowDefinition({
       onSubmit={(event) => {
         event.preventDefault()
         try {
-          const nextInputs = objectValue(inputs, t('inspector.subflow.inputPorts'), t)
-          const nextOutputs = objectValue(outputs, t('inspector.subflow.outputPorts'), t)
+          const nextInputs = arrayValue<SubflowSettings['inputs']>(inputs, t('inspector.subflow.inputPorts'), t)
+          const nextOutputs = arrayValue<SubflowSettings['outputs']>(outputs, t('inspector.subflow.outputPorts'), t)
           setError(undefined)
           void store.saveSubflowSettings(subflowId, { inputs: nextInputs, name: name.trim(), outputs: nextOutputs })
         } catch (parseError) {

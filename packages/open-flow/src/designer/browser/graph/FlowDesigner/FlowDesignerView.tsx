@@ -13,16 +13,18 @@ import type {
   InputHandleDef,
   NodeId,
   OutputHandleDef,
+  TriggerDescriptor,
   ValueHandleDef,
 } from '../../../../schema/index.ts'
 import type { FlowDisplayMode } from '../../../common/flowDisplay.ts'
 import type { RFHandleName, RFNodeId } from '../../base/rfHelpers.ts'
 import type { IAddNodeMenuItem, IFromSource } from '../../stores/designer/designer.store.ts'
 import type { InteractiveMode } from '../../stores/designer/designer.store.ts'
-import type { DesignerUIStore } from '../../stores/designer/designerUI.store.ts'
+import type { DesignerUILayout, DesignerUIStore } from '../../stores/designer/designerUI.store.ts'
 import type { FlowRunStatus } from '../../stores/designer/typings.ts'
 import type { NodeStatus } from '../../stores/node/constants.ts'
 import type { NodeStore } from '../../stores/node/node.store.ts'
+import type { InlineTask } from '../../stores/node/taskNode.store.ts'
 
 import { dispose } from '@wopjs/disposable'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
@@ -135,6 +137,8 @@ interface FlowDesignerViewNodeBase {
   readonly inputs: readonly FlowDesignerViewInput[]
   readonly outputs: readonly FlowDesignerViewOutput[]
   readonly position: FlowDesignerViewPosition
+  readonly rawIcon?: string
+  readonly rawTitle?: string
   readonly run?: FlowDesignerViewNodeRun
   readonly timeoutSeconds?: number
   readonly title: string
@@ -245,6 +249,7 @@ export type FlowDesignerViewNode =
 type FlowDesignerViewSemanticNode = Exclude<FlowDesignerViewNode, FlowDesignerViewCommentNode>
 
 export interface FlowDesignerViewModel {
+  readonly layouts?: Partial<Record<FlowDisplayMode, DesignerUILayout>>
   readonly nodes: readonly FlowDesignerViewNode[]
   readonly runStatus?: 'idle' | 'running'
   readonly viewport: FlowDesignerViewViewport
@@ -303,6 +308,8 @@ export interface FlowDesignerViewProps {
   readonly onChangeComment?: (nodeId: string, value: { readonly content: string; readonly title: string }) => void
   readonly onChangeCondition?: (nodeId: string, value: FlowDesignerViewConditionChange) => void
   readonly onChangeNodeDescription?: (nodeId: string, description: string | undefined) => void
+  readonly onChangeNodeIcon?: (nodeId: string, icon: string | undefined) => void
+  readonly onChangeNodeTitle?: (nodeId: string, title: string | undefined) => void
   readonly onChangeInput?: (nodeId: string, handle: string, value: unknown) => void
   readonly onChangeTaskPorts?: (nodeId: string, inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]) => void
   readonly onChangeTriggerConfig?: (triggerId: string, name: string, value: unknown | undefined) => void
@@ -311,9 +318,9 @@ export interface FlowDesignerViewProps {
   readonly onChangeValue?: (nodeId: string, values: readonly FlowDesignerViewValue[]) => void
   readonly onDeleteNodes: (nodeIds: readonly string[]) => void
   readonly onDisconnect: (edge: FlowDesignerViewEdge) => void
-  readonly onDuplicate: (nodeIds: readonly string[], offset?: FlowDesignerViewPosition) => void
-  readonly onMoveNodes: (positions: Readonly<Record<string, FlowDesignerViewPosition>>) => void
-  readonly onMoveViewport: (viewport: FlowDesignerViewViewport) => void
+  readonly onDuplicate: (nodeIds: readonly string[], offset?: FlowDesignerViewPosition, positions?: Readonly<Record<string, FlowDesignerViewPosition>>) => void
+  readonly onMoveNodes: (positions: Readonly<Record<string, FlowDesignerViewPosition>>, displayMode: FlowDisplayMode) => void
+  readonly onMoveViewport: (viewport: FlowDesignerViewViewport, displayMode: FlowDisplayMode) => void
   readonly onPaste: (position: FlowDesignerViewPosition) => void
   readonly onSelectionChange: (nodeIds: readonly string[], edge: FlowDesignerViewEdge | undefined) => void
   readonly provideAddItems?: (searchTerm: string, signal: AbortSignal) => Promise<readonly FlowDesignerViewAddItem[] | undefined>
@@ -333,6 +340,8 @@ interface NodeValues {
   readonly outputDefs: Val<OutputHandleDef[]>
   readonly outputsTo: Val<HandleName[]>
   readonly progress: Val<number | undefined>
+  readonly rawIcon: Val<string | undefined>
+  readonly rawTitle: Val<string | undefined>
   readonly reference: Val<string | undefined>
   readonly status: Val<NodeStatus>
   readonly successCount: Val<number | undefined>
@@ -342,6 +351,7 @@ interface NodeValues {
   syncingPorts?: boolean
   triggerPresentation?: Val<FlowDesignerViewTriggerPresentation | undefined>
   syncingInput?: boolean
+  syncingMetadata?: boolean
   syncingValue?: boolean
   valueDefs?: Val<ValueHandleDef[] | undefined>
 }
@@ -369,6 +379,8 @@ interface ViewCallbacks {
   readonly onChangeComment: FlowDesignerViewProps['onChangeComment']
   readonly onChangeCondition: FlowDesignerViewProps['onChangeCondition']
   readonly onChangeNodeDescription: FlowDesignerViewProps['onChangeNodeDescription']
+  readonly onChangeNodeIcon: FlowDesignerViewProps['onChangeNodeIcon']
+  readonly onChangeNodeTitle: FlowDesignerViewProps['onChangeNodeTitle']
   readonly onChangeInput: FlowDesignerViewProps['onChangeInput']
   readonly onChangeTaskPorts: FlowDesignerViewProps['onChangeTaskPorts']
   readonly onChangeTriggerConfig: FlowDesignerViewProps['onChangeTriggerConfig']
@@ -408,7 +420,7 @@ class FlowDesignerViewAdapter {
     const designerUIStore = new DesignerUIStoreImpl({ commentNodeStores: commentNodes, viewport, nodeStores: nodes })
     this.store = new FlowDesignerStore({
       readonly: !editable,
-      displayMode: val<FlowDisplayMode>('overview'),
+      displayMode: val<FlowDisplayMode>('detail'),
       lang$: this.#language,
       rfCommand: createRFCommand(nodes),
       designerUIStore,
@@ -474,7 +486,15 @@ class FlowDesignerViewAdapter {
           this.#disconnectTimer = setTimeout(() => this.#flushDisconnects(), 0)
         }
       },
-      onDuplicate: async (nodeIds, offset) => this.#callbacks.onDuplicate(nodeIds, offset),
+      onDuplicate: async (nodeIds, offset) => {
+        const positions = Object.fromEntries(
+          nodeIds.flatMap((nodeId) => {
+            const node = this.store.$.nodes.get(nodeId) ?? this.store.$.commentNodes?.get(nodeId)
+            return node == null ? [] : [[nodeId, node.$.position.value] as const]
+          }),
+        )
+        this.#callbacks.onDuplicate(nodeIds, offset, positions)
+      },
       onPaste: (position) => this.#callbacks.onPaste(position),
       provideAddNodeMenuItems: (fromSource) => this.#menuItems(fromSource),
       provideAsyncAddNodeMenuItems: async (fromSource, searchTerm, signal) => {
@@ -486,7 +506,8 @@ class FlowDesignerViewAdapter {
     this.store.dispose.add(commentNodes)
     this.store.dispose.add(this.#language)
     this.#syncModel(model)
-    designerUIStore.completeActiveLayout()
+    designerUIStore.loadDesignerUIData({ layouts: model.layouts }, 'detail')
+    this.store.switchDisplayMode('overview')
   }
 
   dispose(): void {
@@ -868,6 +889,8 @@ function createNodeEntry(
     outputDefs: val(outputDefs(node)),
     outputsTo: val([...connected]),
     progress: val(node.run?.progress),
+    rawIcon: val(node.rawIcon),
+    rawTitle: val(node.rawTitle),
     reference: val(node.kind == 'task' || node.kind == 'subflow' ? node.reference : undefined),
     status: val<NodeStatus>(node.run?.status ?? NODE_STATUS.Idle),
     successCount: val(node.run?.successCount),
@@ -900,11 +923,23 @@ function createNodeEntry(
   )
   const diagnosticSection = createDiagnosticSection(values.diagnostics)
   const duplicateNode = (offset?: FlowDesignerViewPosition) => designerStore.onDuplicate?.([node.id as NodeId], offset)
+  const manifest$ = { description: values.description, icon: values.rawIcon, title: values.rawTitle }
+  const metadataDisposables = [
+    values.description.reaction((description) => {
+      if (!values.syncingMetadata && designerStore.$.editable.value) callbacks.onChangeNodeDescription?.(node.id, description)
+    }),
+    values.rawIcon.reaction((icon) => {
+      if (!values.syncingMetadata && designerStore.$.editable.value) callbacks.onChangeNodeIcon?.(node.id, icon)
+    }),
+    values.rawTitle.reaction((title) => {
+      if (!values.syncingMetadata && designerStore.$.editable.value) callbacks.onChangeNodeTitle?.(node.id, title)
+    }),
+  ]
   const changeDescription =
     callbacks.onChangeNodeDescription == null
       ? undefined
       : (description: string | undefined) => {
-          if (designerStore.$.editable.value) callbacks.onChangeNodeDescription?.(node.id, description)
+          if (designerStore.$.editable.value) values.description.set(description)
         }
   const commonDisplay = {
     icon: values.icon,
@@ -946,6 +981,7 @@ function createNodeEntry(
         display$: { ...commonDisplay, sections: val([inputSection, conditionsSection, diagnosticSection]) },
         designerUIStore,
         duplicateNode,
+        manifest$,
       })
       store.dispose.add(values.conditionCases.reaction(notifyChange, true))
       store.dispose.add(values.defaultCondition.reaction(notifyChange, true))
@@ -970,6 +1006,7 @@ function createNodeEntry(
         },
         designerUIStore,
         duplicateNode,
+        manifest$,
       })
       break
     }
@@ -992,6 +1029,7 @@ function createNodeEntry(
         },
         designerUIStore,
         duplicateNode,
+        manifest$: { ...manifest$, task: val<string | InlineTask | undefined>(node.reference) },
       })
       if (node.editablePorts) {
         const changePorts = () => {
@@ -1042,6 +1080,7 @@ function createNodeEntry(
           trigger: val(undefined),
         },
         designerUIStore,
+        manifest$: { ...manifest$, trigger: val<TriggerDescriptor | undefined>(undefined) },
       })
       break
     }
@@ -1065,6 +1104,7 @@ function createNodeEntry(
         },
         designerUIStore,
         duplicateNode,
+        manifest$,
       })
       store.dispose.add(
         valueSection.$.valueHandleDefs.reaction((nextDefs) => {
@@ -1089,6 +1129,7 @@ function createNodeEntry(
       break
     }
   }
+  store.dispose.add(metadataDisposables)
   store.dispose.add(values.outputsTo)
   return { contentKey, editable: designerStore.$.editable.value, kind: node.kind, store, values }
 }
@@ -1100,11 +1141,14 @@ function updateNodeEntry(
   contentKey: string,
 ): SemanticNodeEntry {
   if (node.kind == 'condition') entry.values.syncingCondition = true
+  entry.values.syncingMetadata = true
   entry.values.description.set(node.description)
   entry.values.diagnostics.set((node.diagnostics ?? 0) > 0)
   entry.values.concurrency.set(node.concurrency)
   entry.values.executorName.set(node.kind == 'task' ? node.executorName : undefined)
   entry.values.icon.set(node.icon)
+  entry.values.rawIcon.set(node.rawIcon)
+  entry.values.rawTitle.set(node.rawTitle)
   const nextInputDefs = inputDefs(node)
   const nextOutputDefs = outputDefs(node)
   entry.values.syncingPorts = true
@@ -1121,6 +1165,7 @@ function updateNodeEntry(
   entry.values.successCount.set(node.run?.successCount)
   entry.values.timeout.set(node.timeoutSeconds)
   entry.values.title.set(node.title)
+  entry.values.syncingMetadata = false
   if (node.kind == 'condition') {
     entry.values.conditionCases!.set(conditionCases(node))
     entry.values.defaultCondition!.set(node.defaultOutput == null ? undefined : { handle: node.defaultOutput as HandleName })
@@ -1151,6 +1196,8 @@ function callbacksFromProps(props: FlowDesignerViewProps): ViewCallbacks {
     onChangeComment: props.onChangeComment,
     onChangeCondition: props.onChangeCondition,
     onChangeNodeDescription: props.onChangeNodeDescription,
+    onChangeNodeIcon: props.onChangeNodeIcon,
+    onChangeNodeTitle: props.onChangeNodeTitle,
     onChangeInput: props.onChangeInput,
     onChangeTaskPorts: props.onChangeTaskPorts,
     onChangeTriggerConfig: props.onChangeTriggerConfig,
@@ -1174,18 +1221,22 @@ export function FlowDesignerView(props: FlowDesignerViewProps): ReactElement {
   const propsRef = useRef(props)
   propsRef.current = props
 
-  const onMoveEnd = useCallback<OnMoveEnd>((_, viewport) => propsRef.current.onMoveViewport(viewport), [])
-  const onNodeDragStop = useCallback<OnNodeDrag<RFNode<any>>>((_, node, nodes) => {
-    const moved = nodes.length > 0 ? nodes : [node]
-    propsRef.current.onMoveNodes(
-      Object.fromEntries(
-        moved.flatMap((item) => {
-          const store = item.data?.store as NodeStore | CommentNodeStore | undefined
-          return store == null ? [] : [[store.nodeId, item.position]]
-        }),
-      ),
-    )
-  }, [])
+  const onMoveEnd = useCallback<OnMoveEnd>((_, viewport) => propsRef.current.onMoveViewport(viewport, adapter.store.$.displayMode.value), [adapter])
+  const onNodeDragStop = useCallback<OnNodeDrag<RFNode<any>>>(
+    (_, node, nodes) => {
+      const moved = nodes.length > 0 ? nodes : [node]
+      propsRef.current.onMoveNodes(
+        Object.fromEntries(
+          moved.flatMap((item) => {
+            const store = item.data?.store as NodeStore | CommentNodeStore | undefined
+            return store == null ? [] : [[store.nodeId, item.position]]
+          }),
+        ),
+        adapter.store.$.displayMode.value,
+      )
+    },
+    [adapter],
+  )
   const onSelectionChange = useCallback<OnSelectionChangeFunc<RFNode<any>, RFEdge<any>>>(({ edges, nodes }) => {
     const nodeIds = nodes.flatMap((node) => {
       const store = node.data?.store as NodeStore | CommentNodeStore | undefined

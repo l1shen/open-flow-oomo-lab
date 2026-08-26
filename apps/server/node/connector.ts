@@ -30,12 +30,14 @@ export interface ConnectorHost {
   searchActions(query: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]>
 }
 
+export type ConnectorErrorCode = 'connector.action-not-found' | 'connector.connection-required' | 'connector.unavailable'
+
 export class ConnectorTaskError extends Error {
-  constructor(
-    readonly code: 'connector.action-not-found' | 'connector.connection-required' | 'connector.unavailable',
-    message: string,
-  ) {
+  readonly code: ConnectorErrorCode
+
+  constructor(code: ConnectorErrorCode, message: string) {
     super(message)
+    this.code = code
     this.name = 'ConnectorTaskError'
   }
 }
@@ -52,7 +54,6 @@ export class ConnectorClient implements ConnectorHost {
     if (url.username != '' || url.password != '' || url.search != '' || url.hash != '') {
       throw new Error('Connector origin must not contain credentials, a query, or a fragment.')
     }
-    if (token == '') throw new Error('Connector token must not be empty.')
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error('Connector timeout must be a positive integer.')
     url.pathname = `${url.pathname.replace(/\/+$/, '')}/`
     this.#logger = logger.child({ component: 'connector' })
@@ -247,7 +248,7 @@ export class ConnectorClient implements ConnectorHost {
       const response = await fetch(new URL(path, this.#origin), {
         ...init,
         headers: {
-          authorization: `Bearer ${this.#token}`,
+          ...(this.#token == '' ? {} : { authorization: `Bearer ${this.#token}` }),
           ...init.headers,
         },
         redirect: 'error',
@@ -363,8 +364,9 @@ function runtimeList<Value>(value: unknown, decode: (value: unknown) => Value): 
 function runtimeProvider(value: unknown): ConnectorProvider {
   const source = record(value) ? value : undefined
   if (source == null) throw unavailable()
-  exact(source, ['authTypes', 'categories', 'displayName', 'homepageUrl', 'iconUrl', 'service'])
+  exact(source, ['authTypes', 'categories', 'displayName', 'homepageUrl', 'iconUrl', 'scenario', 'service'])
   strings(source.authTypes)
+  string(source.scenario)
   if (!Array.isArray(source.categories)) throw unavailable()
   for (const category of source.categories) {
     if (!record(category)) throw unavailable()

@@ -1,10 +1,11 @@
 import styles from './cascade.module.scss'
-import type { DesignerOptionGroup as IBasicGroup, DesignerOption as IBasicOption } from './select.tsx'
+import type { DesignerOption, DesignerOptionGroup } from './select.tsx'
 
 import { clsx } from 'clsx'
 import { useImperativeHandle, useMemo, useRef } from 'react'
 import { useTranslate } from 'val-i18n-react'
 import { forwardRef2 } from '../base/react.ts'
+import { useGetStaticPopupContainer } from '../graph/ReactFlowContainer/useGetPopupContainer.ts'
 import { defaultTooltipClassName } from './label.tsx'
 import { DesignerCombobox as Select } from './select.tsx'
 import { DesignerTooltip } from './tooltip.tsx'
@@ -38,11 +39,11 @@ export interface CascadeProps<Option extends BaseCascadeOption = BaseCascadeOpti
   notFoundContent?: React.ReactNode
 }
 
-interface CascadeChoice extends IBasicOption {
+interface CascadeChoice extends DesignerOption {
   readonly path: string[]
 }
 
-function toChoices(options: readonly BaseCascadeOption[] | undefined): IBasicGroup<CascadeChoice>[] {
+function toChoices(options: readonly BaseCascadeOption[] | undefined): DesignerOptionGroup<CascadeChoice>[] {
   return (options || []).map((option, index) => ({
     icon: option.icon,
     label: option.label || option.value || `option-${index}`,
@@ -59,6 +60,7 @@ function toChoices(options: readonly BaseCascadeOption[] | undefined): IBasicGro
 export const Cascade: (props: CascadeProps<BaseCascadeOption> & React.RefAttributes<CascadeRef>) => React.ReactElement | null = /*#__PURE__*/ forwardRef2(
   function Cascade(props: CascadeProps, ref?: React.ForwardedRef<CascadeRef>) {
     const t = useTranslate()
+    const getPopupContainer = useGetStaticPopupContainer()
     const inputRef = useRef<HTMLInputElement>(null)
     const choices = useMemo(() => toChoices(props.options), [props.options])
     const findChoice = (path: string[] | undefined) =>
@@ -69,14 +71,21 @@ export const Cascade: (props: CascadeProps<BaseCascadeOption> & React.RefAttribu
     useImperativeHandle(ref, () => ({ blur: () => inputRef.current?.blur(), focus: () => inputRef.current?.focus() }), [])
 
     const cascade = (
-      <div className={clsx(styles.wrapper, props.isSuffix && styles.isSuffix, props.warning && styles.warning, props.className)}>
+      <div
+        className={clsx(
+          styles.wrapper,
+          props.loading && styles.loadingState,
+          props.isSuffix && styles.isSuffix,
+          props.warning && styles.warning,
+          props.className,
+        )}
+      >
         {props.loading && <i aria-label={t('components.loading')} className={clsx(styles.loading, 'i-codicon:loading', 'oo-designer-spin')} />}
         <Select<CascadeChoice>
           ref={inputRef}
           defaultValue={defaultValue}
           disabled={props.disabled}
           isClearable
-          isSuffix={props.isSuffix}
           onChange={(choice) => {
             if (choice) {
               props.onChange?.(choice.path)
@@ -94,7 +103,7 @@ export const Cascade: (props: CascadeProps<BaseCascadeOption> & React.RefAttribu
     )
 
     return props.warning ? (
-      <DesignerTooltip className={defaultTooltipClassName} placement="top" title={props.warning}>
+      <DesignerTooltip className={defaultTooltipClassName} getPopupContainer={getPopupContainer} placement="top" title={props.warning}>
         {cascade}
       </DesignerTooltip>
     ) : (

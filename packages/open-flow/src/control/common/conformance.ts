@@ -82,7 +82,7 @@ function addValueNode(harness: ControlApiConformanceHarness, flowId: string, rev
         concurrency: 1,
         inputs: {},
         kind: 'value',
-        values: { ready: { jsonSchema: { type: 'boolean' }, nullable: false, value: true } },
+        values: [{ handle: 'ready', jsonSchema: { type: 'boolean' }, nullable: false, value: true }],
       },
       nodeId,
       target: { kind: 'flow' },

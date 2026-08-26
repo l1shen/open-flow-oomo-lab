@@ -22,7 +22,8 @@ Presentation、Publication、Live、Run 和 Trigger binding。
 Flow 有一个可变 Draft head 和不可变的 Revision 历史。Revision 是该 Flow 的 graph、Subflow、Task、binding 和 CodeModule source 的完整事实来源；
 语义修改必须以预期 Revision 为前提原子提交，不能静默覆盖 stale head。内部索引、缓存、增量记录和存储布局不能成为第二个事实来源。
 
-Presentation 独立保存布局、viewport 和 Comment 等展示状态，不进入 Revision digest，也不影响 validation、Run、Publication 或 Live。
+Presentation 独立保存布局、viewport 和 Comment 等展示状态；Flow 的 overview 和 detail 模式分别拥有自己的布局和 viewport。Presentation
+不进入 Revision digest，也不影响 validation、Run、Publication 或 Live。
 Revision 不保存 credential、Run、Engine IR、Provider 状态或部署缓存。
 
 旧 Project schema、Project API 和 Project 数据不属于当前产品合同。部署发现旧的未发布 schema 时直接重建当前 Flow schema，不迁移或保留旧

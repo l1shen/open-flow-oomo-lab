@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConditionsSectionStore } from '../../stores/node/nodeSection/conditionsSection.store.ts'
 import { InputSectionStore } from '../../stores/node/nodeSection/inputSection.store.ts'
 import { OutputSectionStore } from '../../stores/node/nodeSection/outputSection.store.ts'
+import { HandleRowStore } from '../../stores/nodeHandle/handleRow.store.ts'
 import { FlowDesignerView } from './FlowDesignerView.tsx'
 
 const hooks = vi.hoisted(() => ({
@@ -210,6 +211,53 @@ describe('FlowDesignerView model synchronization', () => {
     view.props.flowDesignerStore.dispose()
   })
 
+  it('persists inline code Task schema changes', async () => {
+    const onChangeTaskPorts = vi.fn()
+    const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }
+    const view = FlowDesignerView(props(model([editable]), { onChangeTaskPorts })) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    const inputSection = node.findSection<InputSectionStore>(InputSectionStore.TYPE)!
+    const row = inputSection.$.handles.value.find(HandleRowStore.is)
+
+    row?.schema$.set({ type: 'number' })
+    await Promise.resolve()
+
+    expect(onChangeTaskPorts).toHaveBeenLastCalledWith(
+      'target',
+      [expect.objectContaining({ handle: 'value', jsonSchema: { type: 'number' } })],
+      [expect.objectContaining({ handle: 'result' })],
+    )
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('duplicates from the current Designer position', async () => {
+    const onDuplicate = vi.fn()
+    const editable = { ...task([]), editablePorts: true }
+    const view = FlowDesignerView(props(model([editable]), { onDuplicate })) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    node.$$.position.set({ x: 320, y: 180 })
+
+    await node.duplicateNode?.()
+
+    expect(onDuplicate).toHaveBeenCalledWith(['target'], undefined, { target: { x: 320, y: 180 } })
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('forwards inline node title and icon changes', async () => {
+    const onChangeNodeIcon = vi.fn()
+    const onChangeNodeTitle = vi.fn()
+    const view = FlowDesignerView(props(model([task([])]), { onChangeNodeIcon, onChangeNodeTitle })) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+
+    node.manifest$!.title.set('Renamed task')
+    node.manifest$!.icon.set(':carbon:star:')
+    await Promise.resolve()
+
+    expect(onChangeNodeTitle).toHaveBeenCalledWith('target', 'Renamed task')
+    expect(onChangeNodeIcon).toHaveBeenCalledWith('target', ':carbon:star:')
+    view.props.flowDesignerStore.dispose()
+  })
+
   it('restores editable handle controls when a read-only view becomes editable', () => {
     const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }
     const store = update(props(model([editable]), { editable: false }), props(model([editable]), { editable: true }))
@@ -385,5 +433,28 @@ describe('FlowDesignerView model synchronization', () => {
 
     expect(view.props.flowDesignerStore.$.displayMode.value).toBe('overview')
     view.props.flowDesignerStore.dispose()
+  })
+
+  it('keeps the persisted detail viewport when overview has no saved layout', async () => {
+    const value: FlowDesignerViewModel = {
+      layouts: {
+        detail: {
+          viewport: { x: 10, y: 20, zoom: 0.8 },
+        },
+      },
+      nodes: [task([])],
+      viewport: { x: 10, y: 20, zoom: 0.8 },
+    }
+    const view = FlowDesignerView(props(value)) as React.ReactElement<FlowDesignerProps>
+    const store = view.props.flowDesignerStore
+
+    expect(store.completeDisplayModeLayout()).toBe(false)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    store.$$.viewport.set({ x: 30, y: 40, zoom: 1.2 })
+    store.$$.displayMode.set('detail')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(store.$.viewport.value).toEqual({ x: 10, y: 20, zoom: 0.8 })
+    store.dispose()
   })
 })

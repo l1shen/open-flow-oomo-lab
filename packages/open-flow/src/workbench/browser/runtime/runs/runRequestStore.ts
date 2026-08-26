@@ -8,6 +8,7 @@ import type { SetNotice } from '../stores/workbenchNotice.ts'
 import type { RunStore } from './runStore.ts'
 
 import { compute, derive, val } from 'value-enhancer'
+import { portsByHandle } from '../../../../flow/common/change.ts'
 import { createI18n } from '../i18n.ts'
 import { revisionView } from '../revisionView.ts'
 import { Latest } from '../stores/latest.ts'
@@ -55,9 +56,9 @@ function inputPorts(node: ResolvedNode): Readonly<Record<string, InputPortDefini
     case 'condition':
       return { [node.node.input.handle]: node.node.input }
     case 'subflow':
-      return node.definition?.inputs ?? {}
+      return portsByHandle(node.definition?.inputs ?? [])
     case 'task':
-      return node.definition?.inputs ?? {}
+      return portsByHandle(node.definition?.inputs ?? [])
     case 'value':
       return {}
   }

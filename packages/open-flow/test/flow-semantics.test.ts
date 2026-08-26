@@ -12,7 +12,7 @@ function revision(source: string, imports: readonly string[] = [], modules: Revi
       bindings: {},
       graph: {
         nodes: {
-          task: { concurrency: 1, inputs: {}, kind: 'task', task: { inputs: {}, moduleId: 'module-main', name: 'Main', outputs: {} } },
+          task: { concurrency: 1, inputs: {}, kind: 'task', task: { inputs: [], moduleId: 'module-main', name: 'Main', outputs: [] } },
         },
       },
       subflows: {},

@@ -129,8 +129,8 @@ function Configs() {
         />
       )}
       {showRunningConfig && runningExpanded && <RunningConfigs />}
-      {taskNodeStore && (inlineTask ? <InlineTaskConfigs {...inlineTask} /> : <TaskConfigs task={task as string | null} />)}
-      {subflowNodeStore && <SubflowConfigs subflow={subflow} subflowNodeStore={subflowNodeStore} />}
+      {taskNodeStore && (inlineTask ? <InlineTaskConfigs {...inlineTask} /> : taskNodeStore.openBlockDesigner && <TaskConfigs task={task as string | null} />)}
+      {subflowNodeStore?.openBlockDesigner && <SubflowConfigs subflow={subflow} subflowNodeStore={subflowNodeStore} />}
     </>
   )
 }
@@ -228,6 +228,7 @@ function MetadataConfigs() {
   const nodeStore = NodeStore.to(useNodeStore())!
   const taskNodeStore = toTaskNodeStore(nodeStore)
   const designerStore = useDesignerStore()
+  const canRenameNode = designerStore.onRenameNodeId != null
   const editable = useVal(designerStore.$.editable)
   const subflowViewMode = useSubflowViewMode()
   const isSharedBlock = BlockDesignerStore.is(designerStore) || (SubflowDesignerStore.is(designerStore) && subflowViewMode === SUBFLOW_VIEW_MODE.Block)
@@ -284,16 +285,18 @@ function MetadataConfigs() {
           )
         }
       />
-      <HandleRow
-        level=" "
-        isLast={false}
-        name={
-          <Label className={styles.label} tooltipClassName={styles.labelTooltip} title={toTrue(!isSharedBlock) && 'node_id'}>
-            {isSharedBlock ? t('blockEditor.folder') : t('flowEditor.node.id')}
-          </Label>
-        }
-        value={<NodeIdOrDirRenameInput />}
-      />
+      {(isSharedBlock || canRenameNode) && (
+        <HandleRow
+          level=" "
+          isLast={false}
+          name={
+            <Label className={styles.label} tooltipClassName={styles.labelTooltip} title={toTrue(!isSharedBlock) && 'node_id'}>
+              {isSharedBlock ? t('blockEditor.folder') : t('flowEditor.node.id')}
+            </Label>
+          }
+          value={<NodeIdOrDirRenameInput />}
+        />
+      )}
       {isSharedBlock && nodeStore.manifest$?.private && (
         <HandleRow
           level=" "

@@ -2,6 +2,7 @@ import styles from './dateTimePicker.module.scss'
 import type { JSX } from 'react/jsx-runtime'
 
 import { clsx } from 'clsx'
+import { useState } from 'react'
 import { Button } from '../../../ui/browser/button.tsx'
 import { Input } from '../../../ui/browser/input.tsx'
 
@@ -11,58 +12,58 @@ export interface DateTimePickerProps {
   showDate?: boolean
   showTime?: boolean
   defaultValue?: Date
-  value?: Date
+  value?: Date | null
   isClearable?: boolean
   onChange?: (value: Date | null) => void
   disabled?: boolean
   isSuffix?: boolean
 }
 
-function pad(value: number): string {
-  return String(value).padStart(2, '0')
-}
-
-function formatValue(value: Date | undefined, showDate: boolean, showTime: boolean): string {
-  if (!value) return ''
-  const date = `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
-  const time = `${pad(value.getHours())}:${pad(value.getMinutes())}`
-  if (showDate && showTime) return `${date}T${time}`
-  return showDate ? date : time
-}
-
-function parseValue(value: string, previous: Date | undefined, showDate: boolean, showTime: boolean): Date | null {
-  if (!value) return null
-  if (showDate && showTime) return new Date(value)
-  if (showDate) return new Date(`${value}T00:00`)
-
-  const [hours, minutes] = value.split(':').map(Number)
-  const date = previous ? new Date(previous) : new Date()
-  date.setHours(hours || 0, minutes || 0, 0, 0)
-  return date
-}
-
 export function DateTimePicker(props: DateTimePickerProps): JSX.Element {
   const showDate = props.showDate ?? true
   const showTime = props.showTime ?? false
-  const type = showDate ? (showTime ? 'datetime-local' : 'date') : 'time'
-  const value = formatValue(props.value, showDate, showTime)
-  const defaultValue = formatValue(props.defaultValue, showDate, showTime)
-  const valueProps = props.value === undefined ? { defaultValue } : { value }
+  const [uncontrolledValue, setUncontrolledValue] = useState<Date | null>(props.defaultValue ?? null)
+  const selected = props.value === undefined ? uncontrolledValue : props.value
+  const onChange = (value: Date | null) => {
+    if (props.value === undefined) setUncontrolledValue(value)
+    props.onChange?.(value)
+  }
 
   return (
     <div className={clsx(styles.wrapper, props.isSuffix && styles.isSuffix, props.className)} style={props.style}>
       <Input
         className={styles.input}
         disabled={props.disabled}
-        onChange={(event) => props.onChange?.(parseValue(event.target.value, props.value, showDate, showTime))}
-        type={type}
-        {...valueProps}
+        onChange={(event) => onChange(parseValue(event.target.value, showDate, showTime, selected))}
+        step={showTime ? 60 : undefined}
+        type={showDate ? (showTime ? 'datetime-local' : 'date') : 'time'}
+        value={formatValue(selected, showDate, showTime)}
       />
-      {props.isClearable && value && !props.disabled && (
-        <Button aria-label="Clear date and time" className={styles.clear} onClick={() => props.onChange?.(null)} size="icon-xs" type="button" variant="ghost">
+      {props.isClearable && selected && !props.disabled && (
+        <Button aria-label="Clear date and time" className={styles.clear} onClick={() => onChange(null)} size="icon-xs" type="button" variant="ghost">
           <i className="i-codicon:close" />
         </Button>
       )}
     </div>
   )
+}
+
+function formatValue(value: Date | null, showDate: boolean, showTime: boolean): string {
+  if (!value) return ''
+  const date = `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+  const time = `${pad(value.getHours())}:${pad(value.getMinutes())}`
+  return showDate ? (showTime ? `${date}T${time}` : date) : time
+}
+
+function parseValue(value: string, showDate: boolean, showTime: boolean, previous: Date | null): Date | null {
+  if (!value) return null
+  if (showDate) return new Date(showTime ? value : `${value}T00:00`)
+  const [hours = 0, minutes = 0] = value.split(':').map(Number)
+  const date = previous ? new Date(previous) : new Date()
+  date.setHours(hours, minutes, 0, 0)
+  return date
+}
+
+function pad(value: number): string {
+  return String(value).padStart(2, '0')
 }

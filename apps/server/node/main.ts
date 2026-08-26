@@ -53,10 +53,10 @@ async function main(): Promise<void> {
   const connectorOrigin = process.env.OPEN_FLOW_CONNECTOR_ORIGIN
   const connectorToken = process.env.OPEN_FLOW_CONNECTOR_TOKEN
   const connectorConsoleOrigin = process.env.OPEN_FLOW_CONNECTOR_CONSOLE_ORIGIN
-  if ((connectorOrigin == null) != (connectorToken == null)) {
-    throw new Error('OPEN_FLOW_CONNECTOR_ORIGIN and OPEN_FLOW_CONNECTOR_TOKEN must be configured together.')
+  if (connectorOrigin == null && connectorToken != null) {
+    throw new Error('OPEN_FLOW_CONNECTOR_TOKEN requires OPEN_FLOW_CONNECTOR_ORIGIN.')
   }
-  const connector = connectorOrigin == null || connectorToken == null ? undefined : new ConnectorClient(connectorOrigin, connectorToken, 30_000, logger)
+  const connector = connectorOrigin == null ? undefined : new ConnectorClient(connectorOrigin, connectorToken ?? '', 30_000, logger)
 
   const integrationPublicOrigin = process.env.OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN
   const integrationCallbackKey = process.env.OPEN_FLOW_INTEGRATION_CALLBACK_KEY

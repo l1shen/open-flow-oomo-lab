@@ -444,8 +444,12 @@ export async function applyFlowCommand(client: ControlClient, flow: Flow, operan
               node.name,
               { imports: await moduleImports(code), source: code },
               {
-                inputs: node.inputs ?? { value: { jsonSchema: {}, nullable: true, value: null } },
-                outputs: node.outputs ?? { result: { jsonSchema: {}, nullable: true } },
+                inputs: Object.entries(node.inputs ?? { value: { jsonSchema: {}, nullable: true, value: null } }).map(([handle, port]) =>
+                  Object.assign({ handle }, port),
+                ),
+                outputs: Object.entries(node.outputs ?? { result: { jsonSchema: {}, nullable: true } }).map(([handle, port]) =>
+                  Object.assign({ handle }, port),
+                ),
               },
             ),
           }
@@ -474,7 +478,7 @@ export async function applyFlowCommand(client: ControlClient, flow: Flow, operan
               },
               inputs: withInputValues(action, node.inputs),
               name,
-              outputs: action.outputs,
+              outputs: Object.entries(action.outputs).map(([handle, port]) => Object.assign({ handle }, port)),
             }),
           }
         }

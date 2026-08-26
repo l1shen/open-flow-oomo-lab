@@ -65,10 +65,10 @@ function revision(config: Readonly<Record<string, JsonValue>>, connectionId: str
                 inputs: { event: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'poll', output: 'payload' }] } },
                 kind: 'task',
                 task: {
-                  inputs: { event: { jsonSchema: snapshot.payloadSchema, nullable: false } },
+                  inputs: [{ handle: 'event', jsonSchema: snapshot.payloadSchema, nullable: false }],
                   moduleId: 'module-main',
                   name: 'Main',
-                  outputs: {},
+                  outputs: [],
                 },
               },
             }

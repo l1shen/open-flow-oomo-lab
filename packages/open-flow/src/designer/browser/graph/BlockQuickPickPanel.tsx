@@ -275,7 +275,7 @@ function BlockPickerMenu({
           return handles?.length ? (
             <DropdownMenuSub key={`choice:${index}`}>
               <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent container={container}>
+              <DropdownMenuSubContent className={styles.menu} container={container}>
                 <DropdownMenuGroup>
                   <HandleMenuItems handles={handles} onClick={(handle) => onClick?.(choice.data, handle)} />
                 </DropdownMenuGroup>

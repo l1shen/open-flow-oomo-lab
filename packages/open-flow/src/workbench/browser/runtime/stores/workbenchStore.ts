@@ -205,7 +205,9 @@ export class WorkbenchStore {
   }
 
   public selectNodes(nodeIds: readonly string[]): void {
+    const previous = this.workspace.$.selectedNodeIds.value
     if (this.workspace.selectNodes(nodeIds)) {
+      if (previous === this.workspace.$.selectedNodeIds.value) return
       void this.connectors.refresh()
       void this.triggers.refresh()
     }

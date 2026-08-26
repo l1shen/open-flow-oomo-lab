@@ -44,9 +44,9 @@ function connectorFlow(timeoutMs?: number): RevisionContent {
       tasks: {
         connector: {
           executor: { action: 'example.echo', connectionId: 'connection-work', kind: 'connector' },
-          inputs: { message: port },
+          inputs: [{ ...port, handle: 'message' }],
           name: 'Echo',
-          outputs: { message: port },
+          outputs: [{ ...port, handle: 'message' }],
         },
       },
     },
@@ -70,10 +70,10 @@ function capabilityFlow(
             kind: 'task',
             task: {
               ...(declared ? { capabilities: [{ action: 'example.echo', connectionId: 'connection-work', kind: 'connector' as const }] } : {}),
-              inputs: { message: port },
+              inputs: [{ ...port, handle: 'message' }],
               moduleId: 'capability',
               name: 'Capability',
-              outputs: { message: port },
+              outputs: [{ ...port, handle: 'message' }],
             },
           },
         },

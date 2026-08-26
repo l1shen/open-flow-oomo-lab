@@ -25,7 +25,7 @@ function revision(reverse = false): RevisionContent {
       inputs: { value: { kind: 'sources' as const, sources: [{ kind: 'node' as const, nodeId: 'value', output: 'value' }] } },
       kind: 'condition' as const,
     },
-    value: { concurrency: 1, inputs: {}, kind: 'value' as const, values: { value: { ...port, value: 12 } } },
+    value: { concurrency: 1, inputs: {}, kind: 'value' as const, values: [{ ...port, handle: 'value', value: 12 }] },
   }
   const modules = {
     helper: { imports: [], name: 'Helper', source: 'export const value = 1' },
@@ -38,13 +38,18 @@ function revision(reverse = false): RevisionContent {
       subflows: {
         child: {
           graph: { nodes: {} },
-          inputs: { input: port },
+          inputs: [{ ...port, handle: 'input' }],
           name: 'Child',
-          outputs: { output: { ...port, sources: [{ input: 'input', kind: 'flow' }] } },
+          outputs: [{ ...port, handle: 'output', sources: [{ input: 'input', kind: 'flow' }] }],
         },
       },
       tasks: {
-        managed: { executor: { kind: 'llm', mode: 'json' }, inputs: { prompt: { jsonSchema: { type: 'string' }, nullable: false } }, name: 'LLM', outputs: {} },
+        managed: {
+          executor: { kind: 'llm', mode: 'json' },
+          inputs: [{ handle: 'prompt', jsonSchema: { type: 'string' }, nullable: false }],
+          name: 'LLM',
+          outputs: [],
+        },
       },
     },
     modelVersion: 1,
@@ -96,16 +101,89 @@ describe('Flow Revision encoding', () => {
       modules: { helper: { imports: [] }, main: { imports: ['helper'] } },
       version: 1,
     })
-    await expect(digestBytes(first)).resolves.toBe('sha256:76e065ba87fb8f0d7666f61f0b9989cf36f750f0867a6dc2b3e51d632134b008')
+    await expect(digestBytes(first)).resolves.toBe('sha256:95e4f26000c7efc9180f940f50cc5c2c9bcd8cd9bab9bbb2f40b67a6c64f3b06')
   })
 
   it('changes the encoded Revision when workflow semantics change', () => {
     const source = revision()
     const changed: RevisionContent = {
       ...source,
-      document: { ...source.document, graph: { nodes: { ...source.document.graph.nodes, added: { concurrency: 1, inputs: {}, kind: 'value', values: {} } } } },
+      document: { ...source.document, graph: { nodes: { ...source.document.graph.nodes, added: { concurrency: 1, inputs: {}, kind: 'value', values: [] } } } },
     }
 
     expect(encodeRevision(changed)).not.toEqual(encodeRevision(source))
+  })
+
+  it('encodes custom node icons', () => {
+    const source = revision()
+    const value = source.document.graph.nodes.value!
+    if (value.kind != 'value') throw new Error('Expected a Value node.')
+    const changed: RevisionContent = {
+      ...source,
+      document: {
+        ...source.document,
+        graph: { nodes: { ...source.document.graph.nodes, value: { ...value, icon: ':carbon:star:' } } },
+      },
+    }
+
+    expect(JSON.parse(decoder.decode(encodeRevision(changed)))).toMatchObject({
+      document: { graph: { nodes: { value: { icon: ':carbon:star:' } } } },
+    })
+  })
+
+  it('preserves Task port order', () => {
+    const source = revision()
+    const managed = source.document.tasks.managed!
+    const changed: RevisionContent = {
+      ...source,
+      document: {
+        ...source.document,
+        tasks: {
+          managed: {
+            ...managed,
+            inputs: [
+              { ...port, handle: 'value' },
+              { ...port, handle: 'input' },
+            ],
+            outputs: [
+              { ...port, handle: 'result' },
+              { ...port, handle: 'detail' },
+            ],
+          },
+        },
+      },
+    }
+
+    expect(JSON.parse(decoder.decode(encodeRevision(changed)))).toMatchObject({
+      document: { tasks: { managed: { inputs: [{ handle: 'value' }, { handle: 'input' }], outputs: [{ handle: 'result' }, { handle: 'detail' }] } } },
+    })
+  })
+
+  it('preserves Value port order', () => {
+    const source = revision()
+    const value = source.document.graph.nodes.value!
+    if (value.kind != 'value') throw new Error('Expected a Value node.')
+    const changed: RevisionContent = {
+      ...source,
+      document: {
+        ...source.document,
+        graph: {
+          nodes: {
+            ...source.document.graph.nodes,
+            value: {
+              ...value,
+              values: [
+                { ...port, handle: 'value' },
+                { ...port, handle: 'detail' },
+              ],
+            },
+          },
+        },
+      },
+    }
+
+    expect(JSON.parse(decoder.decode(encodeRevision(changed)))).toMatchObject({
+      document: { graph: { nodes: { value: { values: [{ handle: 'value' }, { handle: 'detail' }] } } } },
+    })
   })
 })

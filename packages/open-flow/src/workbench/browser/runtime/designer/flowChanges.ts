@@ -97,15 +97,16 @@ export function createResource(id: string, name: string): FlowChanges {
       kind: 'subflow.create',
       subflow: {
         graph: { nodes: {} },
-        inputs: { value: { jsonSchema: {}, nullable: true, value: null } },
+        inputs: [{ handle: 'value', jsonSchema: {}, nullable: true, value: null }],
         name,
-        outputs: {
-          result: {
+        outputs: [
+          {
+            handle: 'result',
             jsonSchema: {},
             nullable: true,
             sources: [{ input: 'value', kind: 'flow' }],
           },
-        },
+        ],
       },
       subflowId: id,
     },
@@ -134,9 +135,9 @@ export function addNode(
             ...(intent.action.defaultConnection == null ? {} : { connectionId: intent.action.defaultConnection.connectionId }),
             kind: 'connector',
           },
-          inputs: intent.action.inputs,
+          inputs: Object.entries(intent.action.inputs).map(([handle, port]) => Object.assign({ handle }, port)),
           name: intent.action.name,
-          outputs: intent.action.outputs,
+          outputs: Object.entries(intent.action.outputs).map(([handle, port]) => Object.assign({ handle }, port)),
         },
       )
     case 'condition':
@@ -264,6 +265,21 @@ export function updateNodeDescription(
   return replaceNode(target, nodeId, description == null ? rest : { ...rest, description })
 }
 
+export function updateNodeIcon(revision: RevisionView, target: DesignerTarget, nodeId: string, icon: string | undefined): FlowChanges | undefined {
+  const node = revision.node(target, nodeId)?.node
+  if (node == null) return
+  const { icon: _, ...rest } = node
+  return replaceNode(target, nodeId, icon == null ? rest : { ...rest, icon })
+}
+
+export function updateNodeName(revision: RevisionView, target: DesignerTarget, nodeId: string, name: string | undefined): FlowChanges | undefined {
+  const node = revision.node(target, nodeId)?.node
+  if (node == null) return
+  if (!('inputs' in node)) return replaceNode(target, nodeId, { ...node, name: name ?? node.name })
+  const { name: _, ...rest } = node
+  return replaceNode(target, nodeId, name == null ? rest : { ...rest, name })
+}
+
 export function setInputValue(
   revision: RevisionView,
   target: DesignerTarget,
@@ -287,7 +303,10 @@ export function updateCondition(revision: RevisionView, target: DesignerTarget, 
     ...(settings.defaultOutput == null ? [] : [[settings.defaultOutput, true] as const]),
   ])
   const inputRename = current.input.handle == settings.input.handle ? undefined : ([current.input.handle, settings.input.handle] as const)
-  const outputRename = renamedPort(currentOutputs, nextOutputs)
+  const outputRename = renamedPort(
+    Object.keys(currentOutputs).map((handle) => ({ handle })),
+    Object.keys(nextOutputs).map((handle) => ({ handle })),
+  )
   const outputNames = new Set(Object.keys(nextOutputs))
   const changes: ChangeOperation[] = []
 
@@ -335,17 +354,13 @@ export function updateValue(revision: RevisionView, target: DesignerTarget, node
   if (node?.kind != 'value') return
   return replaceNode(target, nodeId, {
     ...node,
-    values: Object.fromEntries(
-      settings.map((item) => [
-        item.handle,
-        {
-          ...(item.description == null ? {} : { description: item.description }),
-          jsonSchema: (item.jsonSchema ?? {}) as JsonValue,
-          nullable: item.nullable ?? false,
-          ...(Object.hasOwn(item, 'value') ? { value: item.value as JsonValue } : {}),
-        },
-      ]),
-    ),
+    values: settings.map((item) => ({
+      handle: item.handle,
+      ...(item.description == null ? {} : { description: item.description }),
+      jsonSchema: (item.jsonSchema ?? {}) as JsonValue,
+      nullable: item.nullable ?? false,
+      ...(Object.hasOwn(item, 'value') ? { value: item.value as JsonValue } : {}),
+    })),
   })
 }
 
@@ -419,18 +434,18 @@ function createSubflowNode(target: DesignerTarget, nodeId: string, subflowId: st
 
 function defaultInputs(ports: TaskDefinition['inputs']): Readonly<Record<string, InputMapping>> {
   return Object.fromEntries(
-    Object.entries(ports).flatMap(([handle, port]) =>
-      Object.hasOwn(port, 'value') ? [[handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [],
-    ),
+    ports.flatMap((port) => (Object.hasOwn(port, 'value') ? [[port.handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [])),
   ) as Readonly<Record<string, InputMapping>>
 }
 
 function renamedPort(
-  previous: Readonly<Record<string, unknown>>,
-  next: Readonly<Record<string, unknown>>,
+  previous: readonly { readonly handle: string }[],
+  next: readonly { readonly handle: string }[],
 ): readonly [oldName: string, newName: string] | undefined {
-  const removed = Object.keys(previous).filter((name) => !Object.hasOwn(next, name))
-  const added = Object.keys(next).filter((name) => !Object.hasOwn(previous, name))
+  const previousNames = new Set(previous.map((port) => port.handle))
+  const nextNames = new Set(next.map((port) => port.handle))
+  const removed = [...previousNames].filter((name) => !nextNames.has(name))
+  const added = [...nextNames].filter((name) => !previousNames.has(name))
   return removed.length == 1 && added.length == 1 ? [removed[0]!, added[0]!] : undefined
 }
 
@@ -445,7 +460,8 @@ function replaceCodeTaskPorts(
   if (graph == null || current?.kind != 'task' || current.task == null) return
   const inputRename = renamedPort(current.task.inputs, task.inputs)
   const outputRename = renamedPort(current.task.outputs, task.outputs)
-  const outputNames = new Set(Object.keys(task.outputs))
+  const inputNames = new Set(task.inputs.map((port) => port.handle))
+  const outputNames = new Set(task.outputs.map((port) => port.handle))
   const changes: ChangeOperation[] = []
 
   for (const [currentNodeId, node] of Object.entries(graph.nodes)) {
@@ -459,7 +475,7 @@ function replaceCodeTaskPorts(
         delete inputs[inputRename[0]]
       }
       for (const name of Object.keys(inputs)) {
-        if (!Object.hasOwn(task.inputs, name)) delete inputs[name]
+        if (!inputNames.has(name)) delete inputs[name]
       }
     }
 

@@ -108,12 +108,14 @@ const admissionRetryMs = 1_000
 const defaultMaxConcurrentRuns = 4
 const defaultRunTimeoutMs = 30 * 60 * 1_000
 
+type TaskErrorCode = 'capability.denied' | 'capability.invalid' | 'llm.output-invalid' | 'llm.unavailable'
+
 class TaskHostError extends Error {
-  constructor(
-    readonly code: 'capability.denied' | 'capability.invalid' | 'llm.output-invalid' | 'llm.unavailable',
-    message: string,
-  ) {
+  readonly code: TaskErrorCode
+
+  constructor(code: TaskErrorCode, message: string) {
     super(message)
+    this.code = code
     this.name = 'TaskHostError'
   }
 }

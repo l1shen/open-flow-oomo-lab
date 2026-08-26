@@ -53,7 +53,6 @@ export const Button: React.ForwardRefExoticComponent<ButtonProps & React.RefAttr
           aria-label={props.ariaLabel}
           aria-pressed={props.ariaPressed ?? props.active}
           className={clsx(
-            'nodrag',
             props.variant === 'danger' && styles.danger,
             props.dropDown && styles.dropDown,
             props.count && styles.count,

@@ -1,15 +1,13 @@
 .wrapper {
   position: relative;
-  overflow: hidden;
-
-  &:focus-within {
-    overflow: visible;
-  }
+  min-width: 0;
 }
 
 .input {
-  padding-right: 26px;
-  border-color: transparent;
+  width: 100%;
+  height: var(--widget-height);
+  padding: 0 26px 0 4px;
+  border: 1px solid transparent;
   border-radius: var(--widget-radius);
   color: var(--widget-font-color);
   background-color: var(--widget-background);
@@ -28,20 +26,24 @@
   &:disabled {
     color: var(--widget-font-disable-color);
     background-color: var(--widget-background);
+    pointer-events: none;
   }
 }
 
 .clear {
   position: absolute;
   top: 50%;
-  right: 1px;
-  width: 20px;
-  min-width: 20px;
-  height: 20px;
-  min-height: 20px;
+  right: 2px;
+  z-index: 1;
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  min-height: 15px;
   transform: translateY(-50%);
+  color: var(--widget-font-color);
+  font-size: 1.25em;
 }
 
 .isSuffix {
-  margin-left: 4px;
+  padding-left: 4px;
 }

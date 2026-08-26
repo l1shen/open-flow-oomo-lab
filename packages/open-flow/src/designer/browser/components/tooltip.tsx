@@ -1,4 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../ui/browser/tooltip.tsx'
+import { useGetStaticPopupContainer } from '../graph/ReactFlowContainer/useGetPopupContainer.ts'
 
 export type TooltipPlacement =
   | 'bottom'
@@ -36,11 +37,16 @@ export function DesignerTooltip({
   readonly placement?: TooltipPlacement
   readonly title?: React.ReactNode
 }): React.ReactElement {
+  const getStaticPopupContainer = useGetStaticPopupContainer()
   if (title == null || title === '') return children
   return (
     <Tooltip open={open}>
       <TooltipTrigger render={children} />
-      <TooltipContent className={className} container={getPopupContainer?.()} side={side(placement)}>
+      <TooltipContent
+        className={className}
+        container={getPopupContainer?.() ?? (typeof document == 'undefined' ? undefined : getStaticPopupContainer())}
+        side={side(placement)}
+      >
         {title}
       </TooltipContent>
     </Tooltip>

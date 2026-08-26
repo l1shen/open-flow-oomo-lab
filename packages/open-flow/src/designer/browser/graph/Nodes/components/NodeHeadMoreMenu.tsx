@@ -7,10 +7,11 @@ import type { FlowRunStatus } from '../../../stores/designer/typings.ts'
 import type { NodeStore, NodeStoreDisplay$ } from '../../../stores/node/node.store.ts'
 
 import { useStoreApi } from '@xyflow/react'
-import { memo, useState } from 'react'
+import { memo } from 'react'
 import { useDerived, useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { Button } from '../../../../../ui/browser/button.tsx'
+import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuTrigger } from '../../../../../ui/browser/context-menu.tsx'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../../../../ui/browser/dropdown-menu.tsx'
 import { coalesce, identity, lerp, toggle, toTrue } from '../../../base/trivial.ts'
 import { defaultTooltipClassName } from '../../../components/label.tsx'
@@ -178,7 +179,6 @@ export function NodeHeadContextMenu({ designerStore, children }: NodeHeadContext
   const onToggleSettings = toggle(nodeStore.$$.showSettings)
 
   const onDelete = toTrue(editable && designerStore.canDeleteNodes && !isInBlock) && (() => designerStore.deleteNodes([nodeStore]))
-  const [open, setOpen] = useState(false)
   const items = getContextMenuItems({
     t,
     nodeStore,
@@ -190,24 +190,22 @@ export function NodeHeadContextMenu({ designerStore, children }: NodeHeadContext
   })
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger
-        nativeButton={false}
-        render={
-          <div
-            className="flex-1"
-            onClick={(event) => event.preventDefault()}
-            onContextMenu={(event) => {
-              event.preventDefault()
-              setOpen(true)
-            }}
-          >
-            {children}
-          </div>
-        }
-      />
-      <NodeHeadMenuContent getPopupContainer={getPopupContainer} items={items} />
-    </DropdownMenu>
+    <ContextMenu>
+      <ContextMenuTrigger className="flex-1">{children}</ContextMenuTrigger>
+      <ContextMenuContent align="start" className={styles.menu} container={getPopupContainer()}>
+        <ContextMenuGroup>
+          {items.map(
+            (item) =>
+              item && (
+                <ContextMenuItem key={item.key} disabled={item.disabled} onClick={item.onClick} variant={item.danger ? 'destructive' : 'default'}>
+                  {item.icon}
+                  {item.label}
+                </ContextMenuItem>
+              ),
+          )}
+        </ContextMenuGroup>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 

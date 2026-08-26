@@ -25,6 +25,18 @@ export interface InputPortDefinition extends PortDefinition {
   readonly value?: JsonValue
 }
 
+export interface Port extends PortDefinition {
+  readonly handle: string
+}
+
+export interface InputPort extends InputPortDefinition {
+  readonly handle: string
+}
+
+export function portsByHandle<Value extends Port>(ports: readonly Value[]): Readonly<Record<string, Value>> {
+  return Object.fromEntries(ports.map((port) => [port.handle, port]))
+}
+
 export interface NodeSource {
   readonly kind: 'node'
   readonly nodeId: string
@@ -52,6 +64,7 @@ export interface OutputMapping {
 interface GraphNodeBase {
   readonly concurrency: number
   readonly description?: string
+  readonly icon?: string
   readonly inputs: Readonly<Record<string, InputMapping>>
   readonly name?: string
   readonly timeoutMs?: number
@@ -64,7 +77,7 @@ export interface SubflowNode extends GraphNodeBase {
 
 export interface ValueNode extends GraphNodeBase {
   readonly kind: 'value'
-  readonly values: Readonly<Record<string, InputPortDefinition>>
+  readonly values: readonly InputPort[]
 }
 
 export type ConditionOperator =
@@ -104,7 +117,7 @@ export interface ConditionCase {
 export interface ConditionNode extends GraphNodeBase {
   readonly cases: readonly ConditionCase[]
   readonly defaultOutput?: string
-  readonly input: InputPortDefinition & { readonly handle: string }
+  readonly input: InputPort
   readonly kind: 'condition'
 }
 
@@ -119,9 +132,9 @@ export interface ConnectorCapability {
 }
 
 interface TaskDefinitionBase {
-  readonly inputs: Readonly<Record<string, InputPortDefinition>>
+  readonly inputs: readonly InputPort[]
   readonly name: string
-  readonly outputs: Readonly<Record<string, PortDefinition>>
+  readonly outputs: readonly Port[]
 }
 
 export interface InlineTaskDefinition extends TaskDefinitionBase {
@@ -177,9 +190,7 @@ export type TriggerKeySnapshot =
   | (TriggerKeySnapshotBase & { readonly type: 'poll' })
   | (TriggerKeySnapshotBase & { readonly endpoint: IntegrationEndpointDeclaration; readonly type: 'integration' })
 
-export interface WebhookInputDefinition extends InputPortDefinition {
-  readonly handle: string
-}
+export interface WebhookInputDefinition extends InputPort {}
 
 export interface WebhookOptions {
   readonly allowedMethods?: readonly string[]
@@ -192,6 +203,7 @@ export interface WebhookOptions {
 
 interface TriggerNodeBase {
   readonly description?: string
+  readonly icon?: string
   readonly name: string
 }
 
@@ -226,9 +238,9 @@ export interface FlowDocument {
       string,
       {
         readonly graph: Graph
-        readonly inputs: Readonly<Record<string, InputPortDefinition>>
+        readonly inputs: readonly InputPort[]
         readonly name: string
-        readonly outputs: Readonly<Record<string, OutputMapping & PortDefinition>>
+        readonly outputs: readonly (OutputMapping & Port)[]
       }
     >
   >
@@ -377,12 +389,10 @@ export function applyFlowChanges(content: RevisionContent, operations: readonly 
         Object.assign(document, replaceGraph(document, operation.target, { nodes }))
         if (operation.target.kind == 'subflow') {
           const subflow = document.subflows[operation.target.id]!
-          const outputs = Object.fromEntries(
-            Object.entries(subflow.outputs).map(([handle, output]) => [
-              handle,
-              { ...output, sources: output.sources.filter((source) => source.kind != 'node' || !removed.has(source.nodeId)) },
-            ]),
-          )
+          const outputs = subflow.outputs.map((output) => ({
+            ...output,
+            sources: output.sources.filter((source) => source.kind != 'node' || !removed.has(source.nodeId)),
+          }))
           document.subflows = { ...document.subflows, [operation.target.id]: { ...subflow, outputs } }
         }
         break

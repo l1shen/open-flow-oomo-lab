@@ -26,6 +26,17 @@ implementation history in Git. Do not reference unavailable repositories.
 - Do not launch or automate a browser for UI testing. Verify frontend changes with repository
   checks, tests, and builds only.
 
+## TypeScript Style
+
+- Use short names made from basic English words.
+- Ask the user to choose the name before adding or extracting a type or interface. Do not invent a
+  long descriptive name.
+- TypeScript files executed directly by Node must use erasable syntax. Do not use enums,
+  namespaces, parameter properties, or runtime loaders such as `tsx`.
+- Prefer `interface` for object shapes and `type` for unions.
+- Prefer `==` for nullish checks and comparisons whose operands are already the same obvious type.
+- Avoid non-null assertions when a local check or default value expresses the invariant clearly.
+
 ## Checks
 
 ```bash

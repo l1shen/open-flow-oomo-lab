@@ -55,9 +55,9 @@ function connectorFlow(options: { readonly action?: string; readonly connectionI
             connectionId: options.connectionId ?? 'connection-work',
             kind: 'connector',
           },
-          inputs: { message: port },
+          inputs: [{ ...port, handle: 'message' }],
           name: 'Echo',
-          outputs: { message: port },
+          outputs: [{ ...port, handle: 'message' }],
         },
       },
     },
@@ -78,10 +78,10 @@ function capabilityFlow(declared = true): RevisionContent {
             kind: 'task',
             task: {
               ...(declared ? { capabilities: [{ action: 'example.echo', connectionId: 'connection-work', kind: 'connector' as const }] } : {}),
-              inputs: { message: port },
+              inputs: [{ ...port, handle: 'message' }],
               moduleId: 'capability',
               name: 'Capability',
-              outputs: { message: port },
+              outputs: [{ ...port, handle: 'message' }],
             },
           },
         },
@@ -171,6 +171,18 @@ describe('Server Connector client', () => {
     ])
   })
 
+  it('omits authorization when the local Connector token is empty', async () => {
+    let authorization: string | undefined
+    const origin = await startConnector((request, response) => {
+      authorization = request.headers.authorization
+      send(response, 200, success([]))
+    })
+    const connector = new ConnectorClient(origin, '')
+
+    await expect(connector.listProviders()).resolves.toEqual([])
+    expect(authorization).toBeUndefined()
+  })
+
   it('projects runtime discovery through the restricted server token', async () => {
     const requests: { readonly authorization?: string; readonly path: string }[] = []
     const provider = {
@@ -179,6 +191,7 @@ describe('Server Connector client', () => {
       displayName: 'Example',
       homepageUrl: 'https://example.test',
       iconUrl: 'https://example.test/icon.svg',
+      scenario: 'developer',
       service: 'example',
     }
     const action = {
@@ -287,6 +300,7 @@ describe('Server Connector client', () => {
             displayName: 'Example',
             homepageUrl: null,
             iconUrl: null,
+            scenario: 'developer',
             service: 'example',
           },
         ],
@@ -313,6 +327,7 @@ describe('Server Connector client', () => {
               displayName: 'Example',
               homepageUrl: null,
               iconUrl: null,
+              scenario: 'developer',
               service: 'example',
             },
           ]),

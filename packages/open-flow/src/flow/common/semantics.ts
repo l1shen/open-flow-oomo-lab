@@ -17,6 +17,7 @@ import type { RuntimeProgram } from '../../execution/common/runtime.ts'
 
 import { parse } from '@babel/parser'
 import { findEngineContract } from '../../execution/common/engineContract.ts'
+import { portsByHandle } from './change.ts'
 import { canonicalGraph, canonicalJsonBytes, canonicalModule, canonicalOutputs, canonicalPorts, canonicalTask, digestBytes } from './encoding.ts'
 
 export interface SemanticClosure {
@@ -503,9 +504,9 @@ function nodeInputPorts(document: FlowDocument, node: GraphNode): Readonly<Recor
     case 'value':
       return {}
     case 'subflow':
-      return document.subflows[node.subflowId]?.inputs ?? {}
+      return portsByHandle(document.subflows[node.subflowId]?.inputs ?? [])
     case 'task':
-      return node.task != null ? node.task.inputs : (document.tasks[node.taskId]?.inputs ?? {})
+      return portsByHandle(node.task != null ? node.task.inputs : (document.tasks[node.taskId]?.inputs ?? []))
     case 'cron':
     case 'integration':
     case 'poll':
@@ -521,11 +522,11 @@ function nodeOutputPorts(document: FlowDocument, node: GraphNode): Readonly<Reco
       return Object.fromEntries(outputs.map((handle) => [handle, node.input]))
     }
     case 'value':
-      return node.values
+      return portsByHandle(node.values)
     case 'subflow':
-      return document.subflows[node.subflowId]?.outputs ?? {}
+      return portsByHandle(document.subflows[node.subflowId]?.outputs ?? [])
     case 'task':
-      return node.task != null ? node.task.outputs : (document.tasks[node.taskId]?.outputs ?? {})
+      return portsByHandle(node.task != null ? node.task.outputs : (document.tasks[node.taskId]?.outputs ?? []))
     case 'cron':
     case 'integration':
     case 'poll':
@@ -705,11 +706,11 @@ function validateFlowGraph(revision: RevisionContent, closure: SemanticClosure):
     const subflow = revision.document.subflows[subflowId]
     if (subflow == null) continue
     const path = `/document/subflows/${subflowId}`
-    const inputs = new Set(Object.keys(subflow.inputs))
+    const inputs = new Set(subflow.inputs.map((input) => input.handle))
     validateGraph(subflow.graph, revision.document, inputs, false, `${path}/graph`, diagnostics)
-    for (const [handle, output] of Object.entries(subflow.outputs)) {
+    for (const output of subflow.outputs) {
       for (const source of output.sources)
-        checkSource(source, subflow.graph, revision.document, inputs, undefined, `${path}/outputs/${handle}/sources`, diagnostics)
+        checkSource(source, subflow.graph, revision.document, inputs, undefined, `${path}/outputs/${output.handle}/sources`, diagnostics)
     }
   }
   validateSubflowCycles(revision.document, diagnostics)

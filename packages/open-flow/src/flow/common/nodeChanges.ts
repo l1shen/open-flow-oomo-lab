@@ -55,8 +55,8 @@ export function createCodeTask(
     source: 'export default function run(input) {\n  return { result: input.value }\n}\n',
   },
   ports: Pick<Extract<TaskDefinition, { readonly moduleId: string }>, 'inputs' | 'outputs'> = {
-    inputs: { value: { jsonSchema: {}, nullable: true, value: null } },
-    outputs: { result: { jsonSchema: {}, nullable: true } },
+    inputs: [{ handle: 'value', jsonSchema: {}, nullable: true, value: null }],
+    outputs: [{ handle: 'result', jsonSchema: {}, nullable: true }],
   },
 ): readonly ChangeOperation[] {
   return [
@@ -118,20 +118,27 @@ export function createLlmTask(
   const values = options.inputs ?? {}
   return createManagedTask(target, identity, {
     executor: { kind: 'llm', mode },
-    inputs: {
-      messages: { jsonSchema: { items: { type: 'object' }, type: 'array' }, nullable: true, value: llmInputValue(values, 'messages', null) },
-      input: { jsonSchema: { type: 'string' }, nullable: false, value: llmInputValue(values, 'input', 'Alex') },
-      template: {
+    inputs: [
+      { handle: 'messages', jsonSchema: { items: { type: 'object' }, type: 'array' }, nullable: true, value: llmInputValue(values, 'messages', null) },
+      { handle: 'input', jsonSchema: { type: 'string' }, nullable: false, value: llmInputValue(values, 'input', 'Alex') },
+      {
+        handle: 'template',
         jsonSchema: { items: { type: 'object' }, minItems: 1, type: 'array' },
         nullable: false,
         value: llmInputValue(values, 'template', [{ content: "Hello, I'm {{input}}", role: 'user' }]),
       },
-      model: { jsonSchema: { type: 'object' }, nullable: false, value: llmInputValue(values, 'model', { model: 'deepseek-v4-flash' }) },
-    },
+      { handle: 'model', jsonSchema: { type: 'object' }, nullable: false, value: llmInputValue(values, 'model', { model: 'deepseek-v4-flash' }) },
+    ],
     name,
-    outputs: {
-      output: options.output ?? { description: outputDescription, jsonSchema: mode == 'chat' ? { type: 'string' } : {}, nullable: false },
-    },
+    outputs: [
+      {
+        ...options.output,
+        description: options.output?.description ?? outputDescription,
+        handle: 'output',
+        jsonSchema: options.output?.jsonSchema ?? (mode == 'chat' ? { type: 'string' } : {}),
+        nullable: options.output?.nullable ?? false,
+      },
+    ],
   })
 }
 
@@ -158,7 +165,7 @@ export function createValue(target: GraphTarget, nodeId: string, name: string): 
   return [
     {
       kind: 'graph.node.create',
-      node: { concurrency: 1, inputs: {}, kind: 'value', name, values: { value: { jsonSchema: {}, nullable: true, value: null } } },
+      node: { concurrency: 1, inputs: {}, kind: 'value', name, values: [{ handle: 'value', jsonSchema: {}, nullable: true, value: null }] },
       nodeId,
       target,
     },
@@ -283,7 +290,7 @@ export function updateTrigger(
 ): readonly ChangeOperation[] | undefined {
   const trigger = content.document.graph.nodes[nodeId]
   if (trigger == null) return
-  const common = { ...(settings.description == null ? {} : { description: settings.description }), name: settings.name }
+  const common = { ...(settings.description == null ? {} : { description: settings.description }), icon: trigger.icon, name: settings.name }
   let next: TriggerNode
   switch (settings.kind) {
     case 'webhook':
@@ -364,9 +371,7 @@ function graph(content: RevisionContent, target: GraphTarget) {
 
 function defaultInputs(ports: TaskDefinition['inputs']): Readonly<Record<string, InputMapping>> {
   return Object.fromEntries(
-    Object.entries(ports).flatMap(([handle, port]) =>
-      Object.hasOwn(port, 'value') ? [[handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [],
-    ),
+    ports.flatMap((port) => (Object.hasOwn(port, 'value') ? [[port.handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [])),
   )
 }
 

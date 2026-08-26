@@ -87,6 +87,7 @@ const COLORS = ['currentColor', '#CC3E44', '#E37933', '#CBCB41', '#8DC149', '#74
 
 interface IContainer {
   readonly clientWidth: number
+  getBoundingClientRect(): DOMRect
 }
 
 interface IPosition {
@@ -104,7 +105,11 @@ function computePosition(anchorRect: DOMRect | undefined, container: IContainer 
     return { top: 0, left: 0 }
   }
 
-  const { left, top, bottom, width } = anchorRect
+  const containerRect = container.getBoundingClientRect()
+  const { width } = anchorRect
+  const left = anchorRect.left - containerRect.left
+  const top = anchorRect.top - containerRect.top
+  const bottom = anchorRect.bottom - containerRect.top
   const { clientWidth } = container
 
   // Center the popup below the anchor
@@ -486,11 +491,14 @@ function getPopupContainer() {
   return document.querySelector('.monaco-workbench') || document.body
 }
 
-function open(props_: Omit<IconPickerProps, 'popupContainer' | `on${string}`>): Promise<IconPickerResult | undefined> & IconPickerController {
-  const container = getPopupContainer()
+function open(props_: Omit<IconPickerProps, `on${string}`>): Promise<IconPickerResult | undefined> & IconPickerController {
+  const container = props_.popupContainer || getPopupContainer()
 
   const wrapper = document.createElement('div')
   wrapper.className = 'icon-picker-wrapper'
+  wrapper.style.position = 'absolute'
+  wrapper.style.inset = '0'
+  wrapper.style.zIndex = '1000'
   container.appendChild(wrapper)
 
   const root = createRoot(wrapper)

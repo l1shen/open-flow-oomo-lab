@@ -1,7 +1,8 @@
-import type { ConnectorCapability, Graph, GraphNode, InputPortDefinition, JsonValue, FlowDocument, TriggerNode } from '../../flow/common/change.ts'
+import type { ConnectorCapability, Graph, GraphNode, InputPortDefinition, JsonValue, OutputMapping, TriggerNode } from '../../flow/common/change.ts'
 import type { PreparedFlow } from '../../flow/common/semantics.ts'
 
-type SubflowDefinition = FlowDocument['subflows'][string]
+import { portsByHandle } from '../../flow/common/change.ts'
+
 type ExecutableNode = Exclude<GraphNode, TriggerNode>
 
 interface ExecutableGraph {
@@ -132,7 +133,7 @@ interface GraphTarget {
   readonly graph: ExecutableGraph
   readonly inputs: Readonly<Record<string, InputPortDefinition>>
   readonly kind: 'flow' | 'subflow'
-  readonly outputs: SubflowDefinition['outputs']
+  readonly outputs: Readonly<Record<string, OutputMapping>>
 }
 
 interface InputTarget {
@@ -253,9 +254,9 @@ function nodePorts(prepared: PreparedFlow, node: ExecutableNode): Readonly<Recor
     case 'value':
       return {}
     case 'subflow':
-      return prepared.subflows[node.subflowId]!.inputs
+      return portsByHandle(prepared.subflows[node.subflowId]!.inputs)
     case 'task':
-      return node.task != null ? node.task.inputs : prepared.tasks[node.taskId]!.inputs
+      return portsByHandle(node.task != null ? node.task.inputs : prepared.tasks[node.taskId]!.inputs)
   }
 }
 
@@ -528,7 +529,7 @@ async function runGraph(
           break
         }
         case 'value': {
-          outputs = Object.fromEntries(Object.entries(node.values).map(([handle, port]) => [handle, port.value ?? null]))
+          outputs = Object.fromEntries(node.values.map((port) => [port.handle, port.value ?? null]))
           for (const [handle, value] of Object.entries(outputs)) await emitNodeOutput(nodeId, jobId, handle, value)
           break
         }
@@ -537,7 +538,13 @@ async function runGraph(
           const result = await raceAbort(
             runGraph(
               context,
-              { flowId: node.subflowId, graph: executableGraph(subflow.graph), inputs: subflow.inputs, kind: 'subflow', outputs: subflow.outputs },
+              {
+                flowId: node.subflowId,
+                graph: executableGraph(subflow.graph),
+                inputs: portsByHandle(subflow.inputs),
+                kind: 'subflow',
+                outputs: portsByHandle(subflow.outputs),
+              },
               context.createId(),
               nodeInputs,
               nodeSignal,

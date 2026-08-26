@@ -5,7 +5,7 @@
 
 ## Select 与原生 label
 
-Designer 的 `DesignerCombobox` 基于 shadcn/Base UI `Combobox`；部分既有调用仍在本地将它别名为 `Select`。它的单选模式同时启用以下行为：
+Designer 的 `DesignerCombobox` 基于 `react-select`；部分既有调用仍在本地将它别名为 `Select`。它的单选模式同时启用以下行为：
 
 - 选择后关闭菜单；
 - 选择后 blur 内部 input；
@@ -34,11 +34,12 @@ Designer 的 `DesignerCombobox` 基于 shadcn/Base UI `Combobox`；部分既有�
 </div>
 ```
 
-不要通过关闭 Combobox 的选中后收起、输入 focus 后打开或 keyboard navigation 行为来掩盖这个问题；这些行为被普通 Handle Editor
+不要通过关闭 react-select 的选中后收起、输入 focus 后打开或 keyboard navigation 行为来掩盖这个问题；这些行为被普通 Handle Editor
 和其他现有调用依赖。
 
-DesignerCombobox 或共享 Select 菜单需要越过滚动容器时，优先保持现有局部 popup container 与必要祖先 `overflow: visible` 约定。不要仅为修复层叠或裁剪问题把菜单改成全局 portal；portal 会改变 outside-click
-边界、缩放和主题变量继承。共享 shadcn/Base UI Select 的 `SelectContent` 必须保留局部 `container` 参数，并由 Content 自己组合 Portal、Positioner、List 和滚动按钮；feature 调用方只传定位参数和 option group，不应拆开这些内部结构。
+DesignerCombobox 保持 react-select 的局部 absolute menu，使菜单继承节点缩放和精调样式，不要改成全局 portal。分组二级菜单使用 `@rc-component/tooltip`，并通过 `getTooltipContainer` 挂到 static Designer container 内的独立缩放容器。缩放必须施加在 popup 的父坐标系，不能直接施加在 popup 上。Tooltip 封装的 trigger 负责 transformed target 的定位以及 trigger 与 popup 之间的 hover 边界。不要直接使用 `@rc-component/trigger` 或换成 Base UI Popover：前者容易遗漏 Tooltip 层的交互约定，后者的关闭阶段会让 Positioner 变为 inert，在 transformed viewport 中横移到二级菜单时无法恢复 pointer hit-test。共享 Select 需要越过滚动容器时，保留现有局部 popup container 与必要祖先 `overflow: visible` 约定；全局 portal 会改变 outside-click 边界、缩放和主题变量继承。共享 shadcn/Base UI Select 的 `SelectContent` 必须保留局部 `container` 参数，并由 Content 自己组合 Portal、Positioner、List 和滚动按钮；feature 调用方只传定位参数和 option group，不应拆开这些内部结构。
+
+Designer DateTimePicker 使用原生 `date`、`datetime-local` 和 `time` input，不持有 popup container。
 
 ## Designer 节点控件密度
 
@@ -105,6 +106,10 @@ feature 只保留确有产品含义的布局覆盖。DropdownMenuItem 即使只�
 
 Base UI Trigger 的 `render` 如果是共享 Button，保留默认 `nativeButton=true`；如果 render 为定位锚点 `<div>`、整行 `<div>` 或其他非 button 元素，必须显式传
 `nativeButton={false}`。这适用于 DropdownMenuTrigger、PopoverTrigger 和同类 trigger，避免开发态语义警告，也不能为了消除警告把画布坐标锚点伪装成可交互 button。
+
+共享 DropdownMenu 使用传统 click-release 触发：鼠标按下只显示 Button active 状态，完整 click 后才打开。共享 Root 必须取消 Base UI 的 `trigger-hover`
+关闭请求，使按钮菜单和坐标锚定的 Canvas 菜单都不会因 pointer 离开 trigger 或 popup 关闭。菜单只因选择、再次触发、外部点击、焦点离开或 Escape 关闭。
+ContextMenu 保留右键和长按触发，并遵循相同的持久关闭规则。
 
 ## Workbench stylesheet 入口
 

@@ -72,7 +72,7 @@ Workbench 和 API 位于 `http://127.0.0.1:3000`。最终镜像默认监听 `0.0
 | `OPEN_FLOW_SESSION_COOKIE_SECURE`              | TLS ingress 后应设为 `true`；只接受 `true` 或 `false`。                        |
 | `OPEN_FLOW_LOG_LEVEL`                          | Pino 日志级别；默认 `info`。                                                   |
 | `OPEN_FLOW_CONNECTOR_ORIGIN`                   | Server 可访问的 Connector runtime origin。                                     |
-| `OPEN_FLOW_CONNECTOR_TOKEN`                    | Server 调用 Connector runtime API 的受限 token。                               |
+| `OPEN_FLOW_CONNECTOR_TOKEN`                    | Server 调用 Connector runtime API 的受限 token；本地未启用认证时可以为空。     |
 | `OPEN_FLOW_CONNECTOR_CONSOLE_ORIGIN`           | 用户浏览器可访问的 Connector Console 公网 origin。                             |
 | `OPEN_FLOW_INTEGRATION_PUBLIC_ORIGIN`          | Provider 可访问的 Integration callback 公网 origin。                           |
 | `OPEN_FLOW_INTEGRATION_CALLBACK_KEY`           | 派生 Integration callback secret 的至少 32 UTF-8 bytes 密钥。                  |
@@ -83,7 +83,8 @@ Workbench 和 API 位于 `http://127.0.0.1:3000`。最终镜像默认监听 `0.0
 | `OPEN_FLOW_CALLBACK_REQUESTS_PER_MINUTE`       | 每个 Webhook 或 Integration endpoint 的每分钟请求上限；默认 `120`。            |
 | `OPEN_FLOW_OPERATOR_LOGIN_ATTEMPTS_PER_MINUTE` | 全部署每分钟允许的 operator 登录尝试数；默认 `10`。                            |
 
-`OPEN_FLOW_CONNECTOR_ORIGIN` 和 `OPEN_FLOW_CONNECTOR_TOKEN` 必须同时提供或同时省略。内部 runtime origin 与 Browser 使用的 Console origin 相互独立；
+`OPEN_FLOW_CONNECTOR_ORIGIN` 用于启用 Connector。`OPEN_FLOW_CONNECTOR_TOKEN` 可选；Connector 本地未启用 runtime 认证时可以省略或设为空字符串，此时
+Server 不发送 `Authorization` header。不能只配置 token 而不配置 origin。内部 runtime origin 与 Browser 使用的 Console origin 相互独立；
 后者不能使用只在容器网络中可访问的地址，也不能包含 credential、path、query 或 fragment；除 loopback 本地开发外必须使用 HTTPS。Connector runtime
 origin 可以在受信任的容器私网使用 HTTP；跨不受信任网络部署时必须由 TLS 保护 bearer token。
 

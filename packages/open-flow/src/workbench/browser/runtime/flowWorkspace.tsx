@@ -25,29 +25,23 @@ type ContextPanelMode = 'blocks' | 'inspector' | undefined
 
 function codeTaskPorts(inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]): CodeTaskPorts {
   return {
-    inputs: Object.fromEntries(
-      inputs.map((input) => [
-        input.handle,
-        Object.assign(
-          {
-            ...(input.description == null ? {} : { description: input.description }),
-            jsonSchema: (input.jsonSchema ?? {}) as JsonValue,
-            nullable: input.nullable ?? false,
-          },
-          input.defaultValue === undefined ? {} : { value: input.defaultValue as JsonValue },
-        ),
-      ]),
-    ),
-    outputs: Object.fromEntries(
-      outputs.map((output) => [
-        output.handle,
+    inputs: inputs.map((input) =>
+      Object.assign(
         {
-          ...(output.description == null ? {} : { description: output.description }),
-          jsonSchema: (output.jsonSchema ?? {}) as JsonValue,
-          nullable: output.nullable ?? false,
+          handle: input.handle,
+          ...(input.description == null ? {} : { description: input.description }),
+          jsonSchema: (input.jsonSchema ?? {}) as JsonValue,
+          nullable: input.nullable ?? false,
         },
-      ]),
+        input.defaultValue === undefined ? {} : { value: input.defaultValue as JsonValue },
+      ),
     ),
+    outputs: outputs.map((output) => ({
+      handle: output.handle,
+      ...(output.description == null ? {} : { description: output.description }),
+      jsonSchema: (output.jsonSchema ?? {}) as JsonValue,
+      nullable: output.nullable ?? false,
+    })),
   }
 }
 
@@ -245,6 +239,8 @@ function Editor({
         onChangeComment={(nodeId, value) => void store.workspace.saveComment(nodeId, value)}
         onChangeCondition={(nodeId, value) => void store.workspace.saveCondition(nodeId, value)}
         onChangeNodeDescription={(nodeId, description) => void store.workspace.saveNodeDescription(nodeId, description)}
+        onChangeNodeIcon={(nodeId, icon) => void store.workspace.saveNodeIcon(nodeId, icon)}
+        onChangeNodeTitle={(nodeId, title) => void store.workspace.saveNodeTitle(nodeId, title)}
         onChangeInput={(nodeId, handle, value) => void store.workspace.setInputValue(nodeId, handle, value)}
         onChangeTaskPorts={(nodeId, inputs, outputs) => void store.workspace.saveCodeTaskPorts(nodeId, codeTaskPorts(inputs, outputs))}
         onChangeTriggerConfig={(triggerId, name, value) => void store.workspace.saveTriggerConfig(triggerId, name, value)}
@@ -254,9 +250,9 @@ function Editor({
         onCopy={() => store.workspace.copySelectedNodes()}
         onDeleteEdge={(edge) => void store.workspace.disconnect(edge)}
         onDeleteNodes={() => void store.workspace.deleteSelectedNodes()}
-        onDuplicate={() => void store.workspace.duplicateSelectedNodes()}
-        onMoveNodes={(positions) => void store.workspace.moveNodes(positions)}
-        onMoveViewport={(viewport) => void store.workspace.moveViewport(viewport)}
+        onDuplicate={(positions) => void store.workspace.duplicateSelectedNodes(positions)}
+        onMoveNodes={(positions, displayMode) => void store.workspace.moveNodes(positions, displayMode)}
+        onMoveViewport={(viewport, displayMode) => void store.workspace.moveViewport(viewport, displayMode)}
         onOpenBlocks={openBlocks}
         onOpenInspector={openInspector}
         onPaste={() => void store.workspace.pasteNodes()}

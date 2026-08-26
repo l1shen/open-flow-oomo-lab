@@ -224,20 +224,46 @@ export interface PublicationPosition {
 }
 
 export class ControlService {
+  private readonly abortRun: (runId: string) => void
+  private readonly clock: () => number
+  private readonly connector?: ConnectorHost
+  private readonly connectorConsoleOrigin?: URL
+  private readonly flowCatalogChanged: () => void
+  private readonly flowChanged: (event: FlowChangeEvent) => void
+  private readonly publish: (input: PublishInput) => Promise<PublicationAcceptance>
+  private readonly store: Store
+  private readonly testPollTrigger: (flowId: string, triggerNodeId: string) => Promise<PollTriggerTestResult>
+  private readonly triggerDefinitions: readonly TriggerKeySnapshot[]
+  private readonly triggersChanged: () => void
+  private readonly wake: () => void
+
   constructor(
-    private readonly store: Store,
-    private readonly clock: () => number,
-    private readonly abortRun: (runId: string) => void,
-    private readonly wake: () => void,
-    private readonly publish: (input: PublishInput) => Promise<PublicationAcceptance>,
-    private readonly triggersChanged: () => void,
-    private readonly triggerDefinitions: readonly TriggerKeySnapshot[],
-    private readonly testPollTrigger: (flowId: string, triggerNodeId: string) => Promise<PollTriggerTestResult>,
-    private readonly flowCatalogChanged: () => void,
-    private readonly flowChanged: (event: FlowChangeEvent) => void,
-    private readonly connector?: ConnectorHost,
-    private readonly connectorConsoleOrigin?: URL,
-  ) {}
+    store: Store,
+    clock: () => number,
+    abortRun: (runId: string) => void,
+    wake: () => void,
+    publish: (input: PublishInput) => Promise<PublicationAcceptance>,
+    triggersChanged: () => void,
+    triggerDefinitions: readonly TriggerKeySnapshot[],
+    testPollTrigger: (flowId: string, triggerNodeId: string) => Promise<PollTriggerTestResult>,
+    flowCatalogChanged: () => void,
+    flowChanged: (event: FlowChangeEvent) => void,
+    connector?: ConnectorHost,
+    connectorConsoleOrigin?: URL,
+  ) {
+    this.store = store
+    this.clock = clock
+    this.abortRun = abortRun
+    this.wake = wake
+    this.publish = publish
+    this.triggersChanged = triggersChanged
+    this.triggerDefinitions = triggerDefinitions
+    this.testPollTrigger = testPollTrigger
+    this.flowCatalogChanged = flowCatalogChanged
+    this.flowChanged = flowChanged
+    this.connector = connector
+    this.connectorConsoleOrigin = connectorConsoleOrigin
+  }
 
   listTriggerKeys(): readonly TriggerKeySummary[] {
     return this.triggerDefinitions.map(({ description, displayName, key, name, provider, type }) => ({ description, displayName, key, name, provider, type }))

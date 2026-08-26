@@ -20,7 +20,7 @@ function revision(): RevisionContent {
 }
 
 function valueNode(value: number): GraphNode {
-  return { concurrency: 1, inputs: {}, kind: 'value', values: { value: { ...port, value } } }
+  return { concurrency: 1, inputs: {}, kind: 'value', values: [{ ...port, handle: 'value', value }] }
 }
 
 function taskNode(): GraphNode {
@@ -28,14 +28,14 @@ function taskNode(): GraphNode {
     concurrency: 1,
     inputs: {},
     kind: 'task',
-    task: { inputs: { input: port }, moduleId: 'module-main', name: 'Task', outputs: { output: port } },
+    task: { inputs: [{ ...port, handle: 'input' }], moduleId: 'module-main', name: 'Task', outputs: [{ ...port, handle: 'output' }] },
   }
 }
 
 describe('Flow changes', () => {
   it('applies every resource lifecycle operation in order', () => {
-    const subflow = { graph: { nodes: {} }, inputs: { input: port }, name: 'Child', outputs: { output: { ...port, sources: [] } } }
-    const task = { executor: { kind: 'llm' as const, mode: 'chat' as const }, inputs: {}, name: 'Managed', outputs: {} }
+    const subflow = { graph: { nodes: {} }, inputs: [{ ...port, handle: 'input' }], name: 'Child', outputs: [{ ...port, handle: 'output', sources: [] }] }
+    const task = { executor: { kind: 'llm' as const, mode: 'chat' as const }, inputs: [], name: 'Managed', outputs: [] }
     const operations: readonly ChangeOperation[] = [
       { binding: { kind: 'connection', target: 'connection-a' }, bindingId: 'binding', kind: 'binding.create' },
       { binding: { kind: 'connection', target: 'connection-b' }, bindingId: 'binding', kind: 'binding.replace' },
@@ -43,7 +43,7 @@ describe('Flow changes', () => {
       { imports: ['helper'], kind: 'module.source.replace', moduleId: 'module', source: 'export default () => 2' },
       { kind: 'module.rename', moduleId: 'module', name: 'Renamed module' },
       { kind: 'subflow.create', subflow, subflowId: 'child' },
-      { definition: { ...subflow, inputs: {}, name: 'Renamed child', outputs: {} }, kind: 'subflow.definition.replace', subflowId: 'child' },
+      { definition: { ...subflow, inputs: [], name: 'Renamed child', outputs: [] }, kind: 'subflow.definition.replace', subflowId: 'child' },
       { kind: 'task.create', task, taskId: 'managed' },
       { kind: 'task.replace', task: { ...task, executor: { kind: 'llm', mode: 'json' }, name: 'Replaced' }, taskId: 'managed' },
     ]
@@ -52,7 +52,7 @@ describe('Flow changes', () => {
 
     expect(changed.document.bindings.binding).toEqual({ kind: 'connection', target: 'connection-b' })
     expect(changed.modules.module).toEqual({ imports: ['helper'], name: 'Renamed module', source: 'export default () => 2' })
-    expect(changed.document.subflows.child).toEqual({ graph: { nodes: {} }, inputs: {}, name: 'Renamed child', outputs: {} })
+    expect(changed.document.subflows.child).toEqual({ graph: { nodes: {} }, inputs: [], name: 'Renamed child', outputs: [] })
     expect(changed.document.tasks.managed).toMatchObject({ executor: { kind: 'llm', mode: 'json' }, name: 'Replaced' })
 
     const removed = applyFlowChanges(changed, [
@@ -107,16 +107,16 @@ describe('Flow changes', () => {
         kind: 'subflow.create',
         subflow: {
           graph: { nodes: { source: valueNode(1) } },
-          inputs: {},
+          inputs: [],
           name: 'Child',
-          outputs: { output: { ...port, sources: [{ kind: 'node', nodeId: 'source', output: 'value' }] } },
+          outputs: [{ ...port, handle: 'output', sources: [{ kind: 'node', nodeId: 'source', output: 'value' }] }],
         },
         subflowId: 'child',
       },
       { kind: 'graph.node.delete', nodeId: 'source', target: { id: 'child', kind: 'subflow' } },
     ])
 
-    expect(withSubflow.document.subflows.child).toMatchObject({ graph: { nodes: {} }, outputs: { output: { sources: [] } } })
+    expect(withSubflow.document.subflows.child).toMatchObject({ graph: { nodes: {} }, outputs: [{ handle: 'output', sources: [] }] })
   })
 
   it.each([

@@ -315,6 +315,7 @@ export class DesignerStore {
 
   private pendingDisplayModeLayout: FlowDisplayMode | undefined
   private displayModeLayoutMeasurementAttempts = 0
+  private activeDisplayMode: FlowDisplayMode
 
   public constructor(type: DesignerType, editable: boolean, props: DesignerStoreProps) {
     this.rfCommand = this.dispose.add(props.rfCommand)
@@ -377,6 +378,7 @@ export class DesignerStore {
       showSettings: this.dispose.add(val(false)),
       settingsPanelWidth: this.dispose.add(props.settingsPanelWidth),
     }
+    this.activeDisplayMode = this.$$.displayMode.value
 
     const rfNodes = this.dispose.add(compute((get) => [...(get(commentNodes?.$)?.values() ?? []), ...get(nodes.$).values()].map((node) => get(node.$.rfNode))))
     const renderedRFEdges = this.dispose.add(compute((get) => (get(this.$$.displayMode) == 'overview' ? get(overviewRFEdges) : get(rfEdges))))
@@ -440,18 +442,27 @@ export class DesignerStore {
       onDidChangeTranslateKey: this.onDidChangeTranslateKey,
     }
 
-    let previousDisplayMode = this.$.displayMode.value
     this.dispose.add(
       this.$.displayMode.reaction((mode) => {
-        const restored = this.designerUIStore.switchDisplayMode(previousDisplayMode, mode)
-        this.pendingDisplayModeLayout = restored ? undefined : mode
-        this.displayModeLayoutMeasurementAttempts = 0
-        previousDisplayMode = mode
-        if (mode == 'overview') {
-          for (const edgeStore of this.$.edges.value) edgeStore.$$.selected.set(undefined)
-        }
+        this.applyDisplayMode(mode)
       }),
     )
+  }
+
+  public switchDisplayMode(mode: FlowDisplayMode): void {
+    this.applyDisplayMode(mode)
+    this.$$.displayMode.set(mode)
+  }
+
+  private applyDisplayMode(mode: FlowDisplayMode): void {
+    if (mode == this.activeDisplayMode) return
+    const restored = this.designerUIStore.switchDisplayMode(this.activeDisplayMode, mode)
+    this.pendingDisplayModeLayout = restored ? undefined : mode
+    this.displayModeLayoutMeasurementAttempts = 0
+    this.activeDisplayMode = mode
+    if (mode == 'overview') {
+      for (const edgeStore of this.$.edges.value) edgeStore.$$.selected.set(undefined)
+    }
   }
 
   /**

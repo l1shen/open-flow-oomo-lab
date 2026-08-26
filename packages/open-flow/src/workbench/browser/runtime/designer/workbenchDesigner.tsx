@@ -9,6 +9,7 @@ import type {
   FlowDesignerViewValue,
   FlowDesignerViewWebhook,
 } from '../../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
+import type { FlowDisplayMode } from '../../../../designer/common/flowDisplay.ts'
 import type { ConditionOperator, JsonValue } from '../api.ts'
 import type { WorkbenchTheme } from '../contract.ts'
 import type { DesignerEdge, DesignerGraph, DesignerViewport, Point } from '../workspace.ts'
@@ -38,6 +39,8 @@ interface Props {
   readonly onChangeComment: (nodeId: string, value: { readonly content: string; readonly title: string }) => void
   readonly onChangeCondition: (nodeId: string, value: ConditionSettings) => void
   readonly onChangeNodeDescription: (nodeId: string, description: string | undefined) => void
+  readonly onChangeNodeIcon: (nodeId: string, icon: string | undefined) => void
+  readonly onChangeNodeTitle: (nodeId: string, title: string | undefined) => void
   readonly onChangeInput: (nodeId: string, handle: string, value: JsonValue | undefined) => void
   readonly onChangeTaskPorts: (nodeId: string, inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]) => void
   readonly onChangeTriggerConfig: (triggerId: string, name: string, value: JsonValue | undefined) => void
@@ -47,9 +50,9 @@ interface Props {
   readonly onCopy: () => void
   readonly onDeleteEdge: (edge: DesignerEdge) => void
   readonly onDeleteNodes: () => void
-  readonly onDuplicate: () => void
-  readonly onMoveNodes: (positions: Readonly<Record<string, Point>>) => void
-  readonly onMoveViewport: (viewport: DesignerViewport) => void
+  readonly onDuplicate: (positions?: Readonly<Record<string, Point>>) => void
+  readonly onMoveNodes: (positions: Readonly<Record<string, Point>>, displayMode: FlowDisplayMode) => void
+  readonly onMoveViewport: (viewport: DesignerViewport, displayMode: FlowDisplayMode) => void
   readonly onOpenBlocks: (opener?: HTMLButtonElement) => void
   readonly onOpenInspector: () => void
   readonly onPaste: () => void
@@ -153,7 +156,7 @@ function addItems(options: readonly AddNodeOption[]): FlowDesignerViewAddItem[] 
 
 function focusPanel(event: PointerEvent<HTMLElement>): void {
   const element = event.target
-  if (element instanceof Element && element.closest('a, button, input, label, select, textarea, [contenteditable="true"]')) return
+  if (element instanceof Element && element.closest('a, button, input, label, select, textarea, [contenteditable="true"], .react-select-container')) return
   event.currentTarget.focus({ preventScroll: true })
 }
 
@@ -170,6 +173,8 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
     onChangeComment,
     onChangeCondition,
     onChangeNodeDescription,
+    onChangeNodeIcon,
+    onChangeNodeTitle,
     onChangeInput,
     onChangeTaskPorts,
     onChangeTriggerConfig,
@@ -328,6 +333,8 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
         onChangeComment={onChangeComment}
         onChangeCondition={(nodeId, value) => onChangeCondition(nodeId, conditionSettings(value))}
         onChangeNodeDescription={onChangeNodeDescription}
+        onChangeNodeIcon={onChangeNodeIcon}
+        onChangeNodeTitle={onChangeNodeTitle}
         onChangeInput={(nodeId, handle, value) => onChangeInput(nodeId, handle, value as JsonValue | undefined)}
         onChangeTaskPorts={onChangeTaskPorts}
         onChangeTriggerConfig={(triggerId, name, value) => onChangeTriggerConfig(triggerId, name, value as JsonValue | undefined)}
@@ -339,9 +346,9 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
           onDeleteNodes()
         }}
         onDisconnect={(edge) => onDeleteEdge(edge)}
-        onDuplicate={(nodeIds) => {
+        onDuplicate={(nodeIds, _offset, positions) => {
           onSelectNodes(nodeIds)
-          onDuplicate()
+          onDuplicate(positions)
         }}
         onMoveNodes={onMoveNodes}
         onMoveViewport={onMoveViewport}

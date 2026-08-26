@@ -42,10 +42,10 @@ class TaskError extends Error {
 
 function task(name: string, inputs: readonly string[], outputs: readonly string[]) {
   return {
-    inputs: Object.fromEntries(inputs.map((handle) => [handle, port])),
+    inputs: inputs.map((handle) => ({ handle, ...port })),
     moduleId: 'module-main',
     name,
-    outputs: Object.fromEntries(outputs.map((handle) => [handle, port])),
+    outputs: outputs.map((handle) => ({ handle, ...port })),
   }
 }
 
@@ -140,10 +140,10 @@ describe('revision graph scheduler', () => {
               concurrency: 1,
               inputs: {},
               kind: 'value',
-              values: {
-                count: { jsonSchema: { type: 'number' }, nullable: false, value: 2 },
-                label: { jsonSchema: { type: 'string' }, nullable: false, value: 'ready' },
-              },
+              values: [
+                { handle: 'count', jsonSchema: { type: 'number' }, nullable: false, value: 2 },
+                { handle: 'label', jsonSchema: { type: 'string' }, nullable: false, value: 'ready' },
+              ],
             },
           },
         },
@@ -215,11 +215,9 @@ describe('revision graph scheduler', () => {
                 },
               },
             },
-            inputs: { value: port },
+            inputs: [{ ...port, handle: 'value' }],
             name: 'Double',
-            outputs: {
-              value: { ...port, sources: [{ kind: 'node', nodeId: 'double', output: 'value' }] },
-            },
+            outputs: [{ ...port, handle: 'value', sources: [{ kind: 'node', nodeId: 'double', output: 'value' }] }],
           },
         },
         tasks: {},
@@ -521,9 +519,9 @@ describe('revision graph scheduler', () => {
         tasks: {
           'task-main': {
             executor: { kind: 'llm', mode: 'chat' },
-            inputs: {},
+            inputs: [],
             name: 'Managed',
-            outputs: {},
+            outputs: [],
           },
         },
       },

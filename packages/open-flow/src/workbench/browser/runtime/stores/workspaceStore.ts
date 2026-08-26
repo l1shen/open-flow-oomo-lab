@@ -1,4 +1,5 @@
 import type { I18n } from 'val-i18n'
+import type { FlowDisplayMode } from '../../../../designer/common/flowDisplay.ts'
 import type { Settings as NodeSettings, TriggerSettings } from '../../../../flow/common/nodeChanges.ts'
 import type { WorkbenchClient, Draft, DraftSync, Flow, JsonValue, Live, TriggerSchedule } from '../api.ts'
 import type { FlowChangeEvent } from '../contract.ts'
@@ -44,7 +45,9 @@ import {
   updateCondition,
   updateCodeTaskPorts,
   updateNodeDescription,
+  updateNodeIcon,
   updateNodeSettings,
+  updateNodeName,
   updateSubflow,
   updateTask,
   updateValue,
@@ -431,7 +434,7 @@ export class WorkspaceStore {
     }
   }
 
-  public async pasteNodes(): Promise<void> {
+  public async pasteNodes(sourcePositions?: Readonly<Record<string, Point>>): Promise<void> {
     if (!this.#allowModuleNavigation()) return
     const revision = this.$.revision.value
     const target = this.#model.value.target
@@ -446,12 +449,12 @@ export class WorkspaceStore {
     const designerNodes = new Map(this.#designer().nodes.map((node) => [node.id, node]))
     const positions = Object.fromEntries(
       pasted.sourceIds.map((sourceId, index) => {
-        const source = designerNodes.get(sourceId)
+        const source = sourcePositions?.[sourceId] ?? designerNodes.get(sourceId)?.position
         return [
           pasted.nodeIds[index]!,
           {
-            x: (source?.position.x ?? 80) + 40,
-            y: (source?.position.y ?? 80) + 40,
+            x: (source?.x ?? 80) + 40,
+            y: (source?.y ?? 80) + 40,
           },
         ]
       }),
@@ -472,9 +475,9 @@ export class WorkspaceStore {
     await presentationChange
   }
 
-  public async duplicateSelectedNodes(): Promise<void> {
+  public async duplicateSelectedNodes(positions?: Readonly<Record<string, Point>>): Promise<void> {
     this.copySelectedNodes()
-    await this.pasteNodes()
+    await this.pasteNodes(positions)
   }
 
   public async saveNodeSettings(nodeId: string, settings: NodeSettings): Promise<boolean> {
@@ -490,6 +493,22 @@ export class WorkspaceStore {
     const target = this.#model.value.target
     if (revision == null || target == null) return false
     const changes = updateNodeDescription(revision, target, nodeId, description)
+    return changes != null && (await this.#changeDraft(changes)) != null
+  }
+
+  public async saveNodeIcon(nodeId: string, icon: string | undefined): Promise<boolean> {
+    const revision = this.$.revision.value
+    const target = this.#model.value.target
+    if (revision == null || target == null) return false
+    const changes = updateNodeIcon(revision, target, nodeId, icon)
+    return changes != null && (await this.#changeDraft(changes)) != null
+  }
+
+  public async saveNodeTitle(nodeId: string, title: string | undefined): Promise<boolean> {
+    const revision = this.$.revision.value
+    const target = this.#model.value.target
+    if (revision == null || target == null) return false
+    const changes = updateNodeName(revision, target, nodeId, title)
     return changes != null && (await this.#changeDraft(changes)) != null
   }
 
@@ -632,18 +651,18 @@ export class WorkspaceStore {
     return changed != null
   }
 
-  public async moveNodes(positions: Readonly<Record<string, Point>>): Promise<void> {
+  public async moveNodes(positions: Readonly<Record<string, Point>>, displayMode: FlowDisplayMode = 'detail'): Promise<void> {
     const target = this.#model.value.target
     if (target == null) return
-    await this.#changePresentation((value) => setNodePositions(value, target, positions))
+    await this.#changePresentation((value) => setNodePositions(value, target, positions, displayMode))
   }
 
-  public async moveViewport(viewport: DesignerViewport): Promise<void> {
+  public async moveViewport(viewport: DesignerViewport, displayMode: FlowDisplayMode = 'detail'): Promise<void> {
     const target = this.#model.value.target
     if (target == null) return
     const current = this.#designer().viewport
     if (current.x != viewport.x || current.y != viewport.y || current.zoom != viewport.zoom) this.#cancelDraftReveal()
-    await this.#changePresentation((value) => setFlowViewport(value, target, viewport))
+    await this.#changePresentation((value) => setFlowViewport(value, target, viewport, displayMode))
   }
 
   public async check(): Promise<void> {

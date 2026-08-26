@@ -12,7 +12,8 @@ const developmentStateDirectory = path.join(appRoot, '.open-flow-dev')
 const operatorTokenPath = path.join(developmentStateDirectory, 'operator-token')
 const require = createRequire(import.meta.url)
 const vitePath = path.join(path.dirname(require.resolve('vite/package.json')), 'bin/vite.js')
-const backendPort = Number(process.env.OPEN_FLOW_PORT ?? '3000')
+const backendPort = Number(process.env.OPEN_FLOW_PORT ?? '3001')
+const frontendPort = 5174
 if (!Number.isInteger(backendPort) || backendPort < 1 || backendPort > 65_535) {
   throw new Error('OPEN_FLOW_PORT must be an integer between 1 and 65535 in development.')
 }
@@ -29,9 +30,7 @@ if (!(await portAvailable(backendPort))) {
 const developmentToken = configuredOperatorToken == null ? await loadDevelopmentToken() : { created: false, token: configuredOperatorToken }
 const operatorToken = developmentToken.token
 
-process.stdout.write(
-  `Development endpoints:\n  Workbench: http://127.0.0.1:5173 (or the Local URL reported by Vite)\n  Server API: http://127.0.0.1:${backendPort}\n`,
-)
+process.stdout.write(`Development endpoints:\n  Workbench: http://localhost:${frontendPort}\n  Server API: http://127.0.0.1:${backendPort}\n`)
 
 function start(command: string, args: readonly string[], environment = process.env): ChildProcess {
   return spawn(command, [...args], { cwd: appRoot, env: environment, stdio: 'inherit' })
@@ -47,20 +46,21 @@ function completed(child: ChildProcess, name: string): Promise<void> {
   })
 }
 
-const backend = start(
-  'node',
-  ['--watch', '--experimental-transform-types', '--disable-warning=ExperimentalWarning', '--no-node-snapshot', 'node/main.ts', '--api-only'],
+const backend = start('node', ['--watch', '--no-node-snapshot', 'node/main.ts', '--api-only'], {
+  ...process.env,
+  OPEN_FLOW_CONNECTOR_ORIGIN: process.env.OPEN_FLOW_CONNECTOR_ORIGIN ?? 'http://localhost:3000',
+  OPEN_FLOW_HOST: '127.0.0.1',
+  OPEN_FLOW_TOKEN: operatorToken,
+  OPEN_FLOW_PORT: String(backendPort),
+})
+const frontend = start(
+  process.execPath,
+  [vitePath, '--host', '127.0.0.1', '--port', String(frontendPort), '--clearScreen', 'false', '--strictPort', ...process.argv.slice(2)],
   {
     ...process.env,
-    OPEN_FLOW_HOST: '127.0.0.1',
-    OPEN_FLOW_TOKEN: operatorToken,
-    OPEN_FLOW_PORT: String(backendPort),
+    OPEN_FLOW_DEV_API_ORIGIN: `http://127.0.0.1:${backendPort}`,
   },
 )
-const frontend = start(process.execPath, [vitePath, '--host', '127.0.0.1', '--clearScreen', 'false', '--strictPort', ...process.argv.slice(2)], {
-  ...process.env,
-  OPEN_FLOW_DEV_API_ORIGIN: `http://127.0.0.1:${backendPort}`,
-})
 const backendResult = completed(backend, 'Server backend')
 const frontendResult = completed(frontend, 'Server frontend')
 let interrupted = false

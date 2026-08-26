@@ -53,7 +53,7 @@ function failingFlow(): RevisionContent {
             concurrency: 1,
             inputs: {},
             kind: 'task',
-            task: { inputs: {}, moduleId: 'main', name: 'Main', outputs: {} },
+            task: { inputs: [], moduleId: 'main', name: 'Main', outputs: [] },
           },
         },
       },

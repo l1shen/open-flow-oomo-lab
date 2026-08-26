@@ -90,6 +90,7 @@ docker run --rm \
 
 ```dotenv
 OPEN_FLOW_CONNECTOR_ORIGIN=http://open-connector:3000
+# 本地 Connector 未启用 runtime 认证时可以省略。
 OPEN_FLOW_CONNECTOR_TOKEN=replace-with-a-scoped-runtime-token
 OPEN_FLOW_CONNECTOR_CONSOLE_ORIGIN=https://connector.example.com
 ```
@@ -123,8 +124,9 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-开发环境的 Workbench 位于 [http://127.0.0.1:5173](http://127.0.0.1:5173)，API 请求会代理到
-`http://127.0.0.1:3000` 上的 Server。
+开发环境的 Workbench 位于 [http://localhost:5174](http://localhost:5174)，API 请求会代理到
+`http://127.0.0.1:3001` 上的 Server。开发环境默认使用 `http://localhost:3000` 作为 Connector origin；可以通过
+`OPEN_FLOW_CONNECTOR_ORIGIN` 覆盖，Connector token 仍然可选。
 
 第一次启动开发环境时，Server 会把管理员 Token 写入 `apps/server/.open-flow-dev/operator-token`，后续启动继续使用同一个
 Token，因此重启开发服务不会让当前 Workbench 登录态失效。如果需要指定 Token，可以设置 `OPEN_FLOW_TOKEN`。

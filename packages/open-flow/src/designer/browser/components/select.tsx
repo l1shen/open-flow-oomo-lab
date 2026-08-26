@@ -1,45 +1,54 @@
 import styles from './select.module.scss'
+import type { TooltipRef } from '@rc-component/tooltip'
+import type {
+  ClearIndicatorProps,
+  DropdownIndicatorProps,
+  GroupBase,
+  GroupProps,
+  MenuPlacement,
+  MenuPosition,
+  MenuProps,
+  OnChangeValue,
+  OptionsOrGroups,
+  Props,
+  PropsValue,
+  SelectInstance,
+  Theme,
+  ValueContainerProps,
+} from 'react-select'
+import type { ReadonlyVal } from 'value-enhancer'
 
+import Tooltip from '@rc-component/tooltip'
 import { clsx } from 'clsx'
-import { useMemo } from 'react'
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import ReactSelect, { components, defaultTheme } from 'react-select'
+import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
-import { Button } from '../../../ui/browser/button.tsx'
-import {
-  Combobox,
-  ComboboxClear,
-  ComboboxCollection,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxGroup,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxLabel,
-  ComboboxList,
-} from '../../../ui/browser/combobox.tsx'
+import { val } from 'value-enhancer'
 import { stopPropagation } from '../base/dom.ts'
 import { forwardRef2 } from '../base/react.ts'
 import { useGetStaticPopupContainer } from '../graph/ReactFlowContainer/useGetPopupContainer.ts'
 import { DesignerIcon } from '../icons/DesignerIcon.tsx'
+import { CssWrapper } from './cssWrapper.tsx'
+
+interface ExtraProps {
+  readonly keyboardNavigation$?: ReadonlyVal<boolean>
+  readonly labelInMenu?: string
+  readonly searching$?: ReadonlyVal<boolean>
+}
 
 export interface DesignerOption {
   readonly icon?: string | React.ReactNode
   readonly label?: string
   readonly value?: string
   readonly isDisabled?: boolean
-  readonly group?: { label: string; value?: string }
+  readonly group?: { readonly label: string; readonly value?: string }
 }
 
-export interface DesignerOptionGroup<Option extends DesignerOption = DesignerOption> {
-  readonly icon?: string | React.ReactNode
-  readonly label?: string
-  readonly options: readonly Option[]
+export interface DesignerOptionGroup<Option extends DesignerOption = DesignerOption> extends GroupBase<Option> {
   readonly value?: string
+  readonly icon?: string | React.ReactNode
 }
-
-type DesignerComboboxValue<Option extends DesignerOption, IsMulti extends boolean> = IsMulti extends true ? readonly Option[] : Option | null
-type DesignerComboboxDisplayValue<Option extends DesignerOption, IsMulti extends boolean> = IsMulti extends true
-  ? readonly Option[]
-  : Option | DesignerOption | null
 
 export interface DesignerComboboxProps<
   Option extends DesignerOption = DesignerOption,
@@ -54,13 +63,13 @@ export interface DesignerComboboxProps<
   variant?: 'default' | 'danger'
   isMulti?: IsMulti
   isClearable?: boolean
-  menuPosition?: 'absolute' | 'fixed'
-  menuPlacement?: 'auto' | 'bottom' | 'top'
+  menuPosition?: MenuPosition
+  menuPlacement?: MenuPlacement
   defaultOpen?: boolean
-  defaultValue?: DesignerComboboxValue<Option, IsMulti>
-  value?: DesignerComboboxDisplayValue<Option, IsMulti>
-  options?: readonly (Option | Group)[]
-  onChange?: (value: DesignerComboboxValue<Option, IsMulti>) => void
+  defaultValue?: PropsValue<Option>
+  value?: PropsValue<Option>
+  options?: OptionsOrGroups<Option, Group>
+  onChange?: (value: OnChangeValue<Option, IsMulti>) => void
   onClose?: () => void
   labelInMenu?: string
   maxMenuHeight?: number
@@ -68,35 +77,129 @@ export interface DesignerComboboxProps<
   isSuffix?: boolean
 }
 
-interface OptionGroup<Option extends DesignerOption> {
-  readonly icon?: string | React.ReactNode
-  readonly key: string
-  readonly label?: string
-  readonly options: readonly Option[]
-}
-
-function isOptionGroup<Option extends DesignerOption>(option: Option | DesignerOptionGroup<Option>): option is DesignerOptionGroup<Option> {
-  return 'options' in option
-}
-
-function matchSubstring<Option extends DesignerOption>(option: Option, input: string): boolean {
-  input = input.trim().toLowerCase()
+function DropdownIndicator<Option extends DesignerOption = DesignerOption, IsMulti extends boolean = false>(props: DropdownIndicatorProps<Option, IsMulti>) {
   return (
-    (option.group?.label || '').toLowerCase().includes(input) ||
-    (option.group?.value || '').toLowerCase().includes(input) ||
-    (option.label || '').toLowerCase().includes(input) ||
-    (option.value || '').toLowerCase().includes(input)
+    <components.DropdownIndicator {...props}>
+      <i className="i-codicon:chevron-down" />
+    </components.DropdownIndicator>
   )
 }
 
-function renderIcon(icon: React.ReactNode) {
-  if (typeof icon === 'string') {
-    return icon.startsWith('i-') ? <i className={icon} /> : <DesignerIcon src={icon} />
-  }
-  return icon
+function ClearIndicator<Option extends DesignerOption = DesignerOption, IsMulti extends boolean = false>(props: ClearIndicatorProps<Option, IsMulti>) {
+  return (
+    <components.ClearIndicator {...props}>
+      <i className="i-codicon:close" />
+    </components.ClearIndicator>
+  )
 }
 
-function OptionLabel({ option }: { readonly option: DesignerOption }) {
+function Menu<Option extends DesignerOption = DesignerOption>(props: MenuProps<Option>) {
+  const selectProps = props.selectProps as ExtraProps
+  return (
+    <components.Menu {...props} className={clsx(props.className, 'nowheel')}>
+      {props.children}
+      {selectProps.labelInMenu && (
+        <div className={styles.labelInMenu} title={selectProps.labelInMenu}>
+          {selectProps.labelInMenu}
+        </div>
+      )}
+    </components.Menu>
+  )
+}
+
+function ValueContainer<Option extends DesignerOption = DesignerOption>(props: ValueContainerProps<Option>) {
+  const t = useTranslate()
+  if (props.isMulti && props.getValue().length > 1) {
+    const [, input] = props.children as [React.ReactNode[], React.ReactNode]
+    return (
+      <components.ValueContainer {...props}>
+        <div className={styles.multiValue}>
+          <div className={styles.label}>{t('components.numOptions', { count: props.getValue().length })}</div>
+        </div>
+        {input}
+      </components.ValueContainer>
+    )
+  }
+  return <components.ValueContainer {...props}>{props.children}</components.ValueContainer>
+}
+
+function Group<
+  Option extends DesignerOption = DesignerOption,
+  IsMulti extends boolean = false,
+  Group extends DesignerOptionGroup<Option> = DesignerOptionGroup<Option>,
+>(props: GroupProps<Option, IsMulti, Group>) {
+  const { keyboardNavigation$, searching$ } = props.selectProps as ExtraProps
+  const keyboardNavigation = useVal(keyboardNavigation$)
+  const searching = useVal(searching$)
+  const getPopupContainer = useGetStaticPopupContainer()
+  const popupRef = useRef<TooltipRef>(null)
+  const popupContainerRef = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const [popupScale, setPopupScale] = useState(1)
+  const groupClassName = props.cx({ group: true }, props.getClassNames('group', props), props.className)
+  useLayoutEffect(() => {
+    const holder = document.createElement('div')
+    holder.className = styles.popupScaleContainer
+    getPopupContainer().appendChild(holder)
+    popupContainerRef.current = holder
+    return () => {
+      popupContainerRef.current = null
+      holder.remove()
+    }
+  }, [getPopupContainer])
+  useLayoutEffect(() => {
+    const holder = popupContainerRef.current
+    if (holder) holder.style.transform = `scale(${popupScale})`
+    popupRef.current?.forceAlign()
+  }, [popupScale])
+  if (keyboardNavigation || searching) {
+    return (
+      <div className={groupClassName} {...props.innerProps}>
+        <div className={styles.groupLabel}>
+          {props.data.icon && <span className={styles.icon}>{renderIcon(props.data.icon)}</span>}
+          <span className={styles.label}>{props.data.label}</span>
+        </div>
+        <div className={styles.grouped}>{props.children}</div>
+      </div>
+    )
+  }
+  return (
+    <Tooltip
+      ref={popupRef}
+      align={{ offset: [-1, 0], points: ['tl', 'tr'] }}
+      classNames={{ root: styles.menuPopup }}
+      destroyOnHidden
+      getTooltipContainer={() => popupContainerRef.current || getPopupContainer()}
+      mouseEnterDelay={0.1}
+      mouseLeaveDelay={0.1}
+      onVisibleChange={(visible) => {
+        const trigger = triggerRef.current
+        if (visible && trigger && trigger.offsetWidth > 0) setPopupScale(trigger.getBoundingClientRect().width / trigger.offsetWidth)
+      }}
+      overlay={
+        <div
+          className={styles.menuBody}
+          onMouseDown={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+          onPointerDown={stopPropagation}
+        >
+          {props.children}
+        </div>
+      }
+      placement="rightTop"
+      showArrow={false}
+      trigger={['hover', 'click']}
+    >
+      <div ref={triggerRef} className={clsx(groupClassName, styles.contextMenu)} {...props.innerProps}>
+        {props.label}
+      </div>
+    </Tooltip>
+  )
+}
+
+function formatOptionLabel<Option extends DesignerOption = DesignerOption>(option: Option) {
   return (
     <div className={styles.value} title={option.label || option.value}>
       {option.icon && <span className={styles.icon}>{renderIcon(option.icon)}</span>}
@@ -105,124 +208,126 @@ function OptionLabel({ option }: { readonly option: DesignerOption }) {
   )
 }
 
+function formatGroupLabel<Option extends DesignerOption = DesignerOption>(group: DesignerOptionGroup<Option>) {
+  return (
+    <div className={styles.group}>
+      {group.icon && <span className={styles.icon}>{renderIcon(group.icon)}</span>}
+      <span className={styles.label}>{group.label}</span>
+      <i className="i-codicon:chevron-right" />
+    </div>
+  )
+}
+
+const customTheme: Theme = { ...defaultTheme, spacing: { ...defaultTheme.spacing, controlHeight: 22 } }
+const customComponents = { DropdownIndicator, ClearIndicator, Menu, ValueContainer, Group }
+const customStyles = { menu: (base: {}) => ({ ...base, width: 'var(--menu-width)' }) }
+
+function renderIcon(icon: React.ReactNode) {
+  if (typeof icon === 'string') return icon.startsWith('i-') ? <i className={icon} /> : <DesignerIcon src={icon} />
+  return icon
+}
+
+interface FilterOptionOption<Option> {
+  readonly label: string
+  readonly value: string
+  readonly data: Option
+}
+
+function matchSubstring<Option extends DesignerOption = DesignerOption>(option: FilterOptionOption<Option>, input: string): boolean {
+  input = input.trim().toLowerCase()
+  return (
+    (option.data.group?.label || '').toLowerCase().includes(input) ||
+    (option.data.group?.value || '').toLowerCase().includes(input) ||
+    (option.label || '').toLowerCase().includes(input) ||
+    (option.value || '').toLowerCase().includes(input)
+  )
+}
+
 export const DesignerCombobox: <Option extends DesignerOption = DesignerOption, IsMulti extends boolean = false>(
   props: DesignerComboboxProps<Option, IsMulti> & React.RefAttributes<HTMLInputElement>,
 ) => React.ReactElement | null = /*#__PURE__*/ forwardRef2(function DesignerCombobox<
   Option extends DesignerOption = DesignerOption,
   IsMulti extends boolean = false,
->(props: DesignerComboboxProps<Option, IsMulti>, ref?: React.ForwardedRef<HTMLInputElement>) {
+>(props: DesignerComboboxProps<Option, IsMulti>, ref?: React.Ref<HTMLInputElement>) {
   const t = useTranslate()
-  const getPopupContainer = useGetStaticPopupContainer()
-  const popupContainer = typeof document === 'undefined' ? undefined : getPopupContainer()
-
-  const { groups, options } = useMemo(() => {
-    const menuGroups: OptionGroup<Option>[] = []
-    const ungrouped: Option[] = []
-    let flatOptions: Option[] = []
-
-    for (const entry of props.options || []) {
-      if (isOptionGroup(entry)) {
-        const groupOptions = entry.options.map((option) => ({ ...option, group: { label: entry.label || '', value: entry.value } }))
-        menuGroups.push({ icon: entry.icon, key: entry.value || entry.label || `group-${menuGroups.length}`, label: entry.label, options: groupOptions })
-        flatOptions = flatOptions.concat(groupOptions)
-      } else {
-        ungrouped.push(entry)
-        flatOptions.push(entry)
-      }
-    }
-
-    if (ungrouped.length > 0) {
-      menuGroups.unshift({ key: '$options', options: ungrouped })
-    }
-
-    return { groups: menuGroups, options: flatOptions }
+  const [keyboardNavigation$] = useState(() => val(false))
+  const [searching$] = useState(() => val(false))
+  const innerRef = useRef<SelectInstance<Option, IsMulti>>(null)
+  useImperativeHandle(ref, () => innerRef.current!.inputRef!, [])
+  const options = useMemo(() => {
+    if (props.options?.some((entry) => 'options' in entry))
+      return props.options.map((entry) =>
+        'options' in entry ? { ...entry, options: entry.options.map((option) => ({ ...option, group: { label: entry.label, value: entry.value } })) } : entry,
+      )
+    return props.options
   }, [props.options])
-
-  const selectedCount = Array.isArray(props.value) ? props.value.length : 0
-  const selectedLabel = Array.isArray(props.value) && selectedCount === 1 ? props.value[0]?.label || props.value[0]?.value : undefined
-  const side = props.menuPlacement === 'top' ? 'top' : 'bottom'
-
+  const [menuWidth, setMenuWidth] = useState(0)
+  useEffect(() => {
+    const control = innerRef.current?.controlRef
+    if (!control) return
+    const observer = new ResizeObserver((entries) => setMenuWidth(entries[0]?.borderBoxSize[0]?.inlineSize || control.clientWidth))
+    observer.observe(control)
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
+    if (props.defaultOpen) innerRef.current?.focus()
+  }, [props.defaultOpen])
+  const ReactSelectEx = ReactSelect as React.FC<
+    Props<Option, IsMulti, DesignerOptionGroup<Option>> & ExtraProps & { ref: React.Ref<SelectInstance<Option, IsMulti>> }
+  >
   return (
-    <Combobox<Option, IsMulti>
-      autoHighlight
-      defaultOpen={props.defaultOpen}
-      defaultValue={props.defaultValue as never}
-      disabled={props.disabled}
-      filter={matchSubstring}
-      id={props.id}
-      isItemEqualToValue={(left, right) => left.value === right.value}
-      itemToStringLabel={(option) => option.label || option.value || ''}
-      itemToStringValue={(option) => option.value || option.label || ''}
-      items={options}
-      multiple={props.isMulti as IsMulti}
-      onOpenChange={(open) => !open && props.onClose?.()}
-      onValueChange={(value) => props.onChange?.(value as DesignerComboboxValue<Option, IsMulti>)}
-      value={props.value as never}
-    >
-      <div
+    <CssWrapper css={{ '--menu-width': `${menuWidth}px` }}>
+      <ReactSelectEx
+        id={props.id}
+        inputId={props.inputId}
+        ref={innerRef}
+        defaultValue={props.defaultValue}
+        value={props.value}
+        options={options}
+        onChange={props.onChange}
+        onMenuClose={() => {
+          keyboardNavigation$.set(false)
+          props.onClose?.()
+        }}
+        isDisabled={props.disabled}
+        isMulti={props.isMulti}
+        defaultMenuIsOpen={props.defaultOpen}
+        isClearable={props.isClearable}
+        tabSelectsValue={false}
+        closeMenuOnSelect={!props.isMulti}
+        blurInputOnSelect={!props.isMulti}
+        openMenuOnFocus
+        captureMenuScroll
+        hideSelectedOptions={false}
+        filterOption={matchSubstring}
+        menuPosition={props.menuPosition}
+        menuPlacement={props.menuPlacement}
         className={clsx(
-          styles.control,
+          'react-select-container',
           props.variant === 'danger' && styles.danger,
           props.capitalize && styles.capitalize,
           props.isSuffix && styles.isSuffix,
           props.className,
         )}
-      >
-        {props.isMulti && selectedCount > 0 && (
-          <span className={styles.multiValue}>{selectedLabel || t('components.numOptions', { count: selectedCount })}</span>
-        )}
-        <ComboboxInput
-          ref={ref}
-          className={styles.input}
-          disabled={props.disabled}
-          id={props.inputId}
-          onKeyDown={stopPropagation}
-          placeholder={props.placeholder ?? ''}
-        />
-        {props.isClearable && !props.disabled && (
-          <ComboboxClear
-            aria-label={t('components.clear')}
-            onMouseDown={(event) => event.preventDefault()}
-            render={<Button className={styles.clear} size="icon-xs" type="button" variant="ghost" />}
-          >
-            <i className="i-codicon:close" />
-          </ComboboxClear>
-        )}
-        <i className={styles.indicator + ' i-codicon:chevron-down'} />
-      </div>
-      <ComboboxContent
-        className={styles.menu}
-        container={popupContainer}
-        side={side}
-        sideOffset={0}
-        style={{ '--select-menu-height': `${props.maxMenuHeight ?? 190}px` } as React.CSSProperties}
-      >
-        <ComboboxEmpty className={styles.empty}>{t('components.noMatching')}</ComboboxEmpty>
-        <ComboboxList className={styles.list}>
-          {groups.map((group) => (
-            <ComboboxGroup key={group.key} items={group.options}>
-              {group.label && (
-                <ComboboxLabel className={styles.groupLabel}>
-                  {group.icon && <span className={styles.icon}>{renderIcon(group.icon)}</span>}
-                  <span className={styles.label}>{group.label}</span>
-                </ComboboxLabel>
-              )}
-              <ComboboxCollection>
-                {(option: Option) => (
-                  <ComboboxItem key={option.value || option.label} disabled={option.isDisabled} value={option}>
-                    <OptionLabel option={option} />
-                  </ComboboxItem>
-                )}
-              </ComboboxCollection>
-            </ComboboxGroup>
-          ))}
-        </ComboboxList>
-        {props.labelInMenu && (
-          <div className={styles.labelInMenu} title={props.labelInMenu}>
-            {props.labelInMenu}
-          </div>
-        )}
-      </ComboboxContent>
-    </Combobox>
+        classNamePrefix="react-select"
+        unstyled
+        placeholder={props.placeholder ?? null}
+        noOptionsMessage={() => t('components.noMatching')}
+        theme={customTheme}
+        styles={customStyles}
+        components={customComponents}
+        labelInMenu={props.labelInMenu}
+        maxMenuHeight={props.maxMenuHeight ?? 190}
+        formatOptionLabel={formatOptionLabel}
+        formatGroupLabel={formatGroupLabel}
+        onKeyDown={(event) => {
+          if (['ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp'].includes(event.key)) keyboardNavigation$.set(true)
+          stopPropagation(event)
+        }}
+        keyboardNavigation$={keyboardNavigation$}
+        searching$={searching$}
+        onInputChange={(value: string) => searching$.set(!!value)}
+      />
+    </CssWrapper>
   )
 })

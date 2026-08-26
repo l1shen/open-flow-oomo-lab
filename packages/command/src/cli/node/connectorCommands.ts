@@ -90,7 +90,7 @@ export async function connectorCommand(
           executor: { action: action.actionId, ...(connection == null ? {} : { connectionId: connection.connectionId }), kind: 'connector' },
           inputs: withInputValues(action, values),
           name,
-          outputs: action.outputs,
+          outputs: Object.entries(action.outputs).map(([handle, port]) => Object.assign({ handle }, port)),
         },
       )
       const target = { actionId: action.actionId, flowId: selected.flow.flowId, kind: 'connector', nodeId, taskId }
@@ -126,9 +126,10 @@ export async function connectorCommand(
       if (task == null || !('executor' in task) || task.executor.kind != 'connector') {
         throw new CliError('connector.node-invalid', `Node ${JSON.stringify(second)} is not a Connector Node.`)
       }
-      const values = await settingValues(args, runtime, task.inputs)
+      const taskInputs = Object.fromEntries(task.inputs.map((input) => [input.handle, input]))
+      const values = await settingValues(args, runtime, taskInputs)
       for (const handle of Object.keys(values)) {
-        if (task.inputs[handle] == null) throw new CliError('connector.input-not-found', `Connector input ${JSON.stringify(handle)} was not found.`)
+        if (taskInputs[handle] == null) throw new CliError('connector.input-not-found', `Connector input ${JSON.stringify(handle)} was not found.`)
       }
       const inputChanged = Object.entries(values).some(([handle, value]) => {
         const current = resolved.node.inputs[handle]
