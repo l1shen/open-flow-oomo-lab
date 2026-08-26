@@ -25,6 +25,8 @@ test('maps Connector action schemas into Designer ports', () => {
     {
       properties: {
         count: { default: 2, type: 'integer' },
+        filter: { type: 'string' },
+        note: { type: ['string', 'null'] },
         query: { description: 'Search query.', type: 'string' },
       },
       required: ['query'],
@@ -39,9 +41,15 @@ test('maps Connector action schemas into Designer ports', () => {
 
   assert.deepEqual(ports.inputs, [
     { description: undefined, handle: 'count', json_schema: { default: 2, type: 'integer' }, nullable: true, value: 2 },
+    { description: undefined, handle: 'filter', json_schema: { type: 'string' }, nullable: true, value: null },
+    { description: undefined, handle: 'note', json_schema: { type: ['string', 'null'] }, nullable: true, value: null },
     { description: 'Search query.', handle: 'query', json_schema: { description: 'Search query.', type: 'string' }, nullable: false, value: undefined },
   ])
-  assert.deepEqual(ports.initialInputs, [{ handle: 'count', value: 2 }])
+  assert.deepEqual(ports.initialInputs, [
+    { handle: 'count', value: 2 },
+    { handle: 'filter', value: null },
+    { handle: 'note', value: null },
+  ])
   assert.deepEqual(ports.outputs, [{ description: undefined, handle: 'results', json_schema: { items: { type: 'string' }, type: 'array' }, nullable: false }])
 })
 

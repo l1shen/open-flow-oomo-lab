@@ -358,7 +358,7 @@ function TaskDefinition({
             location={moduleLocation == null ? undefined : { column: moduleLocation.column, line: moduleLocation.line }}
             onChange={(value) => store.updateModuleSource(value)}
             theme={theme}
-            uri={`open-flow://project/modules/${moduleEditor.moduleId}.js`}
+            uri={`file:///modules/${moduleEditor.moduleId}.js`}
             value={moduleEditor.source}
           />
           <span className="code-source-note">{t('inspector.task.importsFromSource')}</span>

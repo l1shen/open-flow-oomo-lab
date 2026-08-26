@@ -1,7 +1,9 @@
 import type { ChangeOperation, GraphNode, RevisionContent } from './change.ts'
 
 import { describe, expect, it } from 'vitest'
+import { createAuthoringId } from './authoring.ts'
 import { applyFlowChanges, FlowChangeError } from './change.ts'
+import { createCodeTask } from './nodeChanges.ts'
 
 const port = { jsonSchema: {}, nullable: false } as const
 const target = { kind: 'flow' } as const
@@ -33,6 +35,20 @@ function taskNode(): GraphNode {
 }
 
 describe('Flow changes', () => {
+  it('creates short readable authoring IDs', () => {
+    expect(createAuthoringId()).toMatch(/^[23456789abcdefghjkmnpqrstuvwxyz]{10}$/)
+  })
+
+  it('creates code tasks with generated JavaScript input and output types', () => {
+    const changed = applyFlowChanges(revision(), createCodeTask(target, { moduleId: 'module', nodeId: 'task' }, 'Code'))
+    const source = changed.modules.module?.source
+
+    expect(source).toContain('//#region generated meta')
+    expect(source).toContain(' *   value: any;')
+    expect(source).toContain(' *   result: any;')
+    expect(source).toContain('@param {TaskContext<Outputs>} context')
+  })
+
   it('applies every resource lifecycle operation in order', () => {
     const subflow = { graph: { nodes: {} }, inputs: [{ ...port, handle: 'input' }], name: 'Child', outputs: [{ ...port, handle: 'output', sources: [] }] }
     const task = { executor: { kind: 'llm' as const, mode: 'chat' as const }, inputs: [], name: 'Managed', outputs: [] }

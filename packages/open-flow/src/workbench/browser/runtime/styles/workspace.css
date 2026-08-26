@@ -6,7 +6,7 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
-    grid-template-rows: minmax(64px, auto) minmax(0, 1fr);
+    grid-template-rows: 52px minmax(0, 1fr);
     background: var(--canvas);
   }
 
@@ -16,8 +16,8 @@
     min-width: 0;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
-    gap: 20px;
-    padding: 0 24px;
+    gap: 12px;
+    padding: 0 12px;
     border-bottom: 1px solid var(--border);
     background: var(--canvas);
   }
@@ -32,8 +32,20 @@
   }
 
   .workspace-title {
-    gap: 8px;
+    gap: 4px;
     overflow: hidden;
+  }
+
+  .workspace-flow-link {
+    min-width: 0;
+    max-width: 180px;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+  }
+
+  .workspace-flow-link svg {
+    flex: none;
   }
 
   .workspace-title strong {
@@ -51,8 +63,9 @@
   }
 
   .workspace-title .draft-change {
-    gap: 8px;
-    margin-left: 10px;
+    gap: 6px;
+    margin-left: 4px;
+    font-size: 11px;
   }
 
   .workspace-tabs-root {
@@ -61,7 +74,20 @@
 
   .workspace-actions {
     justify-content: flex-end;
-    gap: 8px;
+    gap: 4px;
+  }
+
+  .workspace-tabs {
+    height: 36px;
+  }
+
+  .workspace-tabs [data-slot='tabs-trigger'] {
+    padding-inline: 10px;
+    font-size: 12px;
+  }
+
+  .workspace-more {
+    display: flex;
   }
 
   .action-help {
@@ -75,7 +101,7 @@
   .diagnostics-panel {
     position: absolute;
     z-index: 7;
-    top: 64px;
+    top: 52px;
     right: 0;
     bottom: 0;
     display: flex;
@@ -91,7 +117,7 @@
   .run-input-panel {
     position: absolute;
     z-index: 7;
-    top: 64px;
+    top: 52px;
     right: 0;
     bottom: 0;
     width: 460px;

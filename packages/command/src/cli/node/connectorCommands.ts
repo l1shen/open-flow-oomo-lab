@@ -5,6 +5,7 @@ import type { Runtime, ParsedArguments } from './support.ts'
 import { ControlClient } from '@oomol-lab/open-flow/control-api'
 import {
   createBuiltinTrigger,
+  createAuthoringId,
   createManagedTask,
   createProviderTrigger,
   deleteNodes,
@@ -81,8 +82,8 @@ export async function connectorCommand(
       const connection = await preferredConnection(client, action.serviceId, args.connection, action.defaultConnection, false)
       const name = args.name?.trim() ?? action.name
       if (name.length == 0) throw new CliError('cli.invalid-arguments', 'Connector Node name cannot be empty.')
-      const nodeId = crypto.randomUUID()
-      const taskId = crypto.randomUUID()
+      const nodeId = createAuthoringId()
+      const taskId = createAuthoringId()
       const operations = createManagedTask(
         selected.target,
         { nodeId, taskId },
@@ -232,7 +233,7 @@ export async function triggerCommand(
       const configuredSchedule = triggerSchedule(args.every, args.cron, args.timezone)
       const values = await settingValues(args, runtime)
       const config = Object.fromEntries(Object.entries(values).filter((entry): entry is [string, JsonValue] => entry[1] !== undefined))
-      const triggerId = crypto.randomUUID()
+      const triggerId = createAuthoringId()
       let operations
       let name: string
       let kind: TriggerNode['kind']
@@ -259,7 +260,7 @@ export async function triggerCommand(
         const connection = await preferredConnection(client, definition.provider, args.connection, undefined, true)
         name = args.name?.trim() ?? definition.displayName
         kind = definition.type
-        operations = createProviderTrigger(selected.target, { bindingId: crypto.randomUUID(), nodeId: triggerId }, definition, {
+        operations = createProviderTrigger(selected.target, { bindingId: createAuthoringId(), nodeId: triggerId }, definition, {
           config,
           connectionId: connection!.connectionId,
           name,

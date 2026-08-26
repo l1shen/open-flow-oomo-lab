@@ -1,10 +1,12 @@
+import styles from './DisplayModeToggle.module.scss'
 import type { Val } from 'value-enhancer'
 import type { FlowDisplayMode } from '../../../common/flowDisplay.ts'
 
 import { Panel } from '@xyflow/react'
+import { clsx } from 'clsx'
 import { memo } from 'react'
 import { useVal } from 'use-value-enhancer'
-import { useTranslate } from 'val-i18n-react'
+import { useLang, useTranslate } from 'val-i18n-react'
 import { ToggleGroup, ToggleGroupItem } from '../../../../ui/browser/toggle-group.tsx'
 
 export interface DisplayModeToggleProps {
@@ -13,24 +15,27 @@ export interface DisplayModeToggleProps {
 
 export const DisplayModeToggle: React.FC<DisplayModeToggleProps> = /*#__PURE__*/ memo(function DisplayModeToggle({ displayMode$ }) {
   const t = useTranslate()
+  const lang = useLang()
   const displayMode = useVal(displayMode$)
 
   return (
-    <Panel data-canvas-control-scope position="bottom-center">
+    <Panel className={styles.container} data-canvas-control-scope position="bottom-center">
       <ToggleGroup<FlowDisplayMode>
         aria-label={t('flowDisplayMode.overviewDescription')}
+        className={clsx(styles.group, lang == 'zh-CN' && styles.compact)}
         onValueChange={(values) => {
           const value = values.at(-1)
           if (value != null) displayMode$.set(value)
         }}
         spacing={0}
+        size="sm"
         value={[displayMode]}
         variant="outline"
       >
-        <ToggleGroupItem title={t('flowDisplayMode.overviewDescription')} value="overview">
+        <ToggleGroupItem className={styles.button} title={t('flowDisplayMode.overviewDescription')} value="overview">
           {t('flowDisplayMode.overview')}
         </ToggleGroupItem>
-        <ToggleGroupItem title={t('flowDisplayMode.detailDescription')} value="detail">
+        <ToggleGroupItem className={styles.button} title={t('flowDisplayMode.detailDescription')} value="detail">
           {t('flowDisplayMode.detail')}
         </ToggleGroupItem>
       </ToggleGroup>

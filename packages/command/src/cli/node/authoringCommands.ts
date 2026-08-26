@@ -5,6 +5,7 @@ import type { Runtime, ParsedArguments, SemanticNode } from './support.ts'
 import { ApiError, ControlClient } from '@oomol-lab/open-flow/control-api'
 import {
   connect as connectEdge,
+  createAuthoringId,
   createBuiltinTrigger,
   createCodeTask,
   createCondition,
@@ -228,12 +229,12 @@ export async function nodeCommand(client: ControlClient, flow: Flow, operands: r
       }
       const name = extra[0]!.trim()
       if (name.length == 0) throw new CliError('cli.invalid-arguments', 'Node name cannot be empty.')
-      const nodeId = crypto.randomUUID()
+      const nodeId = createAuthoringId()
       let identity: { readonly moduleId?: string; readonly taskId?: string } = {}
       let operations
       switch (nodeReference) {
         case 'code': {
-          const moduleId = crypto.randomUUID()
+          const moduleId = createAuthoringId()
           const source = args.code == null ? undefined : await argumentText(args.code, '--code', 'code.source-unreadable', runtime)
           operations = createCodeTask(
             selected.target,
@@ -251,7 +252,7 @@ export async function nodeCommand(client: ControlClient, flow: Flow, operands: r
         case 'llm-chat':
         case 'llm-json':
           if (args.code != null) throw new CliError('cli.invalid-arguments', '--code is only valid when adding a Code Node.')
-          identity = { taskId: crypto.randomUUID() }
+          identity = { taskId: createAuthoringId() }
           operations = createLlmTask(
             selected.target,
             { nodeId, taskId: identity.taskId! },
@@ -428,14 +429,14 @@ export async function applyFlowCommand(client: ControlClient, flow: Flow, operan
   }
   const preparedNodes = await Promise.all(
     Object.entries(spec.nodes).map(async ([reference, node]) => {
-      const nodeId = crypto.randomUUID()
+      const nodeId = createAuthoringId()
       switch (node.kind) {
         case 'code': {
           if (args.file == '-' && node.code == '-') {
             throw new CliError('flow.apply-invalid', 'A Flow apply request read from stdin cannot also read Code source from stdin.')
           }
           const code = await argumentText(node.code, 'nodes.code', 'code.source-unreadable', runtime)
-          const identity = { moduleId: crypto.randomUUID(), nodeId }
+          const identity = { moduleId: createAuthoringId(), nodeId }
           return {
             identity: { kind: node.kind, moduleId: identity.moduleId, name: node.name, nodeId, reference },
             operations: createCodeTask(
@@ -457,7 +458,7 @@ export async function applyFlowCommand(client: ControlClient, flow: Flow, operan
         case 'connector': {
           const action = await actionRequests.get(node.action)!
           const connection = await preferredConnection(client, action.serviceId, node.connection, action.defaultConnection, false)
-          const identity = { nodeId, taskId: crypto.randomUUID() }
+          const identity = { nodeId, taskId: createAuthoringId() }
           const name = node.name ?? action.name
           return {
             identity: {
@@ -489,7 +490,7 @@ export async function applyFlowCommand(client: ControlClient, flow: Flow, operan
           }
         case 'llm-chat':
         case 'llm-json': {
-          const taskId = crypto.randomUUID()
+          const taskId = createAuthoringId()
           return {
             identity: { kind: node.kind, name: node.name, nodeId, reference, taskId },
             operations: createLlmTask(selected.target, { nodeId, taskId }, node.name, node.kind == 'llm-chat' ? 'chat' : 'json', 'Generated response.', {
@@ -508,7 +509,7 @@ export async function applyFlowCommand(client: ControlClient, flow: Flow, operan
   )
   const preparedTriggers = await Promise.all(
     Object.entries(spec.triggers).map(async ([reference, trigger]) => {
-      const triggerId = crypto.randomUUID()
+      const triggerId = createAuthoringId()
       switch (trigger.kind) {
         case 'webhook': {
           const name = trigger.name ?? 'Webhook'
@@ -543,7 +544,7 @@ export async function applyFlowCommand(client: ControlClient, flow: Flow, operan
               triggerId,
               triggerKind: definition.type,
             },
-            operations: createProviderTrigger(selected.target, { bindingId: crypto.randomUUID(), nodeId: triggerId }, definition, {
+            operations: createProviderTrigger(selected.target, { bindingId: createAuthoringId(), nodeId: triggerId }, definition, {
               config: trigger.config,
               connectionId: connection!.connectionId,
               name,

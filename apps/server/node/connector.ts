@@ -160,7 +160,7 @@ export class ConnectorClient implements ConnectorHost {
     if (!record(response)) throw unavailable()
     if (actionResponse.ok && response.success === true && Object.hasOwn(response, 'data')) return response.data as JsonValue
     if (response.errorCode === 'connection_not_allowed' || response.errorCode === 'connection_not_found') throw connectionRequired()
-    throw unavailable()
+    throw actionFailure(response)
   }
 
   async proxy(provider: string, connectionId: string, rateLimitId: string, request: ConnectorProxyRequest, signal: AbortSignal): Promise<ConnectorProxyResult> {
@@ -301,6 +301,18 @@ function connectionRequired(): ConnectorTaskError {
 
 function actionNotFound(): ConnectorTaskError {
   return new ConnectorTaskError('connector.action-not-found', 'The Connector Action was not found.')
+}
+
+function actionFailure(response: Record<string, unknown>): ConnectorTaskError {
+  if (response.errorCode != 'invalid_input' || !Array.isArray(response.data)) return unavailable()
+  const details = response.data
+    .flatMap((value) => {
+      const item = record(value) ? value : undefined
+      return typeof item?.error == 'string' && item.error.length > 0 ? [item.error.slice(0, 300)] : []
+    })
+    .slice(0, 8)
+  const message = details.length == 0 ? 'The Connector Action input is invalid.' : `The Connector Action input is invalid. ${details.join(' ')}`
+  return new ConnectorTaskError('connector.unavailable', message)
 }
 
 function record(value: unknown): value is Record<string, unknown> {

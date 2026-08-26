@@ -25,6 +25,9 @@ implementation history in Git. Do not reference unavailable repositories.
   handling, read [`docs/authoring/frontend-ui.md`](docs/authoring/frontend-ui.md).
 - Do not launch or automate a browser for UI testing. Verify frontend changes with repository
   checks, tests, and builds only.
+- UI work may use temporary probes and tests while investigating behavior. Before finishing, remove
+  low-value tests that only assert markup, class names, component wiring, or library details. Keep
+  tests that protect user-visible behavior and real interaction regressions.
 
 ## TypeScript Style
 

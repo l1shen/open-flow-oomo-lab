@@ -2,15 +2,16 @@ import type { EventListeners } from 'overlayscrollbars'
 import type { KeyboardEvent, PointerEvent, ReactElement } from 'react'
 import type { TFunction } from 'val-i18n'
 import type { OverlayScrollbarRef } from '../../../../designer/browser/components/overlayScrollbar.tsx'
-import type { Run, RunEvent, RunResult } from '../api.ts'
+import type { JsonValue, Run, RunEvent, RunResult } from '../api.ts'
 import type { IconName } from '../icons.tsx'
 import type { RunEventFilter } from './runStore.ts'
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useLang, useTranslate } from 'val-i18n-react'
 import { OverlayScrollbar } from '../../../../designer/browser/components/overlayScrollbar.tsx'
+import { collapseAllNested, CompactValue, JSONViewer } from '../../../../designer/browser/jsonViewer/index.ts'
 import { Button } from '../../../../ui/browser/button.tsx'
-import { Tabs, TabsList, TabsTrigger } from '../../../../ui/browser/tabs.tsx'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuTrigger } from '../../../../ui/browser/dropdown-menu.tsx'
 import { ToggleGroup, ToggleGroupItem } from '../../../../ui/browser/toggle-group.tsx'
 import { Icon } from '../icons.tsx'
 import { eventSubject } from '../workspace.ts'
@@ -62,7 +63,7 @@ const maxHeight = 640
 const minCanvasHeight = 160
 const defaultHeight = 360
 const resizeStep = 24
-const timelineChromeHeight = 118
+const timelineChromeHeight = 64
 const timelineEmptyHeight = 72
 const timelineEventHeight = 36
 const timelineDetailHeight = 52
@@ -94,6 +95,7 @@ type EventObservation = 'expired' | 'truncated'
 type EventCategory = Exclude<RunEventFilter, 'all'>
 
 const eventFilters: readonly RunEventFilter[] = ['all', 'lifecycle', 'progress', 'log', 'output', 'artifact']
+const eventCategories: readonly EventCategory[] = ['lifecycle', 'progress', 'log', 'output', 'artifact']
 
 function eventObservation(events: readonly RunEvent[], historyComplete: boolean): EventObservation | undefined {
   if (!historyComplete) return 'expired'
@@ -127,6 +129,10 @@ function eventCategory(event: RunEvent): EventCategory {
 
 function filterEvents(events: readonly RunEvent[], filter: RunEventFilter): readonly RunEvent[] {
   return filter == 'all' ? events : events.filter((event) => eventCategory(event) == filter)
+}
+
+function filterEventsBy(events: readonly RunEvent[], filters: readonly RunEventFilter[]): readonly RunEvent[] {
+  return events.filter((event) => filters.includes(eventCategory(event)))
 }
 
 interface TimelineEvent {
@@ -193,6 +199,52 @@ export function RunEventFilters({
   )
 }
 
+function RunLogFilters({
+  container,
+  events,
+  filters,
+  onChange,
+}: {
+  readonly container: HTMLElement | null
+  readonly events: readonly RunEvent[]
+  readonly filters: readonly RunEventFilter[]
+  readonly onChange: (filters: readonly RunEventFilter[]) => void
+}): ReactElement | null {
+  const t = useTranslate()
+  if (events.length == 0) return null
+  const groupedEvents = timelineEvents(events)
+  const counts = new Map<EventCategory, number>()
+  for (const { event } of groupedEvents) {
+    const category = eventCategory(event)
+    counts.set(category, (counts.get(category) ?? 0) + 1)
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button aria-label={t('run.filterEvents')} size="icon-sm" title={t('run.filterEvents')} type="button" variant="ghost">
+            <Icon name="filter" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="end" className="run-log-filter" container={container} side="bottom">
+        <DropdownMenuGroup>
+          {eventCategories.map((filter) => (
+            <DropdownMenuCheckboxItem
+              checked={filters.includes(filter)}
+              key={filter}
+              onCheckedChange={(checked) => onChange(checked ? [...filters, filter] : filters.filter((candidate) => candidate != filter))}
+            >
+              <span>{t(`run.filter.${filter}`)}</span>
+              <span className="run-log-filter-count">{counts.get(filter) ?? 0}</span>
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function RunLogButton({
   events,
   eventsExpiresAt,
@@ -222,6 +274,40 @@ export function RunLogButton({
 function eventIcon(event: RunEvent): IconName {
   if (event.kind.includes('failed')) return 'alert'
   return event.kind.startsWith('node.') ? 'task' : 'flow'
+}
+
+function eventTone(event: RunEvent): string {
+  if (event.kind.includes('failed') || event.kind == 'run.indeterminate') return 'danger'
+  if (event.kind == 'node.completed' || event.kind == 'run.completed') return 'success'
+  return 'neutral'
+}
+
+function jsonRecord(value: unknown): Readonly<Record<string, JsonValue>> | undefined {
+  if (value == null || typeof value != 'object' || Array.isArray(value)) return undefined
+  return value as Readonly<Record<string, JsonValue>>
+}
+
+function terminalOutputs(result: RunResult | undefined): JsonValue | undefined {
+  if (result?.status != 'completed') return undefined
+  const value = jsonRecord(result.result)
+  if (value?.kind == 'function-outputs') return jsonRecord(value.outputs)
+  if (value?.kind != 'node-results' || !Array.isArray(value.nodes)) return undefined
+  const outputs: JsonValue[] = []
+  for (const nodeValue of value.nodes) {
+    const node = jsonRecord(nodeValue)
+    if (!Array.isArray(node?.jobs)) continue
+    for (const jobValue of node.jobs) {
+      const output = jsonRecord(jsonRecord(jobValue)?.outputs)
+      if (output != null) outputs.push(output)
+    }
+  }
+  return outputs.length == 1 ? outputs[0] : outputs
+}
+
+function latestOutputs(events: readonly RunEvent[]): JsonValue | undefined {
+  const event = events.findLast((candidate) => candidate.kind == 'node.output')
+  const output = jsonRecord(event?.payload.output)
+  return output?.kind == 'inline' && Object.hasOwn(output, 'value') ? output.value : output
 }
 
 function eventSummary(event: RunEvent, t: TFunction): string {
@@ -436,18 +522,146 @@ export function RunDetails({
   )
 }
 
+function RunLog({
+  events,
+  eventsExpiresAt,
+  filters,
+  historyComplete,
+  observationFailed,
+  onRetryObservation,
+  result,
+  run,
+  submitting,
+}: Pick<Props, 'events' | 'eventsExpiresAt' | 'historyComplete' | 'observationFailed' | 'onRetryObservation' | 'result' | 'run' | 'submitting'> & {
+  readonly filters: readonly RunEventFilter[]
+}): ReactElement {
+  const language = useLang()
+  const t = useTranslate()
+  const eventList = useRef<OverlayScrollbarRef>(null)
+  const followedRun = useRef<string>()
+  const followEvents = useRef(true)
+  const nodeTitles = useMemo(() => nodeTitleIndex(events), [events])
+  const observation = eventObservation(events, historyComplete)
+  const visibleEvents = timelineEvents(filterEventsBy(events, filters))
+  const lastEventSequence = events.at(-1)?.sequence
+  const outputs = terminalOutputs(result)
+  const eventScrollbarEvents = useMemo<EventListeners>(
+    () => ({
+      initialized(instance) {
+        const list = instance.elements().scrollOffsetElement
+        list.scrollTop = list.scrollHeight
+      },
+      scroll(instance) {
+        const list = instance.elements().scrollOffsetElement
+        followEvents.current = list.scrollHeight - list.scrollTop - list.clientHeight <= eventFollowThreshold
+      },
+    }),
+    [],
+  )
+
+  useEffect(() => {
+    if (followedRun.current != run?.runId) {
+      followedRun.current = run?.runId
+      followEvents.current = true
+    }
+    const instance = eventList.current?.osInstance()
+    if (followEvents.current && instance != null) {
+      instance.update()
+      const list = instance.elements().scrollOffsetElement
+      list.scrollTop = list.scrollHeight
+    }
+  }, [filters, historyComplete, lastEventSequence, result, run?.runId])
+
+  return (
+    <div className="run-log" tabIndex={0}>
+      {observationFailed && (
+        <div className="run-observation-error" role="alert">
+          <span>{t('run.observationFailed')}</span>
+          <Button onClick={onRetryObservation} size="sm" type="button" variant="secondary">
+            {t('empty.retry')}
+          </Button>
+        </div>
+      )}
+      <OverlayScrollbar className="run-log-scroll run-content-scroll" defer={false} events={eventScrollbarEvents} ref={eventList} tabIndex={-1}>
+        <ol className="run-log-list">
+          {observation != null && (
+            <li aria-live="polite" className="run-log-notice">
+              <Icon name="alert" size={14} />
+              <span>
+                {observation == 'expired'
+                  ? t('run.historyExpired')
+                  : eventsExpiresAt == null
+                    ? t('run.eventsTruncatedNotice')
+                    : t('run.eventsTruncatedUntil', { date: new Date(eventsExpiresAt).toLocaleString(language) })}
+              </span>
+            </li>
+          )}
+          {visibleEvents.map(({ event, events: groupedEvents }) => {
+            const subject = eventSubject(event, t, nodeTitles)
+            return (
+              <li className={`run-log-event ${eventTone(event)}`} key={event.sequence}>
+                <span className="run-log-icon" title={event.kind}>
+                  <Icon name={eventIcon(event)} size={14} />
+                </span>
+                <time dateTime={event.createdAt} title={new Date(event.createdAt).toLocaleString(language)}>
+                  {eventTime(event.createdAt, language)}
+                </time>
+                <div className="run-log-main">
+                  <div className="run-log-title">
+                    <strong>{subject}</strong>
+                    <Icon className="run-log-chevron" name="chevron-left" size={11} />
+                    <span>{eventSummary(event, t)}</span>
+                  </div>
+                  <RunEventDetails events={groupedEvents} />
+                </div>
+              </li>
+            )
+          })}
+          {outputs != null && result != null && (
+            <li className="run-log-event run-log-result success">
+              <span className="run-log-icon">
+                <Icon name="check" size={14} />
+              </span>
+              <time dateTime={result.finishedAt} title={new Date(result.finishedAt).toLocaleString(language)}>
+                {eventTime(result.finishedAt, language)}
+              </time>
+              <div className="run-log-main">
+                <div className="run-log-title">
+                  <strong>{t('run.terminalResult')}</strong>
+                </div>
+                <div className="run-log-outputs">
+                  <JSONViewer data={outputs} shouldExpandNode={collapseAllNested} />
+                </div>
+              </div>
+            </li>
+          )}
+          {submitting ? (
+            <li aria-live="polite" className="run-log-empty">
+              {t('run.submitting')}
+            </li>
+          ) : run == null ? (
+            <li className="run-log-empty">{t('run.timelineEmpty')}</li>
+          ) : events.length == 0 && result == null ? (
+            <li className="run-log-empty">{t('run.waiting')}</li>
+          ) : visibleEvents.length == 0 && result == null ? (
+            <li className="run-log-empty">{t('run.noFilteredEvents')}</li>
+          ) : null}
+        </ol>
+      </OverlayScrollbar>
+    </div>
+  )
+}
+
 export function RunDrawer({
   cancelDisabled,
   canceling,
   events,
   eventsExpiresAt,
   eventFilter,
-  eventNodes,
   historyComplete,
   onCancel,
   onClose,
   onEventFilterChange,
-  onLocateEvent,
   onRetryObservation,
   onToggle,
   observationFailed,
@@ -457,13 +671,15 @@ export function RunDrawer({
   submitting,
   visible,
 }: Props): ReactElement | null {
-  const language = useLang()
   const t = useTranslate()
   const drawer = useRef<HTMLElement>(null)
   const resize = useRef<{ height: number; pointerId: number; y: number }>()
   const [resized, setResized] = useState<{ height: number; runId: string | undefined }>()
-  const [tab, setTab] = useState<'output' | 'timeline'>('timeline')
+  const [filters, setFilters] = useState<readonly RunEventFilter[]>(() =>
+    eventFilter == 'all' ? eventCategories.filter((filter) => filter != 'progress') : [eventFilter],
+  )
   const groupedTimelineEvents = timelineEvents(events)
+  const summaryOutputs = terminalOutputs(result) ?? latestOutputs(events)
   const timelineHeight = Math.max(
     minHeight,
     Math.min(
@@ -547,61 +763,60 @@ export function RunDrawer({
           tabIndex={0}
         />
       )}
-      <header className="run-header">
-        <strong>{t('run.details')}</strong>
-        <span className="header-separator" />
-        <span className={`status-dot ${submitting ? 'running' : statusClass(run)}`} />
-        <span className="run-status">{submitting ? t('run.statusSubmitting') : runLabel(run, t)}</span>
-        <span className="run-meta">{duration(run)}</span>
-        {run != null && <span className="run-meta">{new Date(run.createdAt).toLocaleString(language)}</span>}
-        {run != null && <code className="run-id">{t('run.runId', { id: run.runId })}</code>}
-        <span className="run-header-spacer" />
-        {run != null && <RunLogButton events={events} eventsExpiresAt={eventsExpiresAt} historyComplete={historyComplete} run={run} />}
-        {canCancelRun(run) && (
-          <Button disabled={cancelDisabled} onClick={onCancel} size="sm" variant="destructive">
-            {t(canceling ? 'run.canceling' : 'run.cancel')}
+      {open && (
+        <header className="run-header">
+          <strong>{t('run.timeline')}</strong>
+          <span className="run-header-spacer" />
+          <RunLogFilters
+            container={drawer.current}
+            events={events}
+            filters={filters}
+            onChange={(next) => {
+              setFilters(next)
+              onEventFilterChange(next.length == 1 ? next[0]! : 'all')
+            }}
+          />
+          {run != null && <RunLogButton events={events} eventsExpiresAt={eventsExpiresAt} historyComplete={historyComplete} run={run} />}
+          {canCancelRun(run) && (
+            <Button disabled={cancelDisabled} onClick={onCancel} size="sm" variant="destructive">
+              {t(canceling ? 'run.canceling' : 'run.cancel')}
+            </Button>
+          )}
+          <Button aria-label={t('run.close')} onClick={onClose} size="icon-sm" variant="ghost">
+            <Icon name="trash" />
           </Button>
-        )}
-        <Button aria-label={t(open ? 'run.collapse' : 'run.expand')} onClick={onToggle} size="icon-sm" variant="ghost">
-          <Icon name={open ? 'chevron-down' : 'chevron-up'} />
-        </Button>
-        <Button aria-label={t('run.close')} onClick={onClose} size="icon-sm" variant="ghost">
-          <Icon name="close" />
-        </Button>
-      </header>
+          <Button aria-label={t('run.collapse')} onClick={onToggle} size="icon-sm" variant="ghost">
+            <Icon name="chevron-down" />
+          </Button>
+        </header>
+      )}
       {open && (
         <div className="run-content">
-          <div className="run-toolbar">
-            <Tabs className="run-tabs-root" onValueChange={(value) => value != null && setTab(value as 'output' | 'timeline')} value={tab}>
-              <TabsList aria-label={t('run.detailViews')} variant="line">
-                <TabsTrigger aria-controls="run-drawer-timeline-panel" id="run-drawer-timeline-tab" value="timeline">
-                  {t('run.timeline')}
-                </TabsTrigger>
-                <TabsTrigger aria-controls="run-drawer-output-panel" id="run-drawer-output-tab" value="output">
-                  {t('run.output')}
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {tab == 'timeline' && <RunEventFilters events={events} filter={eventFilter} onChange={onEventFilterChange} />}
-          </div>
-          <RunDetails
+          <RunLog
             events={events}
             eventsExpiresAt={eventsExpiresAt}
-            eventFilter={eventFilter}
-            eventNodes={eventNodes}
+            filters={filters}
             historyComplete={historyComplete}
             observationFailed={observationFailed}
-            onLocateEvent={onLocateEvent}
             onRetryObservation={onRetryObservation}
-            panelId={`run-drawer-${tab}-panel`}
             result={result}
             run={run}
             submitting={submitting}
-            tab={tab}
-            tabId={`run-drawer-${tab}-tab`}
           />
         </div>
       )}
+      <div className="run-summary">
+        <span className={`status-dot ${submitting ? 'running' : statusClass(run)}`} />
+        <div className="run-summary-text">
+          <span>{events.at(-1) == null ? (submitting ? t('run.statusSubmitting') : runLabel(run, t)) : eventSummary(events.at(-1)!, t)}</span>
+          {summaryOutputs != null && <CompactValue maxDepth={2} maxEntries={4} value={summaryOutputs} />}
+        </div>
+        <span className="run-meta">{duration(run)}</span>
+        {run != null && <code className="run-id">{t('run.runId', { id: run.runId })}</code>}
+        <Button aria-label={t(open ? 'run.collapse' : 'run.expand')} onClick={onToggle} size="icon-sm" variant="ghost">
+          <Icon name={open ? 'chevron-down' : 'chevron-up'} />
+        </Button>
+      </div>
     </section>
   )
 }

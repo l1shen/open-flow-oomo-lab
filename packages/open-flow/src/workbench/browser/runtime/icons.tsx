@@ -10,6 +10,7 @@ export type IconName =
   | 'condition'
   | 'connection'
   | 'download'
+  | 'filter'
   | 'fit'
   | 'flow'
   | 'hand'
@@ -28,6 +29,7 @@ export type IconName =
   | 'settings'
   | 'subflow'
   | 'task'
+  | 'trash'
   | 'trigger'
   | 'value'
 
@@ -86,6 +88,8 @@ function glyph(name: IconName): ReactNode {
           <path d="M16 21h5v-5" />
         </>
       )
+    case 'filter':
+      return <path d="M4 6h16l-6 7v5l-4 2v-7z" />
     case 'flow':
       return (
         <>
@@ -205,6 +209,15 @@ function glyph(name: IconName): ReactNode {
       return (
         <>
           <path d="M13 2 5 14h6l-1 8 8-12h-6z" />
+        </>
+      )
+    case 'trash':
+      return (
+        <>
+          <path d="M4 7h16" />
+          <path d="M9 7V4h6v3" />
+          <path d="m6 7 1 13h10l1-13" />
+          <path d="M10 11v5M14 11v5" />
         </>
       )
   }

@@ -327,6 +327,14 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
   const [paneContextMenu, setPaneContextMenu] = useState<XYPosition | null>(null)
 
   const [blockQuickPickPanel, setBlockQuickPickPanel] = useState<BlockQuickPickPanelData | null>(null)
+  const quickPickFrame = useRef(0)
+
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(quickPickFrame.current)
+    },
+    [],
+  )
 
   useEffect(() => {
     setBlockQuickPickPanel(props.addNodeRequest == null ? null : { position: props.addNodeRequest.position })
@@ -376,7 +384,8 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
                   sourceHandle: state.fromHandle.id as RFHandleName,
                 },
         }
-        setBlockQuickPickPanel(data)
+        cancelAnimationFrame(quickPickFrame.current)
+        quickPickFrame.current = requestAnimationFrame(() => setBlockQuickPickPanel(data))
       }
     },
     [rf, props.onAddHandle, props.onAddNode, props.provideAddNodeMenuItems],

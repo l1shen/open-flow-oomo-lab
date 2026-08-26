@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import type { FlowDesignerViewInput, FlowDesignerViewOutput } from '../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import type { JsonValue } from './api.ts'
-import type { WorkbenchLanguage, WorkbenchLocation, WorkbenchTheme } from './contract.ts'
+import type { WorkbenchLocation, WorkbenchTheme } from './contract.ts'
 import type { AddNodeOption } from './designer/addNodeOptions.ts'
 import type { CodeTaskPorts } from './designer/flowChanges.ts'
 import type { WorkbenchDesignerHandle } from './designer/workbenchDesigner.tsx'
@@ -10,9 +10,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { IconifyProvider } from '../../../designer/browser/icons/iconifyContext.tsx'
+import { Button } from '../../../ui/browser/button.tsx'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../../../ui/browser/empty.tsx'
 import { BlockLibrary, ContextPanel } from './designer/contextPanel.tsx'
 import { inspectorIcon, NodeInspector } from './designer/nodeInspector.tsx'
 import { WorkbenchDesigner } from './designer/workbenchDesigner.tsx'
+import { Icon } from './icons.tsx'
 import { NavigationStore } from './navigation.ts'
 import { PublicationsView } from './publications/publicationsView.tsx'
 import { RunDrawer } from './runs/runDrawer.tsx'
@@ -319,25 +322,24 @@ function Editor({
 
 export default function FlowWorkspace({
   hrefFor,
-  language,
   navigation,
-  onLanguageChange,
   store,
   theme,
 }: {
   readonly hrefFor: (location: WorkbenchLocation) => string
-  readonly language: WorkbenchLanguage
   readonly navigation: NavigationStore
-  readonly onLanguageChange?: ((language: WorkbenchLanguage) => void) | undefined
   readonly store: WorkbenchStore
   readonly theme: WorkbenchTheme
 }): ReactElement {
+  const t = useTranslate()
   const [runDrawerVisible, setRunDrawerVisible] = useState(false)
-  const [runDrawerOpen, setRunDrawerOpen] = useState(true)
+  const [runDrawerOpen, setRunDrawerOpen] = useState(false)
   const handledExternalRun = useRef<string>()
   const view = useVal(navigation.$.view)
   const draft = useVal(store.workspace.$.draft)
   const flowId = useVal(store.workspace.$.flowId)
+  const workspaceLoadFailed = useVal(store.workspace.$.workspaceLoadFailed)
+  const workspaceLoading = useVal(store.workspace.$.workspaceLoading)
   const submitting = useVal(store.runRequests.$.submitting)
   const externalRunId = useVal(store.runs.$.externalRunId)
   const draftReady = draft != null
@@ -356,7 +358,7 @@ export default function FlowWorkspace({
     if (submitting == null || !draftReady) return
     navigation.open('design')
     setRunDrawerVisible(true)
-    setRunDrawerOpen(true)
+    setRunDrawerOpen(false)
   }, [draftReady, navigation, submitting])
 
   useEffect(() => {
@@ -364,24 +366,24 @@ export default function FlowWorkspace({
     handledExternalRun.current = externalRunId
     if (view != 'design') return
     setRunDrawerVisible(true)
-    setRunDrawerOpen(true)
+    setRunDrawerOpen(false)
   }, [externalRunId, view])
 
-  const revealRun = (): void => {
+  const revealRun = (open = true): void => {
     if (store.workspace.$.draft.value == null) {
       navigation.open('runs')
     } else {
       navigation.open('design')
       setRunDrawerVisible(true)
-      setRunDrawerOpen(true)
+      setRunDrawerOpen(open)
     }
   }
   const runDraft = async (): Promise<void> => {
     navigation.open('design')
-    if ((await store.requestDraftRun()) == 'started') revealRun()
+    if ((await store.requestDraftRun()) == 'started') revealRun(false)
   }
   const runLive = async (): Promise<void> => {
-    if ((await store.requestLiveRun()) == 'started') revealRun()
+    if ((await store.requestLiveRun()) == 'started') revealRun(false)
   }
   const locateRunEvent = (sequence: number): void => {
     if (store.locateRunEvent(sequence)) revealRun()
@@ -392,7 +394,6 @@ export default function FlowWorkspace({
       <main className="workspace">
         <WorkspaceHeader
           activeView={view}
-          language={language}
           flowHref={hrefFor({ flowId: flowId!, view: 'design' })}
           flowsHref={hrefFor({ view: 'design' })}
           onOpenDesign={() => navigation.open('design')}
@@ -408,11 +409,37 @@ export default function FlowWorkspace({
           }}
           onRunDraft={() => void runDraft()}
           onRunLive={() => void runLive()}
-          onLanguageChange={onLanguageChange}
           store={store}
         />
         <RunInputPanel onStarted={revealRun} store={store.runRequests} />
-        {view == 'design' ? (
+        {view == 'design' && (workspaceLoading || draft == null) ? (
+          <div aria-labelledby="workspace-tab-design" className="editor-grid context-panel-closed" id="workspace-panel-design" role="tabpanel" tabIndex={0}>
+            <section aria-busy={!workspaceLoadFailed} className="canvas-panel workbench-designer">
+              {workspaceLoadFailed ? (
+                <Empty className="h-full rounded-none border-0" role="alert">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Icon name="alert" size={20} />
+                    </EmptyMedia>
+                    <EmptyTitle>{t('workspace.loadFailed')}</EmptyTitle>
+                    <EmptyDescription>{t('workspace.loadFailedDescription')}</EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button onClick={() => flowId != null && void store.selectFlow(flowId)} variant="outline">
+                      {t('empty.retry')}
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              ) : (
+                <Empty className="h-full rounded-none border-0">
+                  <EmptyHeader>
+                    <EmptyTitle>{t('workspace.status.loading')}</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              )}
+            </section>
+          </div>
+        ) : view == 'design' ? (
           <Editor
             onCloseRuns={() => setRunDrawerVisible(false)}
             onToggleRuns={() => setRunDrawerOpen(!runDrawerOpen)}

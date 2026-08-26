@@ -13,6 +13,7 @@ import type { IntegrationOptions, IntegrationResponse, IntegrationRuntimeState, 
 import type { PublicationAcceptance, RunEvent, RunRecord, StoredRun } from './store.ts'
 import type { PollState, RunAdmission, StoredCronTarget, StoredPollTarget } from './trigger-store.ts'
 
+import { normalizeConnectorRuntimeInputs } from '@oomol-lab/open-flow/connector-action'
 import { controlErrorCode } from '@oomol-lab/open-flow/control-api'
 import { nextTriggerScheduledAt, scheduledTriggerOccurrenceId, validateTriggerSchedule } from '@oomol-lab/open-flow/cron-trigger'
 import { canonicalJsonBytes, digestBytes, encodeRevision } from '@oomol-lab/open-flow/flow-encoding'
@@ -972,11 +973,18 @@ export class ServerService {
       }
     }
 
-    const executor = prepared.tasks[invocation.taskId]!.executor
+    const task = prepared.tasks[invocation.taskId]!
+    const executor = task.executor
     switch (executor.kind) {
       case 'connector':
         if (this.#connector == null) throw new ConnectorTaskError('connector.unavailable', 'The Connector request could not be completed.')
-        return await this.#connector.execute(executor.action, executor.connectionId!, invocation.input, invocation.invocationId, invocation.signal)
+        return await this.#connector.execute(
+          executor.action,
+          executor.connectionId!,
+          normalizeConnectorRuntimeInputs(task.inputs, invocation.input),
+          invocation.invocationId,
+          invocation.signal,
+        )
       case 'llm':
         if (this.#llm == null) throw new TaskHostError('llm.unavailable', 'The LLM request could not be completed.')
         let result

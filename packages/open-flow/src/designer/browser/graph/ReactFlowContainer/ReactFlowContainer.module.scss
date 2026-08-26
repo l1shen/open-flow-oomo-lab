@@ -48,8 +48,10 @@
 
   :global(.react-flow__controls) {
     width: var(--canvas-control-container-size);
-    border: 1px solid var(--ui-border);
-    border-radius: calc(var(--ui-radius) + 2px);
+    border: 1px solid var(--canvas-control-border, var(--ui-border));
+    border-radius: var(--canvas-control-radius);
+    background: var(--canvas-control-background, var(--ui-background));
+    box-shadow: var(--floating-control-shadow);
     overflow: hidden;
   }
 
@@ -59,6 +61,15 @@
     padding: var(--canvas-control-padding);
     border-radius: 0;
     font-size: 16px;
+    transition:
+      color 100ms ease,
+      background-color 100ms ease;
+  }
+
+  :global(.react-flow__controls-button:active),
+  :global(.react-flow__controls-button[aria-expanded='true']) {
+    background-color: var(--canvas-control-active-background, var(--ui-muted));
+    color: var(--canvas-control-active-foreground, var(--ui-foreground));
   }
 
   :global(.react-flow__controls-button:focus-visible) {
@@ -102,6 +113,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .switchingDisplayMode :global(.react-flow__node) {
+    transition: none;
+  }
+
+  .flow :global(.react-flow__controls-button) {
     transition: none;
   }
 }

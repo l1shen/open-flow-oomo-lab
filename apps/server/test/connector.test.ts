@@ -25,7 +25,7 @@ async function databaseFile(): Promise<string> {
   return path.join(directory, 'open-flow.sqlite')
 }
 
-function connectorFlow(timeoutMs?: number): RevisionContent {
+function connectorFlow(timeoutMs?: number, optionalNull = false): RevisionContent {
   return {
     document: {
       bindings: {},
@@ -33,7 +33,10 @@ function connectorFlow(timeoutMs?: number): RevisionContent {
         nodes: {
           connector: {
             concurrency: 1,
-            inputs: { message: { kind: 'value', value: 'hello' } },
+            inputs: {
+              message: { kind: 'value', value: 'hello' },
+              ...(optionalNull ? { tags: { kind: 'value' as const, value: null } } : {}),
+            },
             kind: 'task',
             taskId: 'connector',
             ...(timeoutMs == null ? {} : { timeoutMs }),
@@ -44,7 +47,10 @@ function connectorFlow(timeoutMs?: number): RevisionContent {
       tasks: {
         connector: {
           executor: { action: 'example.echo', connectionId: 'connection-work', kind: 'connector' },
-          inputs: [{ ...port, handle: 'message' }],
+          inputs: [
+            { ...port, handle: 'message' },
+            ...(optionalNull ? [{ handle: 'tags', jsonSchema: { items: { type: 'string' }, type: 'array' }, nullable: true }] : []),
+          ],
           name: 'Echo',
           outputs: [{ ...port, handle: 'message' }],
         },
@@ -142,6 +148,15 @@ describe('Server Connector host', () => {
       result: { kind: 'node-results', nodes: [{ jobs: [{ outputs: { message: 'hello' } }], nodeId: 'connector' }] },
       status: 'completed',
     })
+  })
+
+  it('omits an unset optional Connector input that does not accept null', async () => {
+    const execute = vi.fn(async (_action: string, _connectionId: string, input: Readonly<Record<string, JsonValue>>) => input)
+    const service = await open(createConnectorHost({ execute }))
+    const runId = await run(service, connectorFlow(undefined, true))
+
+    expect(execute).toHaveBeenCalledWith('example.echo', 'connection-work', { message: 'hello' }, expect.any(String), expect.any(AbortSignal))
+    expect(service.run(runId)?.status).toBe('completed')
   })
 
   it('allows only Connector Capabilities declared by the current inline Task', async () => {

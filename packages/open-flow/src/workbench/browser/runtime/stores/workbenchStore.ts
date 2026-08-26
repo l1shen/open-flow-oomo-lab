@@ -9,6 +9,7 @@ import type { Notice } from './workbenchNotice.ts'
 import type { WorkspaceBusy } from './workspaceModel.ts'
 
 import { compute, derive, val } from 'value-enhancer'
+import { createAuthoringId } from '../../../../flow/common/authoring.ts'
 import { createI18n } from '../i18n.ts'
 import { PublicationStore } from '../publications/publicationStore.ts'
 import { revisionView } from '../revisionView.ts'
@@ -90,7 +91,7 @@ export class WorkbenchStore {
       if (!this.#disposed) this.#notice.set(notice)
     }
     this.runs = new RunStore(client, setNotice, i18n)
-    this.workspace = new WorkspaceStore(client, setNotice, identity, i18n, (event) => void this.#followExternalRun(client, event))
+    this.workspace = new WorkspaceStore(client, setNotice, createAuthoringId, i18n, (event) => void this.#followExternalRun(client, event))
     this.connectors = new ConnectorStore(client, this.workspace, setNotice, host, i18n)
     this.triggers = new TriggerStore(client, this.workspace, setNotice, host, i18n)
     this.publications = new PublicationStore(client, this.workspace, setNotice, identity, i18n)

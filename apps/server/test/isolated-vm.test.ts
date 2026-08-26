@@ -62,6 +62,13 @@ describe('isolated-vm runtime conformance', () => {
     ).resolves.toEqual({ fetch: 'undefined', process: 'undefined', require: 'undefined' })
   })
 
+  it('preserves user error messages', async () => {
+    await expect(invoke('export default () => setTimeout(() => undefined, 0)')).rejects.toMatchObject({
+      code: 'task-failed',
+      message: 'setTimeout is not defined',
+    })
+  })
+
   it('terminates synchronous user code at the CPU limit and keeps the parent alive', async () => {
     await expect(invoke('export default () => { while (true) {} }', { ...isolatedVmLimits, cpuMs: 20, wallMs: 2_000 })).rejects.toMatchObject({
       code: 'limit-exceeded',

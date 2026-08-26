@@ -38,11 +38,12 @@ export function RunEventDetail({ event }: { readonly event: RunEvent }): ReactEl
   switch (event.kind) {
     case 'node.output': {
       const handle = typeof event.payload.handle == 'string' ? event.payload.handle : undefined
-      const label = handle == null ? t('run.nodeOutput') : t('run.nodeOutputHandle', { handle })
+      const label = t('run.nodeOutput')
       const output = record(event.payload.output)
       if (output?.kind == 'inline' && Object.hasOwn(output, 'value')) {
         return (
           <EventDetail label={label}>
+            {handle != null && <code className="run-output-handle">{handle}</code>}
             <JsonValueView label={label} value={output.value!} />
           </EventDetail>
         )
@@ -70,6 +71,7 @@ export function RunEventDetail({ event }: { readonly event: RunEvent }): ReactEl
       }
       return (
         <EventDetail label={label}>
+          {handle != null && <code className="run-output-handle">{handle}</code>}
           <JsonValueView label={label} value={event.payload} />
         </EventDetail>
       )
@@ -92,13 +94,14 @@ export function RunEventDetail({ event }: { readonly event: RunEvent }): ReactEl
     case 'node.failed': {
       const error = record(event.payload.error)
       const code = typeof error?.code == 'string' ? error.code : 'node.failed'
+      const rawMessage = typeof error?.message == 'string' ? error.message : undefined
       const message =
         code == 'connector.connection-required'
           ? t('run.connectionRequired')
-          : code == 'connector.unavailable'
+          : code == 'connector.unavailable' && rawMessage == 'The Connector request could not be completed.'
             ? t('run.connectorUnavailable')
-            : typeof error?.message == 'string'
-              ? error.message
+            : rawMessage != null
+              ? rawMessage
               : t('run.nodeFailed')
       return (
         <EventDetail label={t('run.nodeError')}>

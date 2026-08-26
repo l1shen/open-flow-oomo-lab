@@ -418,6 +418,32 @@ describe('Server Connector client', () => {
     ])
   })
 
+  it('preserves safe Connector input diagnostics in the Run event', async () => {
+    const origin = await startConnector((request, response) => {
+      if (request.url == '/v1/apps') return send(response, 200, { data: [app], success: true })
+      send(response, 400, {
+        data: [
+          { error: 'Property "tags" does not match schema.', instanceLocation: '#', keyword: 'properties' },
+          { error: 'Instance type "null" is invalid. Expected "array".', instanceLocation: '#/tags', keyword: 'type' },
+        ],
+        errorCode: 'invalid_input',
+        message: 'Action input does not match the action schema.',
+        success: false,
+      })
+    })
+    const { service } = await startService(origin)
+    const runId = await run(service)
+
+    expect(service.events(runId).find((event) => event.kind == 'node.failed')).toMatchObject({
+      payload: {
+        error: {
+          code: 'connector.unavailable',
+          message: 'The Connector Action input is invalid. Property "tags" does not match schema. Instance type "null" is invalid. Expected "array".',
+        },
+      },
+    })
+  })
+
   it('executes only Connector Capabilities declared by the current inline Task', async () => {
     const calls: string[] = []
     const origin = await startConnector((request, response) => {

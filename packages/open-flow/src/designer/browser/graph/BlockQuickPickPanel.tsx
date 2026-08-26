@@ -66,10 +66,14 @@ export const BlockQuickPickPanel: React.FC<BlockQuickPickPanelProps> = (props) =
     (_input: HTMLInputElement) => {
       const item = filteredItems[cursorIndex]
       if (item && item.type !== 'divider' && !item.disabled) {
-        setOpenSubmenu(cursorIndex)
+        if (item.choices?.length || (item.handles?.length ?? 0) > 1) {
+          setOpenSubmenu(cursorIndex)
+        } else {
+          props.onClick?.(item, item.data, item.handles?.[0]?.name)
+        }
       }
     },
-    [cursorIndex, filteredItems],
+    [cursorIndex, filteredItems, props.onClick],
   )
 
   // Restore input focus after the Dropdown auto-focuses its menu.

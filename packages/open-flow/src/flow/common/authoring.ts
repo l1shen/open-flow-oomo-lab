@@ -1,3 +1,9 @@
+import { customAlphabet } from 'nanoid'
+
+const randomAuthoringId = customAlphabet('23456789abcdefghjkmnpqrstuvwxyz', 10)
+
+export const createAuthoringId = randomAuthoringId
+
 export { connect, disconnect } from './edgeChanges.ts'
 export { imports as moduleImports, rename as renameModule, replaceSource as replaceModuleSource } from './moduleChanges.ts'
 export {

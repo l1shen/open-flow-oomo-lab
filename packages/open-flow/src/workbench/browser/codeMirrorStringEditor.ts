@@ -22,6 +22,7 @@ interface CodeMirrorModules {
   readonly javascript: typeof import('@codemirror/lang-javascript').javascript
   readonly json: typeof import('@codemirror/lang-json').json
   readonly markdown: typeof import('@codemirror/lang-markdown').markdown
+  readonly StateEffect: typeof import('@codemirror/state').StateEffect
   readonly syntaxHighlighting: typeof import('@codemirror/language').syntaxHighlighting
   readonly tags: typeof import('@lezer/highlight').tags
   readonly yaml: typeof import('@codemirror/lang-yaml').yaml
@@ -29,6 +30,7 @@ interface CodeMirrorModules {
 
 interface CodeMirrorStringEditorFactoryOptions {
   readonly darkMode$?: ReadonlyVal<boolean>
+  readonly extension?: Promise<Extension | undefined>
   readonly theme?: Extension
 }
 
@@ -91,6 +93,7 @@ async function loadCodeMirrorModules(): Promise<CodeMirrorModules> {
       javascript: javascript.javascript,
       json: json.json,
       markdown: markdown.markdown,
+      StateEffect: state.StateEffect,
       syntaxHighlighting: language.syntaxHighlighting,
       tags: highlight.tags,
       yaml: yaml.yaml,
@@ -244,6 +247,7 @@ class CodeMirrorStringEditorControl implements StringEditorControl {
     options: StringEditorOptions,
     private readonly modules: CodeMirrorModules,
     darkMode$: ReadonlyVal<boolean> | undefined,
+    extension: Promise<Extension | undefined> | undefined,
     theme: Extension | undefined,
   ) {
     this.automaticLayout = options.automaticLayout === true
@@ -287,6 +291,9 @@ class CodeMirrorStringEditorControl implements StringEditorControl {
       theme == null
         ? darkMode$?.reaction((nextDark) => this.view.dispatch({ effects: this.themeCompartment.reconfigure(createEditorTheme(this.modules, nextDark)) }), true)
         : undefined
+    void extension?.then((value) => {
+      if (!this.disposed && value != null) this.view.dispatch({ effects: this.modules.StateEffect.appendConfig.of(value) })
+    })
 
     const ResizeObserverConstructor = layoutRoot.ownerDocument.defaultView?.ResizeObserver ?? globalThis.ResizeObserver
     if (ResizeObserverConstructor != null) {
@@ -471,10 +478,12 @@ class CodeMirrorStringEditor implements StringEditor {
 
 export class CodeMirrorStringEditorFactory implements StringEditorFactory {
   private readonly darkMode$: ReadonlyVal<boolean> | undefined
+  private readonly extension: Promise<Extension | undefined> | undefined
   private readonly theme: Extension | undefined
 
   public constructor(options: CodeMirrorStringEditorFactoryOptions = {}) {
     this.darkMode$ = options.darkMode$
+    this.extension = options.extension
     this.theme = options.theme
   }
 
@@ -482,6 +491,6 @@ export class CodeMirrorStringEditorFactory implements StringEditorFactory {
     if (typeof document == 'undefined') throw new Error('The CodeMirror string editor requires a DOM environment.')
 
     const modules = await loadCodeMirrorModules()
-    return new CodeMirrorStringEditor(new CodeMirrorStringEditorControl(dom, uri, options, modules, this.darkMode$, this.theme))
+    return new CodeMirrorStringEditor(new CodeMirrorStringEditorControl(dom, uri, options, modules, this.darkMode$, this.extension, this.theme))
   }
 }

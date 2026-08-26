@@ -1,26 +1,10 @@
 .open-flow-workbench {
   @container open-flow-workbench (width <= 1100px) {
-    .workspace-header {
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 8px 12px;
-      min-height: 0;
-      padding: 10px 16px;
-    }
-
-    .workspace-title {
-      grid-column: 1 / -1;
-    }
-
-    .workspace-tabs {
-      justify-self: start;
-    }
-
-    .workspace-actions {
-      justify-self: end;
-    }
-
-    .workspace-actions > .resource-language,
     .workspace-actions > .saved-state {
+      display: none;
+    }
+
+    .workspace-title .draft-change > span:last-child {
       display: none;
     }
 
@@ -172,20 +156,20 @@
 
     .workspace-header {
       grid-template-columns: minmax(0, 1fr) auto;
-      gap: 8px;
-      padding: 8px 12px;
-    }
-
-    .workspace-title {
-      grid-column: 1 / -1;
-    }
-
-    .workspace-tabs {
-      justify-self: start;
+      gap: 4px;
+      padding: 0 8px;
     }
 
     .workspace-actions {
       min-width: 0;
+    }
+
+    .workspace-title {
+      display: none;
+    }
+
+    .workspace-tabs-root {
+      display: flex;
     }
 
     .diagnostics-panel,
@@ -334,11 +318,6 @@
     .resource-row-confirm {
       align-items: flex-start;
       flex-direction: column;
-    }
-
-    .workspace-title button:first-child,
-    .workspace-title button:first-child + span {
-      display: none;
     }
 
     .workspace-actions .action-help:last-child {

@@ -40,9 +40,10 @@ export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, loca
     let disposed = false
     setFailed(false)
     setLoading(true)
+    const extension = import('../../typeScriptSession.ts').then(({ loadTypeScriptExtension }) => loadTypeScriptExtension(uri)).catch(() => undefined)
     void import('@uiw/codemirror-theme-github')
       .then(({ githubDark, githubLight }) =>
-        new CodeMirrorStringEditorFactory({ theme: theme == 'dark' ? githubDark : githubLight }).create(container, uri, {
+        new CodeMirrorStringEditorFactory({ extension, theme: theme == 'dark' ? githubDark : githubLight }).create(container, uri, {
           ariaLabel,
           automaticLayout: true,
           language: 'javascript',

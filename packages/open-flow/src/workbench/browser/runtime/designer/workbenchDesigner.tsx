@@ -367,7 +367,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
         }}
         selectedNodeIds={selectedNodeIds}
       />
-      <Badge className="designer-overlay top-left" variant="secondary">
+      <Badge className="designer-draft-status designer-overlay top-left" variant="secondary">
         <span className="status-dot neutral" />
         {t('designer.draftBadge', { kind: t(target?.kind == 'subflow' ? 'common.subflow' : 'common.flow') })}
       </Badge>

@@ -16,6 +16,7 @@ import type {
 import type { RevisionView } from '../revisionView.ts'
 
 import { applyFlowChanges as reduceFlowChanges } from '../../../../flow/common/change.ts'
+import { replaceSource as replaceModuleSource } from '../../../../flow/common/moduleChanges.ts'
 import {
   createCodeTask,
   createBuiltinTrigger,
@@ -28,6 +29,7 @@ import {
   setInputValue as setGraphInputValue,
   updateSettings,
 } from '../../../../flow/common/nodeChanges.ts'
+import { generateTyping, mergeTypingIntoSourceFile } from '../../../../manifest/common/meta/block/generateTyping.ts'
 
 export type DesignerTarget = { readonly kind: 'flow' } | { readonly id: string; readonly kind: 'subflow' }
 
@@ -122,7 +124,7 @@ export function addNode(
 ): FlowChanges | undefined {
   switch (intent.kind) {
     case 'code':
-      return createCodeTask(target, { moduleId: identity(), nodeId }, intent.name)
+      return createCodeTask(target, { moduleId: nodeId, nodeId }, intent.name)
     case 'llm':
       return createLlmTask(target, { nodeId, taskId: identity() }, intent.name, intent.mode, intent.outputDescription)
     case 'connector':
@@ -229,7 +231,7 @@ export function pasteNodes(revision: RevisionView, target: DesignerTarget, clipb
     }
     let copy: GraphNode = { ...node, inputs, ...(node.name == null ? {} : { name: `${node.name} copy` }) }
     if (node.kind == 'task' && node.task != null) {
-      const moduleId = identity()
+      const moduleId = nodeId
       const module = clipboard.modules[node.task.moduleId]
       operations.push({ kind: 'module.create', module: { ...module, name: `${module.name} copy` }, moduleId })
       copy = {
@@ -395,9 +397,19 @@ export function updateTask(revision: RevisionView, target: DesignerTarget, nodeI
 }
 
 export function updateCodeTaskPorts(revision: RevisionView, target: DesignerTarget, nodeId: string, ports: CodeTaskPorts): FlowChanges | undefined {
-  const node = revision.graph(target)?.nodes[nodeId]
-  if (node?.kind != 'task' || node.task == null) return
-  return replaceCodeTaskPorts(revision, target, nodeId, { ...node.task, ...ports })
+  const selection = revision.node(target, nodeId)
+  if (selection?.kind != 'task' || selection.node.task == null || selection.module == null) return
+  const changes = replaceCodeTaskPorts(revision, target, nodeId, { ...selection.node.task, ...ports })
+  if (changes == null) return
+  const source = mergeTypingIntoSourceFile(
+    selection.module.source,
+    generateTyping(
+      'javascript',
+      ports.inputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
+      ports.outputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
+    ),
+  )
+  return source == selection.module.source ? changes : [...changes, ...replaceModuleSource(selection.node.task.moduleId, source, selection.module.imports)]
 }
 
 export function updateWebhook(

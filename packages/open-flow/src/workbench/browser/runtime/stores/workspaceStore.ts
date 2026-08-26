@@ -24,6 +24,7 @@ import type { PresentationUpdate } from './presentationChanges.ts'
 import type { SetNotice } from './workbenchNotice.ts'
 import type { ModuleEditorDraft, Workspace$, WorkspaceState } from './workspaceModel.ts'
 
+import { createAuthoringId } from '../../../../flow/common/authoring.ts'
 import { connect as connectFlowNodes, disconnect as disconnectFlowNodes } from '../../../../flow/common/edgeChanges.ts'
 import { imports as moduleImports, replaceSource as replaceModuleSource } from '../../../../flow/common/moduleChanges.ts'
 import {
@@ -33,6 +34,7 @@ import {
   updateTriggerConfig,
   updateTriggerSchedule,
 } from '../../../../flow/common/nodeChanges.ts'
+import { generateTyping, mergeTypingIntoSourceFile } from '../../../../manifest/common/meta/block/generateTyping.ts'
 import { addNodeIntent } from '../designer/addNodeOptions.ts'
 import {
   addNode as addFlowNode,
@@ -128,7 +130,7 @@ export class WorkspaceStore {
   public constructor(
     client: WorkbenchClient,
     setNotice: SetNotice,
-    identity: () => string = () => crypto.randomUUID(),
+    identity: () => string = createAuthoringId,
     i18n: I18n = createI18n(),
     runCreated: (event: Extract<FlowChangeEvent, { readonly kind: 'run.created' }>) => void = () => {},
   ) {
@@ -377,6 +379,8 @@ export class WorkspaceStore {
     const move = this.moveNodes({ [nodeId]: position })
     if ((await change) == null) return
     await move
+    if (this.#disposed) return
+    this.#set({ nodeFocus: { nodeId, requestId: ++this.#nodeFocusId } })
     return nodeId
   }
 
@@ -555,8 +559,26 @@ export class WorkspaceStore {
     const revision = this.$.revision.value
     const target = this.#model.value.target
     if (revision == null || target == null) return false
+    const selection = revision.node(target, nodeId)
+    const editor = this.#model.value.moduleEditor
+    const editorSource =
+      selection?.kind == 'task' && selection.node.task != null && editor?.moduleId == selection.node.task.moduleId
+        ? mergeTypingIntoSourceFile(
+            editor.source,
+            generateTyping(
+              'javascript',
+              ports.inputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
+              ports.outputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
+            ),
+          )
+        : undefined
     const changes = updateCodeTaskPorts(revision, target, nodeId, ports)
-    return changes != null && (await this.#changeDraft(changes)) != null
+    if (changes == null || (await this.#changeDraft(changes)) == null) return false
+    const currentEditor = this.#model.value.moduleEditor
+    if (editorSource != null && currentEditor != null && editor != null && currentEditor.moduleId == editor.moduleId && currentEditor.source == editor.source) {
+      this.#set({ moduleEditor: { ...currentEditor, source: editorSource } })
+    }
+    return true
   }
 
   public async setConnectorConnection(taskId: string, connectionId: string): Promise<boolean> {

@@ -405,8 +405,8 @@ export async function invoke(source) {
   try {
     const value = await task(JSON.parse(source), capability)
     return JSON.stringify({ engineDigest: ${JSON.stringify(request.program.engineDigest)}, ok: true, value })
-  } catch {
-    return JSON.stringify({ error: 'User Task failed.', ok: false })
+  } catch (error) {
+    return JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false })
   }
 }`,
       { filename: 'open-flow:engine/main.mjs' },

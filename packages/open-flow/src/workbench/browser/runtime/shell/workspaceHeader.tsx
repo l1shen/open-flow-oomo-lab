@@ -1,6 +1,5 @@
 import type { ReactElement } from 'react'
 import type { TFunction } from 'val-i18n'
-import type { WorkbenchLanguage } from '../contract.ts'
 import type { WorkbenchStore } from '../stores/workbenchStore.ts'
 import type { WorkspaceStatus } from '../stores/workspaceModel.ts'
 
@@ -8,11 +7,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { Button } from '../../../../ui/browser/button.tsx'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../../../ui/browser/dropdown-menu.tsx'
 import { Tabs, TabsList, TabsTrigger } from '../../../../ui/browser/tabs.tsx'
 import { Icon } from '../icons.tsx'
 import { followWorkbenchLink } from '../navigationLink.ts'
 import { DiagnosticsPanel } from './diagnosticsPanel.tsx'
-import { LanguageSelect } from './resourceBrowser.tsx'
 
 const savingStatusDelayMs = 400
 const minimumSavingStatusMs = 400
@@ -21,8 +20,6 @@ interface Props {
   readonly activeView: 'design' | 'publications' | 'runs'
   readonly flowHref: string
   readonly flowsHref: string
-  readonly language: WorkbenchLanguage
-  readonly onLanguageChange?: ((language: WorkbenchLanguage) => void) | undefined
   readonly onOpenDesign: () => void
   readonly onOpenFlow: () => void
   readonly onOpenFlows: () => void
@@ -74,8 +71,6 @@ export function WorkspaceHeader({
   activeView,
   flowHref,
   flowsHref,
-  language,
-  onLanguageChange,
   onOpenDesign,
   onOpenFlow,
   onOpenFlows,
@@ -101,6 +96,7 @@ export function WorkspaceHeader({
   const workspaceLoading = useVal(store.workspace.$.workspaceLoading)
   const diagnosticsButton = useRef<HTMLButtonElement>(null)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const [menuRoot, setMenuRoot] = useState<HTMLDivElement | null>(null)
   const invalid = diagnostics?.valid == false
   const subflow = target?.kind == 'subflow'
   const draftRunUnavailable = invalid ? t('workspace.fixIssuesToRun') : subflow ? t('workspace.openFlowToRun') : undefined
@@ -114,36 +110,37 @@ export function WorkspaceHeader({
     <header className="workspace-header">
       <div className="workspace-title">
         <Button
-          className="min-w-0 max-w-35 truncate"
+          aria-label={t('resource.workflows')}
           nativeButton={false}
           onClick={(event) => followWorkbenchLink(event, onOpenFlows)}
           render={<a href={flowsHref} />}
-          size="sm"
-          variant="link"
+          size="icon-sm"
+          title={t('resource.workflows')}
+          variant="ghost"
         >
-          {t('resource.workflows')}
+          <Icon name="chevron-left" />
         </Button>
-        <span>/</span>
         <Button
-          className="min-w-0 max-w-35 truncate"
+          className="workspace-flow-link"
           nativeButton={false}
           onClick={(event) => followWorkbenchLink(event, onOpenFlow)}
           render={<a href={flowHref} />}
           size="sm"
-          variant="link"
+          variant="ghost"
         >
+          <Icon data-icon="inline-start" name="flow" />
           {flow?.name ?? flow?.flowId}
         </Button>
         {subflow && (
           <>
-            <span>/</span>
+            <span className="workspace-title-separator">/</span>
             <strong>{targetName}</strong>
-            <span>{t('workspace.subflowDraft')}</span>
           </>
         )}
         {live?.hasUnpublishedChanges && (
-          <span className="draft-change">
-            <span className="status-dot neutral" /> {t('workspace.unpublishedChanges')}
+          <span className="draft-change" title={t('workspace.unpublishedChanges')}>
+            <span className="status-dot neutral" />
+            <span>{t('workspace.unpublishedChanges')}</span>
           </span>
         )}
       </div>
@@ -156,7 +153,7 @@ export function WorkspaceHeader({
         }}
         value={activeView}
       >
-        <TabsList aria-label={t('workspace.views')} className="workspace-tabs">
+        <TabsList aria-label={t('workspace.views')} className="workspace-tabs" variant="line">
           <TabsTrigger aria-controls="workspace-panel-design" id="workspace-tab-design" value="design">
             {t('workspace.design')}
           </TabsTrigger>
@@ -169,7 +166,6 @@ export function WorkspaceHeader({
         </TabsList>
       </Tabs>
       <div className="workspace-actions">
-        <LanguageSelect language={language} onLanguageChange={onLanguageChange} />
         <Button
           aria-controls="diagnostics-panel"
           aria-expanded={diagnosticsOpen}
@@ -180,6 +176,7 @@ export function WorkspaceHeader({
             setDiagnosticsOpen(!diagnosticsOpen)
           }}
           ref={diagnosticsButton}
+          size="sm"
           title={t('diagnostics.open')}
           variant={invalid ? 'destructive' : 'ghost'}
         >
@@ -188,7 +185,7 @@ export function WorkspaceHeader({
         </Button>
         <span aria-atomic="true" aria-live="polite" className="saved-state">
           {workspaceLoading || draft == null ? null : <Icon name="check" size={16} />}
-          {t(`workspace.status.${displayedStatus}`)}
+          <span>{t(`workspace.status.${displayedStatus}`)}</span>
         </span>
         <span className="action-help" title={draftRunUnavailable}>
           <Button
@@ -196,30 +193,45 @@ export function WorkspaceHeader({
             aria-expanded={runInputRequest?.source == 'draft'}
             disabled={busy != null || invalid || subflow || runInputRequest != null}
             onClick={onRunDraft}
+            size="sm"
             variant="outline"
           >
             <Icon data-icon="inline-start" name="play" />
             {t(busy == 'run' ? 'workspace.starting' : 'workspace.runDraft')}
           </Button>
         </span>
-        {live?.publication != null && (
-          <Button
-            aria-controls="run-input-panel"
-            aria-expanded={runInputRequest?.source == 'live'}
-            disabled={busy != null || live.status == 'suspended' || runInputRequest != null}
-            onClick={onRunLive}
-            variant="outline"
-          >
-            <Icon data-icon="inline-start" name="play" />
-            {t(busy == 'run' ? 'workspace.starting' : 'workspace.runLive')}
-          </Button>
-        )}
         <span className="action-help" title={publishUnavailable}>
-          <Button disabled={busy != null || invalid || subflow || live?.hasUnpublishedChanges == false} onClick={() => void store.publications.publish()}>
+          <Button
+            disabled={busy != null || invalid || subflow || live?.hasUnpublishedChanges == false}
+            onClick={() => void store.publications.publish()}
+            size="sm"
+          >
             <Icon data-icon="inline-start" name="publish" />
             {t(busy == 'publish' ? 'workspace.publishing' : 'publication.publishDraft')}
           </Button>
         </span>
+        {live?.publication != null && (
+          <div className="workspace-more" ref={setMenuRoot}>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label={t('workspace.moreActions')}
+                render={
+                  <Button size="icon-sm" title={t('workspace.moreActions')} variant="ghost">
+                    <Icon name="more" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="min-w-40" container={menuRoot} side="bottom">
+                <DropdownMenuGroup>
+                  <DropdownMenuItem disabled={busy != null || live.status == 'suspended' || runInputRequest != null} onClick={onRunLive}>
+                    <Icon name="play" />
+                    {t(busy == 'run' ? 'workspace.starting' : 'workspace.runLive')}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </div>
       {diagnosticsOpen && (
         <DiagnosticsPanel

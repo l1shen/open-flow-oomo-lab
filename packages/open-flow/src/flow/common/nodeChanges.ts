@@ -14,6 +14,26 @@ import type {
   WebhookOptions,
 } from './change.ts'
 
+import { generateTyping, mergeTypingIntoSourceFile } from '../../manifest/common/meta/block/generateTyping.ts'
+
+const codeTaskTemplate = `//#region generated meta
+/**
+ * @typedef {{}} Inputs
+ * @typedef {{}} Outputs
+ */
+//#endregion
+
+/**
+ * @import { TaskContext } from "@oomol-lab/open-flow"
+ * @param {Inputs} input
+ * @param {TaskContext<Outputs>} context
+ * @returns {Promise<Partial<Outputs> | undefined | void>}
+ */
+export default async function (input, context) {
+  return { result: input.value }
+}
+`
+
 export interface Settings {
   readonly concurrency: number
   readonly name?: string
@@ -50,19 +70,27 @@ export function createCodeTask(
   target: GraphTarget,
   identity: { readonly moduleId: string; readonly nodeId: string },
   name: string,
-  module: Pick<CodeModule, 'imports' | 'source'> = {
-    imports: [],
-    source: 'export default function run(input) {\n  return { result: input.value }\n}\n',
-  },
+  module: Pick<CodeModule, 'imports' | 'source'> | undefined = undefined,
   ports: Pick<Extract<TaskDefinition, { readonly moduleId: string }>, 'inputs' | 'outputs'> = {
     inputs: [{ handle: 'value', jsonSchema: {}, nullable: true, value: null }],
     outputs: [{ handle: 'result', jsonSchema: {}, nullable: true }],
   },
 ): readonly ChangeOperation[] {
+  const codeModule = module ?? {
+    imports: [],
+    source: mergeTypingIntoSourceFile(
+      codeTaskTemplate,
+      generateTyping(
+        'javascript',
+        ports.inputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
+        ports.outputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
+      ),
+    ),
+  }
   return [
     {
       kind: 'module.create',
-      module: { ...module, name },
+      module: { ...codeModule, name },
       moduleId: identity.moduleId,
     },
     {

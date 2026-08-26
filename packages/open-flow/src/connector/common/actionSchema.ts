@@ -17,6 +17,12 @@ export interface ConnectorActionPorts {
   }[]
 }
 
+export interface ConnectorRuntimeInputPort {
+  readonly handle: string
+  readonly jsonSchema: unknown
+  readonly nullable: boolean
+}
+
 export function connectorActionPorts(inputSchema: unknown, outputSchema: unknown): ConnectorActionPorts {
   const inputs = inputPorts(inputSchema)
   return {
@@ -24,6 +30,20 @@ export function connectorActionPorts(inputSchema: unknown, outputSchema: unknown
     initialInputs: inputs.flatMap((input) => (input.value === undefined ? [] : [{ handle: input.handle, value: input.value }])),
     outputs: outputPorts(outputSchema),
   }
+}
+
+export function normalizeConnectorRuntimeInputs<Value>(
+  ports: readonly ConnectorRuntimeInputPort[],
+  inputs: Readonly<Record<string, Value>>,
+): Readonly<Record<string, Value>> {
+  const definitions: ReadonlyMap<string, ConnectorRuntimeInputPort> = new Map(ports.map((port) => [port.handle, port]))
+  const result: Record<string, Value> = {}
+  for (const [handle, value] of Object.entries(inputs) as [string, Value][]) {
+    const port = definitions.get(handle)
+    if (value == null && port?.nullable == true && !schemaAllowsNull(port.jsonSchema)) continue
+    result[handle] = value
+  }
+  return result
 }
 
 function inputPorts(schema: unknown): ConnectorActionPorts['inputs'] {

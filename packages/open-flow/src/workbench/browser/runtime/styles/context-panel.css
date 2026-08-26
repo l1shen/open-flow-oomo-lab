@@ -21,10 +21,10 @@
     z-index: 2;
     top: 0;
     display: flex;
-    height: 52px;
+    height: 46px;
     align-items: center;
     gap: 9px;
-    padding: 0 10px 0 14px;
+    padding: 0 8px 0 12px;
     border-bottom: 1px solid var(--border);
     background: var(--canvas);
   }
@@ -203,8 +203,8 @@
   .inspector-section {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 16px;
+    gap: 10px;
+    padding: 14px 12px;
     border-bottom: 1px solid var(--ui-border);
   }
 
@@ -214,10 +214,10 @@
 
   .inspector-disclosure > summary {
     display: flex;
-    min-height: 56px;
+    min-height: 48px;
     align-items: center;
     gap: 10px;
-    padding: 8px 16px;
+    padding: 7px 12px;
     list-style: none;
     color: var(--ui-foreground);
     cursor: pointer;
@@ -284,8 +284,8 @@
   .inspector-disclosure-content {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 2px 16px 16px;
+    gap: 10px;
+    padding: 2px 12px 14px;
   }
 
   .inspector-section.diagnostic-located,
@@ -402,8 +402,8 @@
     height: 280px;
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--canvas);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--canvas) 88%, var(--surface));
     transition:
       border-color 140ms ease-out,
       box-shadow 140ms ease-out;
@@ -427,6 +427,71 @@
 
   .code-editor-host .cm-content {
     padding-block: 8px;
+  }
+
+  .code-editor-host {
+    --code-signature: #795e26;
+    --code-signature-active: #005fb8;
+    --code-signature-active-bg: rgb(0 95 184 / 12%);
+    --code-signature-link: #6f42c1;
+  }
+
+  &[data-theme='dark'] .code-editor-host {
+    --code-signature: #dcdcaa;
+    --code-signature-active: #9cdcfe;
+    --code-signature-active-bg: rgb(156 220 254 / 16%);
+    --code-signature-link: #c586c0;
+  }
+
+  .code-editor-host .cm-lsp-signature-tooltip {
+    box-sizing: border-box;
+    max-width: min(520px, calc(100vw - 24px));
+    max-height: 240px;
+    padding: 7px 10px;
+    overflow: auto;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.45;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 28%);
+  }
+
+  .code-editor-host .cm-lsp-signature-tooltip .cm-lsp-signature {
+    color: var(--code-signature);
+    font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Consolas, monospace);
+    text-indent: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .code-editor-host .cm-lsp-signature-tooltip .cm-lsp-active-parameter {
+    margin: 0 1px;
+    padding: 1px 2px;
+    color: var(--code-signature-active);
+    background: var(--code-signature-active-bg);
+    border-radius: 2px;
+    font-weight: 700;
+  }
+
+  .code-editor-host .cm-lsp-signature-tooltip .cm-lsp-signature-documentation {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--vscode-editorWidget-border, GrayText);
+    color: var(--vscode-descriptionForeground, GrayText);
+    font-family: var(--vscode-font-family, system-ui, sans-serif);
+    font-size: 11px;
+  }
+
+  .code-editor-host .cm-lsp-signature-tooltip .cm-lsp-signature-documentation p {
+    margin: 0;
+  }
+
+  .code-editor-host .cm-lsp-signature-tooltip .cm-lsp-signature-documentation a {
+    color: var(--code-signature-link);
+    text-decoration: none;
+  }
+
+  .code-editor-host .cm-lsp-signature-tooltip .cm-lsp-signature-documentation a:hover {
+    text-decoration: underline;
   }
 
   .code-editor-state {

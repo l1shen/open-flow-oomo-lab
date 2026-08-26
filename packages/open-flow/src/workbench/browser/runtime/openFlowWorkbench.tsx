@@ -44,7 +44,7 @@ function Workbench({ hrefFor, language, navigation, onLanguageChange, store, the
         />
       ) : (
         <Suspense fallback={<main aria-busy="true" className="workspace" />}>
-          <FlowWorkspace hrefFor={hrefFor} language={language} navigation={navigation} onLanguageChange={onLanguageChange} store={store} theme={theme} />
+          <FlowWorkspace hrefFor={hrefFor} navigation={navigation} store={store} theme={theme} />
         </Suspense>
       )}
     </div>

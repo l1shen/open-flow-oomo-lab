@@ -15,7 +15,11 @@ export function mergeTypingIntoSourceFile(contents: string, typing: string): str
   return `${contents.slice(0, start)}${generatedMetaStart}\n${typing}${generatedMetaEnd}${contents.slice(end)}`
 }
 
-export function generateTyping(language: TypingLanguage, inputsDef: InputHandleDef[] | undefined, outputsDef: OutputHandleDef[] | undefined): string {
+export function generateTyping(
+  language: TypingLanguage,
+  inputsDef: readonly (Omit<InputHandleDef, 'handle'> & { readonly handle: string })[] | undefined,
+  outputsDef: readonly (Omit<OutputHandleDef, 'handle'> & { readonly handle: string })[] | undefined,
+): string {
   if (language === 'typescript') {
     return genTypeScript(inputsDef, outputsDef) + '\n'
   } else {
@@ -36,11 +40,17 @@ function containsArtifact(schema: any): boolean {
   return false
 }
 
-function defsContainArtifact(inputsDef: InputHandleDef[], outputsDef: OutputHandleDef[]): boolean {
+function defsContainArtifact(
+  inputsDef: readonly (Omit<InputHandleDef, 'handle'> & { readonly handle: string })[],
+  outputsDef: readonly (Omit<OutputHandleDef, 'handle'> & { readonly handle: string })[],
+): boolean {
   return [...inputsDef, ...outputsDef].some((def) => containsArtifact(def.json_schema))
 }
 
-function genTypeScript(inputsDef: InputHandleDef[] | undefined = [], outputsDef: OutputHandleDef[] | undefined = []): string {
+function genTypeScript(
+  inputsDef: readonly (Omit<InputHandleDef, 'handle'> & { readonly handle: string })[] | undefined = [],
+  outputsDef: readonly (Omit<OutputHandleDef, 'handle'> & { readonly handle: string })[] | undefined = [],
+): string {
   const out = ['type Inputs = {']
   for (const def of inputsDef) {
     out.push(`  ${def.handle}: ${typescriptOf(def.json_schema, def.nullable)};`)
@@ -57,7 +67,10 @@ function genTypeScript(inputsDef: InputHandleDef[] | undefined = [], outputsDef:
   return out.join('\n')
 }
 
-function genJavaScript(inputsDef: InputHandleDef[] | undefined = [], outputsDef: OutputHandleDef[] | undefined = []): string {
+function genJavaScript(
+  inputsDef: readonly (Omit<InputHandleDef, 'handle'> & { readonly handle: string })[] | undefined = [],
+  outputsDef: readonly (Omit<OutputHandleDef, 'handle'> & { readonly handle: string })[] | undefined = [],
+): string {
   const out = ['@typedef {{']
   for (const def of inputsDef) {
     out.push(`  ${def.handle}: ${typescriptOf(def.json_schema, def.nullable)};`)
