@@ -1220,6 +1220,7 @@ export function FlowDesignerView(props: FlowDesignerViewProps): ReactElement {
     [props.identity],
   )
   const propsRef = useRef(props)
+  const selectedEdge = useRef<string>()
   propsRef.current = props
 
   const onMoveEnd = useCallback<OnMoveEnd>((_, viewport) => propsRef.current.onMoveViewport(viewport, adapter.store.$.displayMode.value), [adapter])
@@ -1248,7 +1249,11 @@ export function FlowDesignerView(props: FlowDesignerViewProps): ReactElement {
       connection?.from.type == 'from_node' && connection.to.type == 'to_node'
         ? toViewEdge(connection.from.source.node_id, connection.from.source.output_handle, connection.to.target.node_id, connection.to.target.input_handle)
         : undefined
-    propsRef.current.onSelectionChange(nodeIds, edge)
+    const selected = new Set(propsRef.current.selectedNodeIds)
+    const selectionChanged = nodeIds.length != selected.size || nodeIds.some((nodeId) => !selected.has(nodeId))
+    const edgeChanged = selectedEdge.current != edge?.id
+    selectedEdge.current = edge?.id
+    if (selectionChanged || edgeChanged) propsRef.current.onSelectionChange(nodeIds, edge)
   }, [])
   const isValidConnection = useCallback<IsValidConnection<RFEdge<any>>>((edge) => {
     if (edge.sourceHandle == null || edge.targetHandle == null) return true

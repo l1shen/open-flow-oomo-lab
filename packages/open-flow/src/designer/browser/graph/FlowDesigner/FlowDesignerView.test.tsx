@@ -350,6 +350,19 @@ describe('FlowDesignerView model synchronization', () => {
     view.props.flowDesignerStore.dispose()
   })
 
+  it('does not echo an unchanged controlled selection in React Flow order', () => {
+    const onSelectionChange = vi.fn()
+    const view = FlowDesignerView(
+      props(model([source, task([])]), { onSelectionChange, selectedNodeIds: ['source', 'target'] }),
+    ) as React.ReactElement<FlowDesignerProps>
+    const nodes = [...view.props.flowDesignerStore.$.nodes.values()]
+
+    view.props.onSelectionChange?.({ edges: [], nodes: nodes.toReversed().map((node) => ({ data: { store: node } }) as never) })
+
+    expect(onSelectionChange).not.toHaveBeenCalled()
+    view.props.flowDesignerStore.dispose()
+  })
+
   it('does not replace Designer maps for a semantically unchanged model object', () => {
     const value = model([task([])])
     const view = FlowDesignerView(props(value)) as React.ReactElement<FlowDesignerProps>
