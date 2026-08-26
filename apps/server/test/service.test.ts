@@ -165,6 +165,11 @@ describe('Server application service', () => {
     expect(kinds.filter((kind) => kind == 'run.progress')).toHaveLength(4)
     expect(events.map((event) => event.cursor)).toEqual(events.map((_, index) => index + 1))
     expect(JSON.stringify(events.filter((event) => event.kind != 'run.completed'))).not.toContain('jobId')
+    expect(service.control.getRunResult(accepted.runId)).toMatchObject({ result: { kind: 'node-results' }, status: 'completed' })
+    const projected = service.control.getRunEvents(accepted.runId, 0, 100)
+    expect(projected.done).toBe(true)
+    expect(projected.nextAfter).toBe(events.length)
+    expect(JSON.stringify(projected.events)).toContain('"output":{"kind":"inline"')
 
     await expect(acceptRun(service, { flowId: 'main', idempotencyKey: 'full-flow', revision: fullFlow(), revisionId: 'revision-a' })).resolves.toMatchObject({
       created: false,
@@ -231,6 +236,10 @@ describe('Server application service', () => {
       result: { error: { code: 'execution.unavailable', message: 'The fixed Run could not be started by this deployment.' } },
       status: 'failed',
     })
+    expect(service.control.getRunResult(poisoned.runId)).toMatchObject({
+      error: { code: 'execution.unavailable', message: 'The fixed Run could not be started by this deployment.' },
+      status: 'failed',
+    })
     expect(service.events(poisoned.runId).map((event) => event.kind)).toEqual(['run.queued', 'run.failed'])
     expect(service.run(healthy.runId)?.status).toBe('completed')
     await service.close()
@@ -248,10 +257,12 @@ describe('Server application service', () => {
     })
     if (accepted.kind != 'accepted') throw new Error('Initial Run acceptance conflicted.')
     await waitForStatus(service, accepted.runId, 'running')
-    expect(service.cancel(accepted.runId)).toBe(true)
+    expect(service.control.cancelRun(accepted.runId)).toMatchObject({ cancelAccepted: true, status: 'canceled' })
     await service.waitForIdle()
 
     expect(service.run(accepted.runId)?.status).toBe('canceled')
+    expect(service.control.cancelRun(accepted.runId)).toMatchObject({ cancelAccepted: false, status: 'canceled' })
+    expect(service.control.getRunResult(accepted.runId)).toMatchObject({ status: 'canceled' })
     expect(service.events(accepted.runId).filter((event) => ['run.canceled', 'run.completed', 'run.failed'].includes(event.kind))).toEqual([
       expect.objectContaining({ kind: 'run.canceled' }),
     ])

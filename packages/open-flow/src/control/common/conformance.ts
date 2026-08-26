@@ -139,6 +139,15 @@ export const controlApiConformanceCases: readonly ControlApiConformanceCase[] = 
       const page = await json(await request(harness, '/v1/flows?includeTotal=true'), 200, 'List Flows')
       equal(page.flows, [created], 'Listed Flows')
       equal(page.total, 1, 'Flow total')
+      const second = await createFlow(harness, 'Second control flow', 'flow-lifecycle-second')
+      const firstPage = await json(await request(harness, '/v1/flows?limit=1'), 200, 'List first Flow page')
+      equal(firstPage.flows, [created], 'First Flow page')
+      const cursor = requiredString(firstPage.nextCursor, 'Flow cursor')
+      equal(
+        (await json(await request(harness, `/v1/flows?limit=1&cursor=${encodeURIComponent(cursor)}`), 200, 'List second Flow page')).flows,
+        [second],
+        'Second Flow page',
+      )
       const renamed = await json(
         await request(harness, `/v1/flows/${flowId}`, { body: JSON.stringify({ name: 'Renamed flow', version: 1 }), method: 'PATCH' }),
         200,
@@ -159,6 +168,24 @@ export const controlApiConformanceCases: readonly ControlApiConformanceCase[] = 
       const changed = await json(await addValueNode(harness, flowId, initialRevisionId), 200, 'Change Draft')
       const currentRevisionId = changedRevisionId(changed, 'Changed Draft')
       equal(record(changed.revision, 'Changed Draft revision').parentRevisionId, initialRevisionId, 'Changed Draft parent')
+      await error(
+        await changeRequest(harness, flowId, currentRevisionId, [
+          {
+            kind: 'graph.node.replace',
+            node: {
+              concurrency: 1,
+              inputs: {},
+              kind: 'value',
+              values: [{ handle: 'ready', jsonSchema: { type: 'boolean' }, nullable: false, value: true }],
+            },
+            nodeId: 'marker',
+            target: { kind: 'flow' },
+          },
+        ]),
+        400,
+        'flow.invalid',
+        'No-op Draft change',
+      )
       await error(await addValueNode(harness, flowId, initialRevisionId, 'stale'), 412, 'flow.revision-conflict', 'Stale Draft change')
       const old = await json(await request(harness, `/v1/flows/${flowId}/revisions/${initialRevisionId}`), 200, 'Read old Revision')
       const oldNodes = record(record(record(record(old.content, 'Old content').document, 'Old document').graph, 'Old graph').nodes, 'Old nodes')
@@ -191,6 +218,14 @@ export const controlApiConformanceCases: readonly ControlApiConformanceCase[] = 
         'flow.presentation-conflict',
         'Stale Presentation update',
       )
+      equal((await json(await request(harness, path), 200, 'Read Presentation')).value, value, 'Presentation value after conflict')
+      await json(await request(harness, `/v1/flows/${flowId}`, { method: 'DELETE' }), 202, 'Retire Presentation Flow')
+      await error(
+        await request(harness, path, { body: JSON.stringify({ expectedRevision: 2, value: {}, version: 1 }), method: 'PUT' }),
+        409,
+        'flow.busy',
+        'Update retired Presentation',
+      )
       equal((await json(await request(harness, `/v1/flows/${flowId}`), 200, 'Read Flow')).draftRevisionId, draftRevisionId, 'Draft head')
     },
   },
@@ -219,18 +254,102 @@ export const controlApiConformanceCases: readonly ControlApiConformanceCase[] = 
       const run = await json(await create(), 202, 'Create Draft Run')
       const runId = requiredString(run.runId, 'Draft Run runId')
       equal(await json(await create(), 200, 'Replay Draft Run'), run, 'Replayed Draft Run')
-      const page = await json(await request(harness, `/v1/flows/${flowId}/runs`), 200, 'List Runs')
+      await error(await request(harness, `/v1/runs/${runId}/result`), 409, 'run.not-terminal', 'Read queued Run result')
+      const secondRun = await json(
+        await request(harness, runPath, {
+          body: JSON.stringify({ engineContract, inputs: {}, version: 1 }),
+          headers: { 'idempotency-key': 'draft-run-second' },
+          method: 'POST',
+        }),
+        202,
+        'Create second Draft Run',
+      )
+      const page = await json(await request(harness, `/v1/flows/${flowId}/runs?limit=1`), 200, 'List Runs')
       equal(
         list(page.runs, 'Runs').map((value) => record(value, 'Run').runId),
         [runId],
         'Listed Runs',
       )
+      requiredString(page.nextCursor, 'Run cursor')
       const canceled = await json(
         await request(harness, `/v1/runs/${runId}/cancel`, { body: JSON.stringify({ version: 1 }), method: 'POST' }),
         200,
         'Cancel Run',
       )
       equal(canceled.status, 'canceled', 'Canceled Run status')
+      equal((await json(await request(harness, `/v1/runs/${runId}/result`), 200, 'Read canceled Run result')).status, 'canceled', 'Canceled Run result')
+      equal((await json(await request(harness, `/v1/runs/${runId}/events`), 200, 'Read canceled Run events')).done, true, 'Canceled Run events')
+      equal(
+        (
+          await json(
+            await request(harness, `/v1/runs/${requiredString(secondRun.runId, 'Second Draft Run')}/cancel`, {
+              body: JSON.stringify({ version: 1 }),
+              method: 'POST',
+            }),
+            200,
+            'Cancel second Draft Run',
+          )
+        ).status,
+        'canceled',
+        'Second canceled Run status',
+      )
+    },
+  },
+  {
+    name: 'rejects invalid and missing Flow control targets',
+    async verify(harness) {
+      const missingFlow = 'flow_missing'
+      const missingRevision = 'revision_missing'
+      const missingRun = 'run_missing'
+      await error(await request(harness, `/v1/flows/${missingFlow}`), 404, 'flow.not-found', 'Read missing Flow')
+      await error(
+        await request(harness, `/v1/flows/${missingFlow}`, { body: JSON.stringify({ name: 'Missing', version: 1 }), method: 'PATCH' }),
+        404,
+        'flow.not-found',
+        'Rename missing Flow',
+      )
+      await error(await request(harness, `/v1/flows/${missingFlow}`, { method: 'DELETE' }), 404, 'flow.not-found', 'Retire missing Flow')
+      await error(await request(harness, `/v1/flows/${missingFlow}/draft`), 404, 'flow.not-found', 'Read missing Draft')
+      await error(await request(harness, `/v1/flows/${missingFlow}/revisions/${missingRevision}`), 404, 'flow.not-found', 'Read missing Revision')
+      await error(await request(harness, `/v1/flows/${missingFlow}/presentation`), 404, 'flow.not-found', 'Read missing Presentation')
+      await error(
+        await request(harness, `/v1/flows/${missingFlow}/presentation`, {
+          body: JSON.stringify({ expectedRevision: 1, value: {}, version: 1 }),
+          method: 'PUT',
+        }),
+        404,
+        'flow.not-found',
+        'Update missing Presentation',
+      )
+      await error(await request(harness, `/v1/flows/${missingFlow}/runs`), 404, 'flow.not-found', 'List missing Flow Runs')
+      await error(await request(harness, `/v1/runs/${missingRun}`), 404, 'run.not-found', 'Read missing Run')
+      await error(await request(harness, `/v1/runs/${missingRun}/events`), 404, 'run.not-found', 'Read missing Run events')
+      await error(await request(harness, `/v1/runs/${missingRun}/result`), 404, 'run.not-found', 'Read missing Run result')
+      await error(
+        await request(harness, `/v1/runs/${missingRun}/cancel`, { body: JSON.stringify({ version: 1 }), method: 'POST' }),
+        404,
+        'run.not-found',
+        'Cancel missing Run',
+      )
+
+      const flow = await createFlow(harness, 'Invalid targets', 'invalid-targets')
+      const flowId = requiredString(flow.flowId, 'Invalid targets Flow')
+      const revisionId = requiredString(flow.draftRevisionId, 'Invalid targets Revision')
+      const check = (targetRevision: string, contract: string) =>
+        request(harness, `/v1/flows/${flowId}/revisions/${targetRevision}/check`, {
+          body: JSON.stringify({ engineContract: contract, version: 1 }),
+          method: 'POST',
+        })
+      await error(await check(revisionId, 'unsupported-engine/v1'), 409, 'engine.unsupported', 'Check unsupported Engine')
+      await error(await check(missingRevision, engineContract), 404, 'flow.not-found', 'Check missing Revision')
+      const run = (targetRevision: string, contract: string, key: string) =>
+        request(harness, `/v1/flows/${flowId}/revisions/${targetRevision}/runs`, {
+          body: JSON.stringify({ engineContract: contract, inputs: {}, version: 1 }),
+          headers: { 'idempotency-key': key },
+          method: 'POST',
+        })
+      await error(await run(revisionId, 'unsupported-engine/v1', 'unsupported-run'), 409, 'engine.unsupported', 'Run unsupported Engine')
+      await error(await run(missingRevision, engineContract, 'missing-revision-run'), 404, 'flow.not-found', 'Run missing Revision')
     },
   },
 ]
@@ -253,6 +372,29 @@ export const publicationControlApiConformanceCases: readonly ControlApiConforman
       const history = await json(await request(harness, `/v1/flows/${flowId}/publications?includeTotal=true`), 200, 'List Publications')
       equal(history.publications, [publication], 'Publication history')
       equal(history.total, 1, 'Publication total')
+      await error(
+        await request(harness, `/v1/flows/${flowId}/revisions/${draftRevisionId}/publications`, {
+          body: JSON.stringify({ engineContract: 'unsupported-engine/v1', expectedLivePublicationId: publicationId, version: 1 }),
+          headers: { 'idempotency-key': 'unsupported-publication' },
+          method: 'POST',
+        }),
+        409,
+        'engine.unsupported',
+        'Publish unsupported Engine',
+      )
+      await error(
+        await publishRequest(harness, flowId, 'revision_missing', publicationId, 'missing-revision-publication'),
+        404,
+        'flow.not-found',
+        'Publish missing Revision',
+      )
+      await error(
+        await rollbackRequest(harness, flowId, 'publication_missing', publicationId, 'missing-rollback'),
+        404,
+        'publication.not-found',
+        'Rollback missing Publication',
+      )
+      await error(await liveRunRequest(harness, 'publication_missing', 'missing-publication-run'), 404, 'publication.not-found', 'Run missing Publication')
     },
   },
   {
@@ -267,6 +409,7 @@ export const publicationControlApiConformanceCases: readonly ControlApiConforman
       const secondRevisionId = changedRevisionId(changed, 'Second Revision')
       const second = await json(await publishRequest(harness, flowId, secondRevisionId, firstPublicationId, 'publish-second'), 201, 'Publish second Revision')
       const secondPublicationId = requiredString(second.publicationId, 'Second Publication')
+      await error(await liveRunRequest(harness, firstPublicationId, 'stale-live-run'), 412, 'live.conflict', 'Run stale Publication')
       const rollback = () => rollbackRequest(harness, flowId, firstPublicationId, secondPublicationId, 'rollback-first')
       const restored = await json(await rollback(), 201, 'Rollback Flow')
       const restoredPublicationId = requiredString(restored.publicationId, 'Rollback Publication')

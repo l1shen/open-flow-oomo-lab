@@ -17,6 +17,7 @@ import { HandleRowStore } from '../../stores/nodeHandle/handleRow.store.ts'
 import { FlowDesignerView } from './FlowDesignerView.tsx'
 
 const hooks = vi.hoisted(() => ({
+  cleanups: [] as ((() => void) | undefined)[],
   effectIndex: 0,
   effects: [] as (readonly unknown[] | undefined)[],
   memo: undefined as unknown,
@@ -28,7 +29,7 @@ vi.mock('virtual:uno.css', () => ({}))
 
 vi.mock('react', async (importOriginal) => {
   const original = await importOriginal<typeof import('react')>()
-  const effect = (callback: () => unknown, dependencies?: readonly unknown[]) => {
+  const effect = (callback: () => void | (() => void), dependencies?: readonly unknown[]) => {
     const index = hooks.effectIndex++
     const previous = hooks.effects[index]
     hooks.effects[index] = dependencies
@@ -37,8 +38,10 @@ vi.mock('react', async (importOriginal) => {
       previous == null ||
       dependencies.length != previous.length ||
       dependencies.some((dependency, dependencyIndex) => dependency !== previous[dependencyIndex])
-    )
-      void callback()
+    ) {
+      const cleanup = callback()
+      hooks.cleanups[index] = typeof cleanup == 'function' ? cleanup : undefined
+    }
   }
   return {
     ...original,
@@ -145,11 +148,29 @@ function update(initial: FlowDesignerViewProps, next: FlowDesignerViewProps): Fl
 
 describe('FlowDesignerView model synchronization', () => {
   beforeEach(() => {
+    hooks.cleanups = []
     hooks.effectIndex = 0
     hooks.effects = []
     hooks.memo = undefined
     hooks.refIndex = 0
     hooks.refs = []
+  })
+
+  it('continues reconciling after React replays effect cleanup', () => {
+    const initial = props(model([task([])]), { editable: false })
+    const view = FlowDesignerView(initial) as React.ReactElement<FlowDesignerProps>
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      for (const cleanup of hooks.cleanups) cleanup?.()
+      FlowDesignerView(props(model([task([])]), { editable: true }))
+
+      expect(error).not.toHaveBeenCalled()
+      expect(view.props.flowDesignerStore.$.editable.value).toBe(true)
+    } finally {
+      error.mockRestore()
+      view.props.flowDesignerStore.dispose()
+    }
   })
 
   it('does not clear an input value after the model replaces it with a connection', async () => {

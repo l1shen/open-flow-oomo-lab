@@ -510,9 +510,10 @@ class FlowDesignerViewAdapter {
     this.store.switchDisplayMode('overview')
   }
 
-  dispose(): void {
+  cancelPendingDisconnects(): void {
     if (this.#disconnectTimer != null) clearTimeout(this.#disconnectTimer)
-    this.store.dispose()
+    this.#disconnectTimer = undefined
+    this.#pendingDisconnects.clear()
   }
 
   focusNode(nodeId: string, duration: number): void {
@@ -1264,7 +1265,7 @@ export function FlowDesignerView(props: FlowDesignerViewProps): ReactElement {
     void propsRef.current.onAddNode(itemId, position)
   }, [])
 
-  useEffect(() => () => adapter.dispose(), [adapter])
+  useEffect(() => () => adapter.cancelPendingDisconnects(), [adapter])
   useLayoutEffect(() => {
     adapter.reconcile(props.model, props.editable, props.language ?? 'en', props.addItems, props.selectedNodeIds, callbacksFromProps(props))
   }, [adapter, props])
