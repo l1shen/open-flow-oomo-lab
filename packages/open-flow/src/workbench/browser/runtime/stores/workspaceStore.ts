@@ -190,8 +190,7 @@ export class WorkspaceStore {
   public async selectFlow(flowId: string | undefined): Promise<boolean> {
     if (!this.#allowModuleNavigation()) return false
     this.#cancelDraftReveal()
-    const current = this.#flows.beginSelection()
-    this.#draftSession.invalidate()
+    const current = this.#draftSession.begin()
     this.#draftChanges.reset()
     this.#presentationChanges.reset()
     this.#draftInvalidation = 0

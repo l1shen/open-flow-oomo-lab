@@ -75,12 +75,6 @@ export class FlowCatalog {
     this.#state.dispose()
   }
 
-  public beginSelection(): Current {
-    const current = this.#session.begin()
-    this.#set({ loading: false })
-    return current
-  }
-
   public capture(): Current {
     return this.#session.capture()
   }
