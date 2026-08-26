@@ -47,34 +47,11 @@
   }
 
   :global(.react-flow__controls) {
-    width: var(--canvas-control-container-size);
-    border: 1px solid var(--canvas-control-border, var(--ui-border));
-    border-radius: var(--canvas-control-radius);
-    background: var(--canvas-control-background, var(--ui-background));
-    box-shadow: var(--floating-control-shadow);
-    overflow: hidden;
-  }
-
-  :global(.react-flow__controls-button) {
-    width: var(--canvas-control-size);
-    height: var(--canvas-control-size);
-    padding: var(--canvas-control-padding);
-    border-radius: 0;
-    font-size: 16px;
-    transition:
-      color 100ms ease,
-      background-color 100ms ease;
-  }
-
-  :global(.react-flow__controls-button:active),
-  :global(.react-flow__controls-button[aria-expanded='true']) {
-    background-color: var(--canvas-control-active-background, var(--ui-muted));
-    color: var(--canvas-control-active-foreground, var(--ui-foreground));
-  }
-
-  :global(.react-flow__controls-button:focus-visible) {
-    outline: 2px solid var(--ui-ring);
-    outline-offset: -2px;
+    width: auto;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
   }
 
   :global(.react-flow__controls-button path) {
