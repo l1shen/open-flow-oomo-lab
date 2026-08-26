@@ -5,6 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
+    "benchmark:runtime": "bun run build && node --expose-gc --no-node-snapshot scripts/benchmark-runtime.mjs",
     "build": "bun scripts/build.ts",
     "check": "bun run format -- --check && bun run lint && tsc --noEmit",
     "dev": "bun scripts/dev.ts",
@@ -18,6 +19,7 @@
   "dependencies": {
     "@hono/node-server": "2.1.1",
     "@oomol-lab/open-flow": "workspace:*",
+    "effect": "4.0.0-rc.112",
     "hono": "4.13.3",
     "isolated-vm": "7.0.1",
     "node-gyp-build": "4.8.4",
@@ -33,7 +35,7 @@
     "@types/react-dom": "^18.3.1",
     "@unocss/vite": "66.7.5",
     "@vitejs/plugin-react": "6.0.5",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "4.1.11",
     "oxfmt": "^0.60.0",
     "oxlint": "^1.75.0",
     "sass": "1.101.0",

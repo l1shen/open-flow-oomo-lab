@@ -1,12 +1,21 @@
-import type { JsonValue } from '@oomol-lab/open-flow/flow-change'
+import type { ConnectorCapability, JsonValue } from '@oomol-lab/open-flow/flow-change'
+import type { PreparedFlow } from '@oomol-lab/open-flow/flow-semantics'
 import type { RuntimeCapabilityResponse, RuntimeInvocation, RuntimeProgram } from '@oomol-lab/open-flow/runtime-contract'
+import type { FlowRunOptions, FlowRunResult, SchedulerEvent, SchedulerFailure, TaskInvocation, TriggerSeed } from '@oomol-lab/open-flow/scheduler'
+import type * as Scope from 'effect/Scope'
 import type IsolatedVM from 'isolated-vm'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import type { Interface } from 'node:readline'
 
+import { createRuntimeProgram } from '@oomol-lab/open-flow/flow-semantics'
 import { findEngineContract } from '@oomol-lab/open-flow/runtime-contract'
+import { runFlow } from '@oomol-lab/open-flow/scheduler'
+import * as Deferred from 'effect/Deferred'
+import * as Effect from 'effect/Effect'
+import * as Fiber from 'effect/Fiber'
+import * as FiberSet from 'effect/FiberSet'
 import { spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
@@ -32,7 +41,7 @@ export const isolatedVmLimits: IsolatedVmLimits = {
   wallMs: 30_000,
 }
 
-export const isolatedVmEngineDigest = `sha256:${createHash('sha256').update('open-flow-isolated-vm/1 isolated-vm/7.0.1 node/26').digest('hex')}`
+export const isolatedVmEngineDigest = `sha256:${createHash('sha256').update('open-flow-isolated-vm/2 isolated-vm/7.0.1 node/26 web-globals/1').digest('hex')}`
 
 export class IsolatedVmError extends Error {
   readonly code: 'canceled' | 'executor-crashed' | 'invalid-program' | 'limit-exceeded' | 'task-failed'
@@ -44,50 +53,90 @@ export class IsolatedVmError extends Error {
   }
 }
 
-interface InvokeRequest {
-  readonly executionId: number
-  readonly input: JsonValue
-  readonly invocationId: string
-  readonly limits: IsolatedVmLimits
-  readonly program: RuntimeProgram
-  readonly type: 'invoke'
-}
+type InvokeRequest =
+  | {
+      readonly executionId: number
+      readonly input: JsonValue
+      readonly invocationId: string
+      readonly limits: IsolatedVmLimits
+      readonly program: RuntimeProgram
+      readonly type: 'invoke'
+    }
+  | {
+      readonly executionId: number
+      readonly flow: {
+        readonly flowId: string
+        readonly inputs?: FlowRunOptions['inputs']
+        readonly prepared: PreparedFlow
+        readonly runId: string
+        readonly trigger?: TriggerSeed
+      }
+      readonly limits: IsolatedVmLimits
+      readonly type: 'invoke'
+    }
 
 type ParentMessage = InvokeRequest | { readonly executionId: number; readonly type: 'cancel' } | CapabilityResult
 
 interface CapabilityResult {
+  readonly code?: string
   readonly error?: string
   readonly executionId: number
   readonly id: number
   readonly ok: boolean
   readonly type: 'capability.result'
-  readonly value?: RuntimeCapabilityResponse
+  readonly value?: unknown
 }
 
 type CapabilityOutcome = Omit<CapabilityResult, 'executionId'>
 
 type ExecutorMessage =
-  | { readonly executionId: number; readonly id: number; readonly kind: string; readonly payload: JsonValue; readonly type: 'capability' }
-  | { readonly code: IsolatedVmError['code']; readonly executionId: number; readonly message: string; readonly ok: false; readonly type: 'result' }
-  | { readonly executionId: number; readonly ok: true; readonly type: 'result'; readonly value: JsonValue }
+  | {
+      readonly capabilities?: readonly ConnectorCapability[]
+      readonly executionId: number
+      readonly id: number
+      readonly invocationId: string
+      readonly kind: string
+      readonly payload: JsonValue
+      readonly type: 'capability'
+    }
+  | { readonly event: SchedulerEvent; readonly executionId: number; readonly id: number; readonly type: 'event' }
+  | { readonly executionId: number; readonly id: number; readonly invocation: TaskInvocation; readonly type: 'task' }
+  | { readonly executionId: number; readonly id: number; readonly type: 'call.cancel' }
+  | {
+      readonly code: IsolatedVmError['code']
+      readonly executionId: number
+      readonly message: string
+      readonly ok: false
+      readonly retire?: true
+      readonly type: 'result'
+    }
+  | { readonly executionId: number; readonly ok: true; readonly retire?: true; readonly type: 'result'; readonly value: FlowRunResult | JsonValue }
 
 interface PendingCapability {
-  readonly reject: (error: Error) => void
-  readonly resolve: (result: CapabilityResult) => void
+  readonly deferred: Deferred.Deferred<CapabilityResult, Error>
 }
 
 interface PendingInvocation {
-  capabilityCalls: number
-  readonly capabilitySignals: Set<AbortController>
+  readonly capability: (
+    capabilities: readonly ConnectorCapability[],
+    call: Parameters<RuntimeInvocation['capability']>[0],
+  ) => Promise<RuntimeCapabilityResponse>
+  readonly capabilityCalls: Map<string, number>
+  readonly activeCalls: Map<number, Fiber.Fiber<void, never>>
   readonly cancel: () => void
-  readonly invocation: RuntimeInvocation
+  readonly emit?: (event: SchedulerEvent) => void | Promise<void>
+  readonly invokeTask?: (invocation: TaskInvocation & { readonly signal: AbortSignal }) => Promise<unknown>
   readonly limits: IsolatedVmLimits
+  readonly projectFailure: (error: unknown) => SchedulerFailure
   readonly reject: (error: unknown) => void
-  readonly resolve: (value: JsonValue) => void
-  readonly wallTimer: ReturnType<typeof setTimeout>
+  readonly resolve: (value: FlowRunResult | JsonValue) => void
+  readonly signal?: AbortSignal
+  readonly wallTimer?: ReturnType<typeof setTimeout>
 }
 
 const encoder = new TextEncoder()
+const executorIsolateBudget = 1_000
+let completedIsolates = 0
 
 function serializedBytes(value: unknown): number {
   return encoder.encode(JSON.stringify(value)).byteLength
@@ -99,6 +148,13 @@ function writeMessage(message: ExecutorMessage): void {
 
 function normalizedError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
+}
+
+function remote(result: Effect.Effect<CapabilityResult, Error>): Effect.Effect<unknown, Error> {
+  return Effect.flatMap(result, (response) => {
+    if (response.ok) return Effect.succeed(response.value ?? null)
+    return Effect.fail(Object.assign(new Error(response.error ?? 'Runtime Host call failed.'), { schedulerCode: response.code ?? 'node.failed' }))
+  })
 }
 
 function programError(program: RuntimeProgram): IsolatedVmError | undefined {
@@ -121,40 +177,120 @@ export class IsolatedVmHost {
   #stderr = ''
 
   async invoke(invocation: RuntimeInvocation, limits: IsolatedVmLimits = isolatedVmLimits): Promise<JsonValue> {
-    if (this.#closed) throw new IsolatedVmError('executor-crashed', 'Runtime Host is closed.')
-    const invalid = programError(invocation.program)
-    if (invalid != null) throw invalid
-    if (serializedBytes(invocation.input) > limits.maxInputBytes) {
-      throw new IsolatedVmError('limit-exceeded', 'Runtime input exceeds the configured byte limit.')
-    }
-    if (serializedBytes(invocation.program) > limits.maxProgramBytes) {
-      throw new IsolatedVmError('limit-exceeded', 'Runtime program exceeds the configured byte limit.')
-    }
-    if (invocation.signal?.aborted) throw invocation.signal.reason
+    return await Effect.runPromise(
+      Effect.suspend(() => {
+        if (this.#closed) return Effect.fail(new IsolatedVmError('executor-crashed', 'Runtime Host is closed.'))
+        const invalid = programError(invocation.program)
+        if (invalid != null) return Effect.fail(invalid)
+        if (serializedBytes(invocation.input) > limits.maxInputBytes) {
+          return Effect.fail(new IsolatedVmError('limit-exceeded', 'Runtime input exceeds the configured byte limit.'))
+        }
+        if (serializedBytes(invocation.program) > limits.maxProgramBytes) {
+          return Effect.fail(new IsolatedVmError('limit-exceeded', 'Runtime program exceeds the configured byte limit.'))
+        }
+        if (invocation.signal?.aborted) return Effect.fail(normalizedError(invocation.signal.reason))
 
-    const child = this.#child ?? this.#start()
-    const executionId = ++this.#executionId
-    return await new Promise<JsonValue>((resolve, reject) => {
-      const cancel = (): void => {
-        this.#send(child, { executionId, type: 'cancel' })
-        this.#finish(executionId, () => reject(invocation.signal?.reason ?? new IsolatedVmError('canceled', 'Runtime invocation was canceled.')))
+        return Effect.callback<JsonValue, Error>((resume, signal) => {
+          const child = this.#child ?? this.#start()
+          const executionId = ++this.#executionId
+          const cancel = (): void => {
+            this.#send(child, { executionId, type: 'cancel' })
+            this.#finish(executionId, () =>
+              resume(Effect.fail(normalizedError(invocation.signal?.reason ?? new IsolatedVmError('canceled', 'Runtime invocation was canceled.')))),
+            )
+          }
+          const interrupt = (): void => {
+            this.#send(child, { executionId, type: 'cancel' })
+            this.#finish(executionId, () => {})
+          }
+          const wallTimer = setTimeout(() => {
+            this.#send(child, { executionId, type: 'cancel' })
+            this.#finish(executionId, () => resume(Effect.fail(new IsolatedVmError('limit-exceeded', 'Runtime invocation exceeded its wall-clock limit.'))))
+          }, limits.wallMs)
+          this.#pending.set(executionId, {
+            capability: (_capabilities, call) => invocation.capability(call),
+            capabilityCalls: new Map(),
+            activeCalls: new Map(),
+            cancel,
+            limits,
+            projectFailure: (error) => ({ code: 'node.failed', message: normalizedError(error).message }),
+            reject: (error) => resume(Effect.fail(normalizedError(error))),
+            resolve: (value) => resume(Effect.succeed(value as JsonValue)),
+            signal: invocation.signal,
+            wallTimer,
+          })
+          invocation.signal?.addEventListener('abort', cancel, { once: true })
+          signal.addEventListener('abort', interrupt, { once: true })
+          this.#send(child, {
+            executionId,
+            input: invocation.input,
+            invocationId: invocation.invocationId,
+            limits,
+            program: invocation.program,
+            type: 'invoke',
+          })
+          return Effect.sync(() => signal.removeEventListener('abort', interrupt))
+        })
+      }),
+    )
+  }
+
+  run(
+    prepared: PreparedFlow,
+    options: {
+      readonly capability: (
+        capabilities: readonly ConnectorCapability[],
+        call: Parameters<RuntimeInvocation['capability']>[0],
+      ) => Promise<RuntimeCapabilityResponse>
+      readonly emit?: (event: SchedulerEvent) => void | Promise<void>
+      readonly flowId: string
+      readonly inputs?: FlowRunOptions['inputs']
+      readonly invokeTask: (invocation: TaskInvocation & { readonly signal: AbortSignal }) => Promise<unknown>
+      readonly projectFailure: (error: unknown) => SchedulerFailure
+      readonly runId: string
+      readonly trigger?: TriggerSeed
+    },
+    limits: IsolatedVmLimits = isolatedVmLimits,
+  ): Effect.Effect<FlowRunResult, Error> {
+    return Effect.suspend(() => {
+      if (this.#closed) return Effect.fail(new IsolatedVmError('executor-crashed', 'Runtime Host is closed.'))
+      if (serializedBytes(prepared) > limits.maxProgramBytes) {
+        return Effect.fail(new IsolatedVmError('limit-exceeded', 'Fixed Flow exceeds the configured byte limit.'))
       }
-      const wallTimer = setTimeout(() => {
-        this.#send(child, { executionId, type: 'cancel' })
-        this.#finish(executionId, () => reject(new IsolatedVmError('limit-exceeded', 'Runtime invocation exceeded its wall-clock limit.')))
-      }, limits.wallMs)
-      this.#pending.set(executionId, {
-        capabilityCalls: 0,
-        capabilitySignals: new Set(),
-        cancel,
-        invocation,
-        limits,
-        reject,
-        resolve,
-        wallTimer,
+      return Effect.callback<FlowRunResult, Error>((resume, signal) => {
+        const child = this.#child ?? this.#start()
+        const executionId = ++this.#executionId
+        const interrupt = (): void => {
+          this.#send(child, { executionId, type: 'cancel' })
+          this.#finish(executionId, () => {})
+        }
+        this.#pending.set(executionId, {
+          capability: options.capability,
+          capabilityCalls: new Map(),
+          activeCalls: new Map(),
+          cancel: interrupt,
+          emit: options.emit,
+          invokeTask: options.invokeTask,
+          limits,
+          projectFailure: options.projectFailure,
+          reject: (error) => resume(Effect.fail(normalizedError(error))),
+          resolve: (value) => resume(Effect.succeed(value as FlowRunResult)),
+        })
+        signal.addEventListener('abort', interrupt, { once: true })
+        this.#send(child, {
+          executionId,
+          flow: {
+            flowId: options.flowId,
+            ...(options.inputs == null ? {} : { inputs: options.inputs }),
+            prepared,
+            runId: options.runId,
+            ...(options.trigger == null ? {} : { trigger: options.trigger }),
+          },
+          limits,
+          type: 'invoke',
+        })
+        return Effect.sync(() => signal.removeEventListener('abort', interrupt))
       })
-      invocation.signal?.addEventListener('abort', cancel, { once: true })
-      this.#send(child, { executionId, input: invocation.input, invocationId: invocation.invocationId, limits, program: invocation.program, type: 'invoke' })
     })
   }
 
@@ -216,15 +352,48 @@ export class IsolatedVmHost {
     const pending = this.#pending.get(message.executionId)
     if (pending == null) return
     if (message.type == 'result') {
+      if (message.retire && this.#child == child) {
+        this.#child = undefined
+        this.#output?.close()
+        this.#output = undefined
+      }
       this.#finish(message.executionId, () => {
         if (message.ok) pending.resolve(message.value)
         else pending.reject(new IsolatedVmError(message.code, message.message))
       })
       return
     }
-    pending.capabilityCalls += 1
-    if (pending.capabilityCalls > pending.limits.maxCapabilityCalls) {
+    if (message.type == 'call.cancel') {
+      const fiber = pending.activeCalls.get(message.id)
+      if (fiber != null) Effect.runFork(Fiber.interrupt(fiber))
+      return
+    }
+    if (message.type == 'event') {
+      this.#call(child, message.executionId, message.id, pending, () => {
+        if (pending.emit == null) throw new IsolatedVmError('executor-crashed', 'Runtime Executor emitted an event outside a Flow Run.')
+        return pending.emit(message.event)
+      })
+      return
+    }
+    if (message.type == 'task') {
+      this.#call(
+        child,
+        message.executionId,
+        message.id,
+        pending,
+        (signal) => {
+          if (pending.invokeTask == null) throw new IsolatedVmError('executor-crashed', 'Runtime Executor requested a Task outside a Flow Run.')
+          return pending.invokeTask({ ...message.invocation, signal })
+        },
+        pending.limits.maxResultBytes,
+      )
+      return
+    }
+    const calls = (pending.capabilityCalls.get(message.invocationId) ?? 0) + 1
+    pending.capabilityCalls.set(message.invocationId, calls)
+    if (calls > pending.limits.maxCapabilityCalls) {
       this.#send(child, {
+        code: 'node.failed',
         error: 'Capability call limit exceeded.',
         executionId: message.executionId,
         id: message.id,
@@ -233,39 +402,71 @@ export class IsolatedVmHost {
       })
       return
     }
-    const controller = new AbortController()
-    pending.capabilitySignals.add(controller)
-    void pending.invocation
-      .capability({
-        invocationId: pending.invocation.invocationId,
-        kind: message.kind,
-        payload: message.payload,
-        signal: controller.signal,
-      })
-      .then((value) => {
-        if (!this.#pending.has(message.executionId)) return
-        if (serializedBytes(value) > pending.limits.maxCapabilityResponseBytes) {
-          this.#send(child, {
-            error: 'Capability response exceeds the configured byte limit.',
-            executionId: message.executionId,
-            id: message.id,
-            ok: false,
-            type: 'capability.result',
-          })
-        } else this.#send(child, { executionId: message.executionId, id: message.id, ok: true, type: 'capability.result', value })
-      })
-      .catch((error) => {
-        if (this.#pending.has(message.executionId)) {
-          this.#send(child, {
-            error: normalizedError(error).message,
-            executionId: message.executionId,
-            id: message.id,
-            ok: false,
-            type: 'capability.result',
-          })
-        }
-      })
-      .finally(() => pending.capabilitySignals.delete(controller))
+    this.#call(
+      child,
+      message.executionId,
+      message.id,
+      pending,
+      (signal) =>
+        pending.capability(message.capabilities ?? [], {
+          invocationId: message.invocationId,
+          kind: message.kind,
+          payload: message.payload,
+          signal,
+        }),
+      pending.limits.maxCapabilityResponseBytes,
+    )
+  }
+
+  #call(
+    child: ChildProcessWithoutNullStreams,
+    executionId: number,
+    id: number,
+    pending: PendingInvocation,
+    operation: (signal: AbortSignal) => unknown | Promise<unknown>,
+    byteLimit?: number,
+  ): void {
+    const fiber = Effect.runFork(
+      Effect.tryPromise({
+        try: (signal) => Promise.resolve(operation(signal)),
+        catch: normalizedError,
+      }).pipe(
+        Effect.flatMap((value) =>
+          Effect.try({
+            try: () => {
+              if (!this.#pending.has(executionId)) return
+              if (byteLimit != null && serializedBytes(value) > byteLimit) {
+                this.#send(child, {
+                  code: 'node.failed',
+                  error: 'Runtime response exceeds the configured byte limit.',
+                  executionId,
+                  id,
+                  ok: false,
+                  type: 'capability.result',
+                })
+              } else this.#send(child, { executionId, id, ok: true, type: 'capability.result', value: (value ?? null) as JsonValue })
+            },
+            catch: normalizedError,
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            if (!this.#pending.has(executionId)) return
+            const failure = pending.projectFailure(error)
+            this.#send(child, {
+              code: failure.code,
+              error: failure.message,
+              executionId,
+              id,
+              ok: false,
+              type: 'capability.result',
+            })
+          }),
+        ),
+      ),
+    )
+    pending.activeCalls.set(id, fiber)
+    fiber.addObserver(() => pending.activeCalls.delete(id))
   }
 
   #send(child: ChildProcessWithoutNullStreams, message: ParentMessage): void {
@@ -276,11 +477,10 @@ export class IsolatedVmHost {
     const pending = this.#pending.get(executionId)
     if (pending == null) return
     this.#pending.delete(executionId)
-    clearTimeout(pending.wallTimer)
-    pending.invocation.signal?.removeEventListener('abort', pending.cancel)
-    const reason = new IsolatedVmError('canceled', 'Runtime invocation is no longer active.')
-    for (const controller of pending.capabilitySignals) controller.abort(reason)
-    pending.capabilitySignals.clear()
+    if (pending.wallTimer != null) clearTimeout(pending.wallTimer)
+    pending.signal?.removeEventListener('abort', pending.cancel)
+    for (const fiber of pending.activeCalls.values()) Effect.runFork(Fiber.interrupt(fiber))
+    pending.activeCalls.clear()
     operation()
   }
 
@@ -293,14 +493,29 @@ export class IsolatedVmHost {
   }
 }
 
-async function execute(request: InvokeRequest, canceled: AbortSignal, pending: Map<number, PendingCapability>): Promise<JsonValue> {
-  const invalid = programError(request.program)
+// Executor code runs in a child process outside Vitest coverage collection.
+/* v8 ignore start */
+async function execute(
+  request: InvokeRequest,
+  canceled: AbortSignal,
+  call: (invocationId: string, capabilities: readonly ConnectorCapability[], kind: string, payload: JsonValue) => Promise<RuntimeCapabilityResponse>,
+  capabilities: readonly ConnectorCapability[] = [],
+  preserveCapabilityFailure = false,
+): Promise<JsonValue> {
+  if (!('program' in request)) throw new IsolatedVmError('invalid-program', 'Runtime module invocation is incomplete.')
+  const { invocationId, program } = request
+  const invalid = programError(program)
   if (invalid != null) throw invalid
-  if (serializedBytes(request.program) > request.limits.maxProgramBytes) {
+  if (serializedBytes(program) > request.limits.maxProgramBytes) {
     throw new IsolatedVmError('limit-exceeded', 'Runtime program exceeds the configured byte limit.')
   }
   const ivm = (await import('isolated-vm')).default
   let isolate: IsolatedVM.Isolate | undefined
+  const timers = new Map<number, { readonly fire: IsolatedVM.Reference<() => void>; readonly timer: ReturnType<typeof setTimeout> }>()
+  const canceledTimers = new Set<number>()
+  let abort: (() => void) | undefined
+  let clearTimers: (() => void) | undefined
+  let capabilityFailure: unknown
   try {
     isolate = new ivm.Isolate({
       memoryLimit: request.limits.memoryMb,
@@ -309,17 +524,61 @@ async function execute(request: InvokeRequest, canceled: AbortSignal, pending: M
       },
     })
     const context = await isolate.createContext()
-    let capabilityId = 0
     let active = true
-    const abort = (): void => {
+    clearTimers = (): void => {
+      for (const { fire, timer } of timers.values()) {
+        clearTimeout(timer)
+        fire.release()
+      }
+      timers.clear()
+      canceledTimers.clear()
+    }
+    abort = (): void => {
       if (!active) return
       active = false
-      const error = new IsolatedVmError('canceled', 'Runtime invocation was canceled.')
-      for (const pendingCapability of pending.values()) pendingCapability.reject(error)
-      pending.clear()
+      clearTimers?.()
       if (isolate != null && !isolate.isDisposed) isolate.dispose()
     }
     canceled.addEventListener('abort', abort, { once: true })
+    const scheduleTimer = new ivm.Reference(
+      (idReference: IsolatedVM.Reference<number>, delayReference: IsolatedVM.Reference<number>, fire: IsolatedVM.Reference<() => void>): void => {
+        const id = idReference.copySync()
+        const delay = delayReference.copySync()
+        idReference.release()
+        delayReference.release()
+        if (!active || canceledTimers.delete(id)) {
+          fire.release()
+          return
+        }
+        const timer = setTimeout(
+          () => {
+            timers.delete(id)
+            if (active) fire.applyIgnored(undefined, [], { arguments: { copy: true } })
+            fire.release()
+          },
+          Math.min(Math.max(Number.isFinite(delay) ? delay : 0, 0), request.limits.wallMs),
+        )
+        timers.set(id, { fire, timer })
+      },
+    )
+    const cancelTimer = new ivm.Reference((id: number): void => {
+      const timer = timers.get(id)
+      if (timer == null) {
+        canceledTimers.add(id)
+        return
+      }
+      timers.delete(id)
+      clearTimeout(timer.timer)
+      timer.fire.release()
+    })
+    const cloneValue = new ivm.Reference((value: unknown): unknown => value)
+    const decodeBase64 = new ivm.Reference((value: string): string => atob(value))
+    const decodeText = new ivm.Reference((input: Uint8Array, label: string, options: { readonly fatal?: boolean; readonly ignoreBOM?: boolean }): string =>
+      new TextDecoder(label, options).decode(input),
+    )
+    const encodeBase64 = new ivm.Reference((value: string): string => btoa(value))
+    const encodeText = new ivm.Reference((value: string): Uint8Array => new TextEncoder().encode(value))
+    const now = new ivm.Reference((): number => performance.now())
     const capability = new ivm.Reference((sourceReference: IsolatedVM.Reference<string>, settle: IsolatedVM.Reference<(source: string) => void>): void => {
       const settleResult = (result: CapabilityOutcome): void => {
         if (!active) return
@@ -334,31 +593,118 @@ async function execute(request: InvokeRequest, canceled: AbortSignal, pending: M
             settleResult({ error: 'Capability is no longer active.', id: 0, ok: false, type: 'capability.result' })
             return
           }
-          let call: { readonly kind: string; readonly payload: JsonValue }
+          let capabilityCall: { readonly kind: string; readonly payload: JsonValue }
           try {
             const parsed = JSON.parse(source) as { readonly kind?: unknown; readonly payload?: unknown }
             if (typeof parsed.kind != 'string' || !Object.hasOwn(parsed, 'payload')) throw new TypeError()
-            call = parsed as { readonly kind: string; readonly payload: JsonValue }
+            capabilityCall = parsed as { readonly kind: string; readonly payload: JsonValue }
           } catch {
             settleResult({ error: 'Capability request is invalid.', id: 0, ok: false, type: 'capability.result' })
             return
           }
-          const id = ++capabilityId
-          pending.set(id, {
-            reject: (error) => settleResult({ error: error.message, id, ok: false, type: 'capability.result' }),
-            resolve: settleResult,
-          })
-          writeMessage({ executionId: request.executionId, id, kind: call.kind, payload: call.payload, type: 'capability' })
+          void call(invocationId, capabilities, capabilityCall.kind, capabilityCall.payload).then(
+            (result) => settleResult({ id: 0, ok: true, type: 'capability.result', value: result }),
+            (error) => {
+              capabilityFailure = error
+              settleResult({ error: normalizedError(error).message, id: 0, ok: false, type: 'capability.result' })
+            },
+          )
         })
         .catch((error) => settleResult({ error: normalizedError(error).message, id: 0, ok: false, type: 'capability.result' }))
         .finally(() => sourceReference.release())
     })
     context.global.setSync('__openFlowCapability', capability)
+    context.global.setSync('__openFlowClearTimeout', cancelTimer)
+    context.global.setSync('__openFlowClone', cloneValue)
+    context.global.setSync('__openFlowDecodeBase64', decodeBase64)
+    context.global.setSync('__openFlowDecodeText', decodeText)
+    context.global.setSync('__openFlowEncodeBase64', encodeBase64)
+    context.global.setSync('__openFlowEncodeText', encodeText)
+    context.global.setSync('__openFlowNow', now)
+    context.global.setSync('__openFlowSetTimeout', scheduleTimer)
+    context.global.setSync('__openFlowTimeOrigin', performance.timeOrigin)
 
-    const contract = findEngineContract(request.program.engineContract)!
+    const contract = findEngineContract(program.engineContract)!
     const capabilityModule = await isolate.compileModule(
       `const call = globalThis.__openFlowCapability
+const cancelTimer = globalThis.__openFlowClearTimeout
+const cloneValue = globalThis.__openFlowClone
+const decodeBase64 = globalThis.__openFlowDecodeBase64
+const decodeText = globalThis.__openFlowDecodeText
+const encodeBase64 = globalThis.__openFlowEncodeBase64
+const encodeText = globalThis.__openFlowEncodeText
+const now = globalThis.__openFlowNow
+const scheduleTimer = globalThis.__openFlowSetTimeout
+const timeOrigin = globalThis.__openFlowTimeOrigin
 delete globalThis.__openFlowCapability
+delete globalThis.__openFlowClearTimeout
+delete globalThis.__openFlowClone
+delete globalThis.__openFlowDecodeBase64
+delete globalThis.__openFlowDecodeText
+delete globalThis.__openFlowEncodeBase64
+delete globalThis.__openFlowEncodeText
+delete globalThis.__openFlowNow
+delete globalThis.__openFlowSetTimeout
+delete globalThis.__openFlowTimeOrigin
+let nextTimerId = 0
+const activeTimers = new Set()
+const schedule = (callback, delay, args, repeat) => {
+  const id = ++nextTimerId
+  const fire = () => {
+    if (!activeTimers.has(id)) return
+    if (repeat) {
+      scheduleTimer.applyIgnored(undefined, [id, Number(delay), fire], { arguments: { reference: true } })
+    } else activeTimers.delete(id)
+    callback(...args)
+  }
+  activeTimers.add(id)
+  scheduleTimer.applyIgnored(undefined, [id, Number(delay), fire], { arguments: { reference: true } })
+  return id
+}
+globalThis.clearTimeout = (id) => {
+  const timerId = Number(id)
+  if (!activeTimers.delete(timerId)) return
+  cancelTimer.applyIgnored(undefined, [timerId], { arguments: { copy: true } })
+}
+globalThis.clearInterval = globalThis.clearTimeout
+globalThis.setTimeout = (callback, delay = 0, ...args) => {
+  if (typeof callback !== 'function') throw new TypeError('setTimeout callback must be a function.')
+  return schedule(callback, delay, args, false)
+}
+globalThis.setInterval = (callback, delay = 0, ...args) => {
+  if (typeof callback !== 'function') throw new TypeError('setInterval callback must be a function.')
+  return schedule(callback, delay, args, true)
+}
+globalThis.queueMicrotask = (callback) => {
+  if (typeof callback !== 'function') throw new TypeError('queueMicrotask callback must be a function.')
+  void Promise.resolve().then(callback)
+}
+globalThis.performance = Object.freeze({
+  now: () => now.applySync(undefined, [], { arguments: { copy: true }, result: { copy: true } }),
+  timeOrigin,
+})
+globalThis.atob = (value) => decodeBase64.applySync(undefined, [String(value)], { arguments: { copy: true }, result: { copy: true } })
+globalThis.btoa = (value) => encodeBase64.applySync(undefined, [String(value)], { arguments: { copy: true }, result: { copy: true } })
+globalThis.structuredClone = (value) => cloneValue.applySync(undefined, [value], { arguments: { copy: true }, result: { copy: true } })
+globalThis.TextDecoder = class TextDecoder {
+  constructor(label = 'utf-8', options = {}) {
+    this.encoding = String(label).toLowerCase()
+    this.fatal = Boolean(options.fatal)
+    this.ignoreBOM = Boolean(options.ignoreBOM)
+  }
+  decode(input = new Uint8Array()) {
+    return decodeText.applySync(undefined, [input, this.encoding, { fatal: this.fatal, ignoreBOM: this.ignoreBOM }], {
+      arguments: { copy: true },
+      result: { copy: true },
+    })
+  }
+}
+globalThis.TextEncoder = class TextEncoder {
+  encoding = 'utf-8'
+  encode(input = '') {
+    return encodeText.applySync(undefined, [String(input)], { arguments: { copy: true }, result: { copy: true } })
+  }
+}
 async function invoke(kind, payload) {
   const source = await new Promise((resolve) => {
     call.applyIgnored(undefined, [JSON.stringify({ kind, payload }), resolve], { arguments: { reference: true } })
@@ -392,19 +738,19 @@ export const capability = Object.freeze({
       [capabilityModule, 'engine/capability.mjs'],
       [platformModule, contract.platformModule],
     ])
-    for (const [moduleId, module] of Object.entries(request.program.modules)) {
+    for (const [moduleId, module] of Object.entries(program.modules)) {
       const modulePath = `user/${moduleId}.mjs`
       const compiled = await isolate.compileModule(module.source, { filename: `open-flow:${modulePath}` })
       modules.set(modulePath, compiled)
       paths.set(compiled, modulePath)
     }
     const mainModule = await isolate.compileModule(
-      `import task from '../user/${request.program.entryModuleId}.mjs'
+      `import task from '../user/${program.entryModuleId}.mjs'
 import { capability } from './capability.mjs'
 export async function invoke(source) {
   try {
     const value = await task(JSON.parse(source), capability)
-    return JSON.stringify({ engineDigest: ${JSON.stringify(request.program.engineDigest)}, ok: true, value })
+    return JSON.stringify({ engineDigest: ${JSON.stringify(program.engineDigest)}, ok: true, value })
   } catch (error) {
     return JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false })
   }
@@ -419,12 +765,12 @@ export async function invoke(source) {
       if (referrerPath == null) throw new IsolatedVmError('invalid-program', 'Runtime module referrer is unknown.')
       if (specifier == contract.platformModule && referrerPath.startsWith('user/')) return platformModule
       if (referrerPath == 'engine/main.mjs' && specifier == './capability.mjs') return capabilityModule
-      if (referrerPath == 'engine/main.mjs' && specifier == `../user/${request.program.entryModuleId}.mjs`) {
-        return modules.get(`user/${request.program.entryModuleId}.mjs`)!
+      if (referrerPath == 'engine/main.mjs' && specifier == `../user/${program.entryModuleId}.mjs`) {
+        return modules.get(`user/${program.entryModuleId}.mjs`)!
       }
       const imported = /^\.\/([^/]+)\.mjs$/.exec(specifier)?.[1]
       const referrerId = /^user\/(.+)\.mjs$/.exec(referrerPath)?.[1]
-      if (imported != null && referrerId != null && request.program.modules[referrerId]?.imports.includes(imported)) {
+      if (imported != null && referrerId != null && program.modules[referrerId]?.imports.includes(imported)) {
         const target = modules.get(`user/${imported}.mjs`)
         if (target != null) return target
       }
@@ -442,77 +788,264 @@ export async function invoke(source) {
       throw new IsolatedVmError('limit-exceeded', 'Runtime result exceeds the configured byte limit.')
     }
     const result = JSON.parse(source) as { readonly engineDigest?: string; readonly error?: string; readonly ok?: boolean; readonly value?: JsonValue }
-    if (!result.ok || result.engineDigest != request.program.engineDigest || !Object.hasOwn(result, 'value')) {
+    if (!result.ok || result.engineDigest != program.engineDigest || !Object.hasOwn(result, 'value')) {
+      if (preserveCapabilityFailure && capabilityFailure != null) throw capabilityFailure
       throw new IsolatedVmError('task-failed', result.error ?? 'User Task failed.')
     }
     active = false
-    for (const pendingCapability of pending.values()) pendingCapability.reject(new IsolatedVmError('canceled', 'Capability is no longer active.'))
-    pending.clear()
+    clearTimers()
     return result.value!
   } catch (error) {
     if (error instanceof IsolatedVmError) throw error
+    if (preserveCapabilityFailure && error === capabilityFailure) throw error
     const message = normalizedError(error).message
     const code = /memory|heap|timed out|timeout/i.test(message) ? 'limit-exceeded' : 'invalid-program'
     throw new IsolatedVmError(code, message)
   } finally {
-    if (isolate != null && !isolate.isDisposed) isolate.dispose()
+    if (abort != null) canceled.removeEventListener('abort', abort)
+    clearTimers?.()
+    if (isolate != null) {
+      if (!isolate.isDisposed) isolate.dispose()
+      completedIsolates += 1
+    }
   }
 }
 
-async function runExecutor(): Promise<void> {
-  const input = createInterface({ input: process.stdin })
-  const executions = new Map<number, { readonly cancellation: AbortController; readonly pending: Map<number, PendingCapability> }>()
-  input.once('close', () => {
-    const error = new IsolatedVmError('canceled', 'Runtime host disconnected.')
-    for (const execution of executions.values()) execution.cancellation.abort(error)
+function executeEffect(
+  request: InvokeRequest,
+  call: (
+    invocationId: string,
+    capabilities: readonly ConnectorCapability[],
+    kind: string,
+    payload: JsonValue,
+  ) => Effect.Effect<RuntimeCapabilityResponse, Error>,
+  capabilities: readonly ConnectorCapability[] = [],
+  preserveCapabilityFailure = false,
+): Effect.Effect<JsonValue, Error, Scope.Scope> {
+  return Effect.gen(function* () {
+    const run = yield* FiberSet.makeRuntimePromise<never, RuntimeCapabilityResponse, Error>()
+    return yield* Effect.tryPromise({
+      try: (signal) =>
+        execute(
+          request,
+          signal,
+          (invocationId, allowed, kind, payload) => run(call(invocationId, allowed, kind, payload)),
+          capabilities,
+          preserveCapabilityFailure,
+        ),
+      catch: normalizedError,
+    })
   })
-  input.on('line', (line) => {
-    let message: ParentMessage
-    try {
-      message = JSON.parse(line) as ParentMessage
-    } catch {
-      process.stderr.write('Executor received an invalid protocol message.\n')
-      process.exitCode = 1
-      input.close()
-      return
-    }
-    if (message.type == 'cancel') {
-      executions.get(message.executionId)?.cancellation.abort(new IsolatedVmError('canceled', 'Runtime invocation was canceled.'))
-      return
-    }
-    if (message.type == 'capability.result') {
-      const pending = executions.get(message.executionId)?.pending
-      const capability = pending?.get(message.id)
-      pending?.delete(message.id)
-      capability?.resolve(message)
-      return
-    }
-    if (executions.has(message.executionId)) {
-      writeMessage({
-        code: 'executor-crashed',
-        executionId: message.executionId,
-        message: 'Executor received a duplicate execution ID.',
-        ok: false,
-        type: 'result',
+}
+
+function executeFlow(
+  request: InvokeRequest,
+  call: (
+    message:
+      | {
+          readonly capabilities?: readonly ConnectorCapability[]
+          readonly invocationId: string
+          readonly kind: string
+          readonly payload: JsonValue
+          readonly type: 'capability'
+        }
+      | { readonly event: SchedulerEvent; readonly type: 'event' }
+      | { readonly invocation: TaskInvocation; readonly type: 'task' },
+  ) => Effect.Effect<CapabilityResult, Error>,
+): Effect.Effect<FlowRunResult, Error> {
+  if (!('flow' in request)) return Effect.fail(new IsolatedVmError('invalid-program', 'Flow Runtime invocation is incomplete.'))
+  const { flow } = request
+  return runFlow(flow.prepared, {
+    createId: randomUUID,
+    emit: (event) => remote(call({ event, type: 'event' })).pipe(Effect.asVoid),
+    flowId: flow.flowId,
+    ...(flow.inputs == null ? {} : { inputs: flow.inputs }),
+    invokeTask: (invocation) =>
+      Effect.gen(function* () {
+        if ('moduleId' in invocation) {
+          const program = createRuntimeProgram(flow.prepared, invocation.moduleId, isolatedVmEngineDigest)
+          if (program == null) return yield* Effect.fail(new IsolatedVmError('invalid-program', 'Task Module is not part of the fixed Flow closure.'))
+          return yield* Effect.scoped(
+            executeEffect(
+              {
+                executionId: request.executionId,
+                input: invocation.input,
+                invocationId: invocation.invocationId,
+                limits: request.limits,
+                program,
+                type: 'invoke',
+              },
+              (invocationId, capabilities, kind, payload) =>
+                remote(call({ capabilities, invocationId, kind, payload, type: 'capability' })).pipe(
+                  Effect.map((response) => response as RuntimeCapabilityResponse),
+                ),
+              invocation.capabilities,
+              true,
+            ).pipe(
+              Effect.timeoutOrElse({
+                duration: request.limits.wallMs,
+                orElse: () => Effect.fail(new IsolatedVmError('limit-exceeded', 'Runtime invocation exceeded its wall-clock limit.')),
+              }),
+            ),
+          )
+        }
+        return yield* remote(call({ invocation, type: 'task' }))
+      }),
+    projectFailure: (error) => ({
+      code: typeof Reflect.get(Object(error), 'schedulerCode') == 'string' ? (Reflect.get(Object(error), 'schedulerCode') as string) : 'node.failed',
+      message: normalizedError(error).message,
+    }),
+    runId: flow.runId,
+    ...(flow.trigger == null ? {} : { trigger: flow.trigger }),
+  })
+}
+
+function executeWithCapabilities(request: InvokeRequest, pending: Map<number, PendingCapability>, retire: () => boolean): Effect.Effect<void> {
+  let nextId = 0
+  const call = (
+    message:
+      | {
+          readonly capabilities?: readonly ConnectorCapability[]
+          readonly invocationId: string
+          readonly kind: string
+          readonly payload: JsonValue
+          readonly type: 'capability'
+        }
+      | { readonly event: SchedulerEvent; readonly type: 'event' }
+      | { readonly invocation: TaskInvocation; readonly type: 'task' },
+  ): Effect.Effect<CapabilityResult, Error> =>
+    Effect.gen(function* () {
+      const id = ++nextId
+      const deferred = yield* Deferred.make<CapabilityResult, Error>()
+      yield* Effect.sync(() => {
+        pending.set(id, { deferred })
+        writeMessage({ executionId: request.executionId, id, ...message } as ExecutorMessage)
       })
-      return
-    }
-    const execution = { cancellation: new AbortController(), pending: new Map<number, PendingCapability>() }
-    executions.set(message.executionId, execution)
-    void executeWithCapabilities(message, execution.cancellation.signal, execution.pending).finally(() => executions.delete(message.executionId))
-  })
+      return yield* Deferred.await(deferred).pipe(
+        Effect.onInterrupt(() =>
+          Effect.sync(() => {
+            if (pending.delete(id)) writeMessage({ executionId: request.executionId, id, type: 'call.cancel' })
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => pending.delete(id))),
+      )
+    })
+
+  return Effect.scoped(
+    Effect.gen(function* () {
+      let value: FlowRunResult | JsonValue
+      if ('flow' in request) value = yield* executeFlow(request, call)
+      else {
+        value = yield* executeEffect(request, (invocationId, capabilities, kind, payload) =>
+          Effect.gen(function* () {
+            const response = yield* call({ capabilities, invocationId, kind, payload, type: 'capability' })
+            if (!response.ok) return yield* Effect.fail(new Error(response.error ?? 'Capability call failed.'))
+            return response.value as RuntimeCapabilityResponse
+          }),
+        )
+      }
+      yield* Effect.sync(() => {
+        const retiring = retire()
+        writeMessage({ executionId: request.executionId, ok: true, ...(retiring ? { retire: true } : {}), type: 'result', value })
+      })
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const failure =
+            error instanceof IsolatedVmError
+              ? error
+              : new IsolatedVmError('flow' in request ? 'task-failed' : 'executor-crashed', normalizedError(error).message)
+          const retiring = retire()
+          writeMessage({
+            code: failure.code,
+            executionId: request.executionId,
+            message: failure.message,
+            ok: false,
+            ...(retiring ? { retire: true } : {}),
+            type: 'result',
+          })
+        }),
+      ),
+      Effect.ensuring(Effect.sync(() => pending.clear())),
+    ),
+  )
 }
 
-async function executeWithCapabilities(request: InvokeRequest, signal: AbortSignal, pending: Map<number, PendingCapability>): Promise<void> {
-  try {
-    const value = await execute(request, signal, pending)
-    writeMessage({ executionId: request.executionId, ok: true, type: 'result', value })
-  } catch (error) {
-    const failure = error instanceof IsolatedVmError ? error : new IsolatedVmError('executor-crashed', normalizedError(error).message)
-    writeMessage({ code: failure.code, executionId: request.executionId, message: failure.message, ok: false, type: 'result' })
-  }
+function runExecutor(): Effect.Effect<void> {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const input = yield* Effect.acquireRelease(
+        Effect.sync(() => createInterface({ input: process.stdin })),
+        (interface_) => Effect.sync(() => interface_.close()),
+      )
+      const fibers = yield* FiberSet.make<void, never>()
+      const run = yield* FiberSet.runtime(fibers)()
+      const executions = new Map<number, { readonly fiber: Fiber.Fiber<void, never>; readonly pending: Map<number, PendingCapability> }>()
+
+      yield* Effect.callback<void>((resume) => {
+        const close = (): void => resume(Effect.void)
+        const line = (source: string): void => {
+          let message: ParentMessage
+          try {
+            message = JSON.parse(source) as ParentMessage
+          } catch {
+            process.stderr.write('Executor received an invalid protocol message.\n')
+            process.exitCode = 1
+            input.close()
+            return
+          }
+          const execution = executions.get(message.executionId)
+          if (message.type == 'cancel') {
+            if (execution != null) run(Fiber.interrupt(execution.fiber))
+            return
+          }
+          if (message.type == 'capability.result') {
+            const capability = execution?.pending.get(message.id)
+            if (capability != null) run(Deferred.succeed(capability.deferred, message).pipe(Effect.asVoid))
+            return
+          }
+          if (execution != null) {
+            run(
+              Effect.sync(() =>
+                writeMessage({
+                  code: 'executor-crashed',
+                  executionId: message.executionId,
+                  message: 'Executor received a duplicate execution ID.',
+                  ok: false,
+                  type: 'result',
+                }),
+              ),
+            )
+            return
+          }
+          const pending = new Map<number, PendingCapability>()
+          const fiber = run(
+            executeWithCapabilities(message, pending, () => {
+              if (completedIsolates < executorIsolateBudget || executions.size != 1) return false
+              queueMicrotask(() => input.close())
+              return true
+            }).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  executions.delete(message.executionId)
+                }),
+              ),
+            ),
+          )
+          executions.set(message.executionId, { fiber, pending })
+        }
+        input.once('close', close)
+        input.on('line', line)
+        return Effect.sync(() => {
+          input.off('close', close)
+          input.off('line', line)
+        })
+      })
+    }),
+  )
 }
 
 if (process.argv[1] != null && fileURLToPath(import.meta.url) == process.argv[1] && process.argv[2] == '--executor') {
-  void runExecutor()
+  void Effect.runPromise(runExecutor())
 }
+/* v8 ignore stop */
