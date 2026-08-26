@@ -1,6 +1,7 @@
 import 'virtual:uno.css'
 import '../../src/ui/browser/styles.css'
 import '../../src/designer/browser/styles/root.scss'
+import '../../src/workbench/browser/runtime/styles.css'
 import './styles.css'
 
 import { StrictMode } from 'react'

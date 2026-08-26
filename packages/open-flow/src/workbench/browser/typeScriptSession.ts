@@ -21,6 +21,16 @@ function highlightLanguage(name: string) {
   }
 }
 
+function openLinksInNewTab(html: string): string {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  for (const link of template.content.querySelectorAll('a')) {
+    link.setAttribute('target', '_blank')
+    link.setAttribute('rel', 'noopener noreferrer')
+  }
+  return template.innerHTML
+}
+
 function createTransport(worker: Worker): Transport {
   const handlers = new Set<(value: string) => void>()
   worker.addEventListener('message', (event) => {
@@ -43,7 +53,7 @@ function createTransport(worker: Worker): Transport {
 
 async function createSession() {
   const worker = new Worker(new URL('./typeScriptWorker.ts', import.meta.url), { type: 'module' })
-  const client = new LSPClient({ extensions: languageServerExtensions(), highlightLanguage, timeout: 60_000 })
+  const client = new LSPClient({ extensions: languageServerExtensions(), highlightLanguage, sanitizeHTML: openLinksInNewTab, timeout: 60_000 })
   await client.connect(createTransport(worker))
   return { client, worker }
 }

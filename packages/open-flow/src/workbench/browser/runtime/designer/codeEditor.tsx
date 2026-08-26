@@ -6,6 +6,25 @@ import { CodeMirrorStringEditorFactory } from '../../codeMirrorStringEditor.ts'
 
 type Editor = Awaited<ReturnType<CodeMirrorStringEditorFactory['create']>>
 
+const editorTails = new Map<string, Promise<void>>()
+
+function noop(): void {}
+
+async function claimEditor(uri: string): Promise<() => void> {
+  const previous = editorTails.get(uri) ?? Promise.resolve()
+  let release = noop
+  const active = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const tail = previous.then(() => active)
+  editorTails.set(uri, tail)
+  await previous
+  return () => {
+    release()
+    if (editorTails.get(uri) == tail) editorTails.delete(uri)
+  }
+}
+
 interface Props {
   readonly ariaLabel: string
   readonly disabled: boolean
@@ -37,24 +56,34 @@ export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, loca
     const container = host.current!
     let current: Editor | undefined
     let changeListener: { dispose(): void } | undefined
+    let release: (() => void) | undefined
     let disposed = false
     setFailed(false)
     setLoading(true)
     const extension = import('../../typeScriptSession.ts').then(({ loadTypeScriptExtension }) => loadTypeScriptExtension(uri)).catch(() => undefined)
-    void import('@uiw/codemirror-theme-github')
-      .then(({ githubDark, githubLight }) =>
-        new CodeMirrorStringEditorFactory({ extension, theme: theme == 'dark' ? githubDark : githubLight }).create(container, uri, {
+    void Promise.all([import('@uiw/codemirror-theme-github'), claimEditor(uri)])
+      .then(([{ githubDark, githubLight }, nextRelease]) => {
+        release = nextRelease
+        if (disposed) {
+          release()
+          release = undefined
+          return
+        }
+        return new CodeMirrorStringEditorFactory({ extension, theme: theme == 'dark' ? githubDark : githubLight }).create(container, uri, {
           ariaLabel,
           automaticLayout: true,
           language: 'javascript',
           readOnly: disabledRef.current,
           value: valueRef.current,
           wordWrap: 'off',
-        }),
-      )
+        })
+      })
       .then((created) => {
+        if (created == null) return
         if (disposed) {
           created.dispose()
+          release?.()
+          release = undefined
           return
         }
         current = created
@@ -68,6 +97,8 @@ export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, loca
         setLoading(false)
       })
       .catch(() => {
+        release?.()
+        release = undefined
         if (!disposed) {
           setFailed(true)
           setLoading(false)
@@ -77,6 +108,8 @@ export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, loca
       disposed = true
       changeListener?.dispose()
       current?.dispose()
+      release?.()
+      release = undefined
       if (editor.current === current) editor.current = undefined
     }
   }, [ariaLabel, theme, uri])

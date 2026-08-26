@@ -11,6 +11,7 @@ import { createI18n } from '../../src/designer/browser/i18n/i18n-loader.ts'
 import { designerThemeClass } from '../../src/designer/browser/theme/designerThemeClass.ts'
 import { ThemeProvider } from '../../src/designer/browser/theme/ThemeProvider.tsx'
 import { TooltipProvider } from '../../src/ui/browser/tooltip.tsx'
+import { CodeEditor } from '../../src/workbench/browser/runtime/designer/codeEditor.tsx'
 import { stories } from './stories.tsx'
 
 type ThemeMode = 'dark' | 'light' | 'system'
@@ -27,8 +28,43 @@ type StoryNode = Node<StoryNodeData, 'story'>
 
 const nodeTypes = { story: StoryNodeView }
 
+const codeEditorSource = `//#region generated meta
+/**
+ * @typedef {{
+ *   value: string;
+ * }} Inputs;
+ * @typedef {{
+ *   result: string;
+ * }} Outputs;
+ */
+//#endregion
+
+/**
+ * @import { TaskContext } from "@oomol-lab/open-flow"
+ * @param {Inputs} input
+ * @param {TaskContext<Outputs>} context
+ * @returns {Promise<Partial<Outputs> | undefined | void>}
+ */
+export default async function (input, context) {
+  await context.reportProgress(20)
+  const response = await context.fetch("https://example.com")
+  const text = await response.text()
+  return { result: input.value + text }
+}
+`
+
+const codeEditorStory: DesignerStory = {
+  group: 'Workbench',
+  id: 'code-editor',
+  render: (log, dark) => <CodeEditorStory dark={dark} log={log} />,
+  standalone: true,
+  title: 'Code Editor',
+}
+
+const labStories: readonly DesignerStory[] = [...stories, codeEditorStory]
+
 function initialStory(): DesignerStory {
-  const story = stories.find((item) => item.id == new URLSearchParams(location.search).get('story')) ?? stories[0]
+  const story = labStories.find((item) => item.id == new URLSearchParams(location.search).get('story')) ?? labStories[0]
   if (!story) throw new Error('Designer Lab has no stories.')
   return story
 }
@@ -61,10 +97,10 @@ export function DesignerLab() {
         <div className="lab-brand">
           <strong>Designer Lab</strong>
         </div>
-        {[...new Set(stories.map((entry) => entry.group))].map((group) => (
+        {[...new Set(labStories.map((entry) => entry.group))].map((group) => (
           <section key={group}>
             <h2>{group}</h2>
-            {stories
+            {labStories
               .filter((entry) => entry.group == group)
               .map((entry) => (
                 <button className={entry.id == story.id ? 'active' : ''} key={entry.id} onClick={() => selectStory(entry)}>
@@ -100,14 +136,39 @@ export function DesignerLab() {
           </div>
         </header>
         <div className="lab-workspace">
-          <StoryStage dark={dark} i18n={i18n}>
-            {story.render(log)}
-          </StoryStage>
+          {story.standalone ? (
+            <div className="standalone-stage">{story.render(log, dark)}</div>
+          ) : (
+            <StoryStage dark={dark} i18n={i18n}>
+              {story.render(log, dark)}
+            </StoryStage>
+          )}
         </div>
         <div className="lab-status" role="status">
           {action?.message ?? 'Ready'}
         </div>
       </main>
+    </div>
+  )
+}
+
+function CodeEditorStory({ dark, log }: { readonly dark: boolean; readonly log: LogAction }) {
+  const [value, setValue] = useState(codeEditorSource)
+  return (
+    <div className="code-editor-story open-flow-workbench" data-theme={dark ? 'dark' : 'light'}>
+      <CodeEditor
+        ariaLabel="JavaScript source"
+        disabled={false}
+        errorLabel="Code editor unavailable"
+        loadingLabel="Loading code editor"
+        onChange={(source) => {
+          setValue(source)
+          log('code.change', { length: source.length })
+        }}
+        theme={dark ? 'dark' : 'light'}
+        uri="file:///modules/designer-lab.js"
+        value={value}
+      />
     </div>
   )
 }

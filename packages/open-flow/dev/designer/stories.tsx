@@ -26,7 +26,8 @@ export type LogAction = (name: string, value?: unknown) => void
 export interface DesignerStory {
   readonly group: string
   readonly id: string
-  readonly render: (log: LogAction) => ReactNode
+  readonly render: (log: LogAction, dark: boolean) => ReactNode
+  readonly standalone?: boolean
   readonly title: string
 }
 
