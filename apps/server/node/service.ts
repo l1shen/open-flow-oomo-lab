@@ -1047,7 +1047,10 @@ export class ServerService {
         return await this.#connector.execute(
           executor.action,
           executor.connectionId!,
-          normalizeConnectorRuntimeInputs(task.inputs, invocation.input),
+          normalizeConnectorRuntimeInputs(
+            task.inputs.filter((input) => 'handle' in input),
+            invocation.input,
+          ),
           invocation.invocationId,
           invocation.signal,
         )

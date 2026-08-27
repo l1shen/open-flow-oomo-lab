@@ -49,6 +49,7 @@ export type {
   GraphEdge,
   GraphNode,
   GraphTarget,
+  Group,
   InputMapping,
   InputPortDefinition,
   JsonValue,

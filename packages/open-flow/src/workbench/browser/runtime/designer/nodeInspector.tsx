@@ -425,11 +425,15 @@ function TaskDefinition({
                 </Field>
                 <Field>
                   <FieldLabel>{t('inspector.task.inputPorts')}</FieldLabel>
-                  <FieldDescription className="reference-value">{task.inputs.map((port) => port.handle).join(', ') || t('common.none')}</FieldDescription>
+                  <FieldDescription className="reference-value">
+                    {task.inputs.flatMap((port) => ('handle' in port ? [port.handle] : [])).join(', ') || t('common.none')}
+                  </FieldDescription>
                 </Field>
                 <Field>
                   <FieldLabel>{t('inspector.task.outputPorts')}</FieldLabel>
-                  <FieldDescription className="reference-value">{task.outputs.map((port) => port.handle).join(', ') || t('common.none')}</FieldDescription>
+                  <FieldDescription className="reference-value">
+                    {task.outputs.flatMap((port) => ('handle' in port ? [port.handle] : [])).join(', ') || t('common.none')}
+                  </FieldDescription>
                 </Field>
               </>
             )}

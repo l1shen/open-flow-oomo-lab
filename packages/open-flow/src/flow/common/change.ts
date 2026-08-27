@@ -37,8 +37,13 @@ export interface InputPort extends InputPortDefinition {
   readonly handle: string
 }
 
-export function portsByHandle<Value extends Port>(ports: readonly Value[]): Readonly<Record<string, Value>> {
-  return Object.fromEntries(ports.map((port) => [port.handle, port]))
+export interface Group {
+  readonly collapsed?: boolean
+  readonly group: string
+}
+
+export function portsByHandle<Value extends Port>(ports: readonly (Value | Group)[]): Readonly<Record<string, Value>> {
+  return Object.fromEntries(ports.flatMap((port) => ('handle' in port ? [[port.handle, port]] : [])))
 }
 
 export interface NodeSource {
@@ -136,9 +141,9 @@ export interface ConnectorCapability {
 }
 
 interface TaskDefinitionBase {
-  readonly inputs: readonly InputPort[]
+  readonly inputs: readonly (InputPort | Group)[]
   readonly name: string
-  readonly outputs: readonly Port[]
+  readonly outputs: readonly (Port | Group)[]
 }
 
 export interface InlineTaskDefinition extends TaskDefinitionBase {

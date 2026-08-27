@@ -10,6 +10,7 @@ import type {
   FlowDesignerViewWebhook,
 } from '../../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import type { FlowDisplayMode } from '../../../../designer/common/flowDisplay.ts'
+import type { GroupDividerDef } from '../../../../schema/index.ts'
 import type { ConditionOperator, JsonValue } from '../api.ts'
 import type { WorkbenchTheme } from '../contract.ts'
 import type { DesignerEdge, DesignerGraph, DesignerViewport, Point } from '../workspace.ts'
@@ -43,7 +44,11 @@ interface Props {
   readonly onChangeNodeTitle: (nodeId: string, title: string | undefined) => void
   readonly onChangeInput: (nodeId: string, handle: string, value: JsonValue | undefined) => void
   readonly onChangeInputVariable: (nodeId: string, handle: string, name: string | undefined) => void
-  readonly onChangeTaskPorts: (nodeId: string, inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]) => void
+  readonly onChangeTaskPorts: (
+    nodeId: string,
+    inputs: readonly (FlowDesignerViewInput | GroupDividerDef)[],
+    outputs: readonly (FlowDesignerViewOutput | GroupDividerDef)[],
+  ) => void
   readonly onChangeTriggerConfig: (triggerId: string, name: string, value: JsonValue | undefined) => void
   readonly onChangeTriggerSchedule: (triggerId: string, schedule: readonly FlowDesignerViewTriggerSchedule[]) => void
   readonly onChangeWebhook: (triggerId: string, webhook: WebhookSettings) => void
@@ -235,8 +240,8 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
       const sourceNode = nodes.get(edge.source)
       const targetNode = nodes.get(edge.target)
       if (sourceNode == null || targetNode == null || sourceNode.kind == 'comment' || targetNode.kind == 'comment') return true
-      const output = sourceNode.outputs.find((port) => port.handle == edge.sourceHandle)
-      const input = targetNode.inputs.find((port) => port.handle == edge.targetHandle)
+      const output = sourceNode.outputs.find((port): port is FlowDesignerViewOutput => 'handle' in port && port.handle == edge.sourceHandle)
+      const input = targetNode.inputs.find((port): port is FlowDesignerViewInput => 'handle' in port && port.handle == edge.targetHandle)
       if (output == null || input == null) return true
       const from = output.jsonSchema
       const to = input.jsonSchema

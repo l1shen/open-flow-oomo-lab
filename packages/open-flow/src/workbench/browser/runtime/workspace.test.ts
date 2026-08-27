@@ -1,5 +1,58 @@
 import { describe, expect, it } from 'vitest'
-import { setFlowViewport, setNodePositions } from './workspace.ts'
+import { designerGraph, setFlowViewport, setNodePositions } from './workspace.ts'
+
+describe('Designer port projection', () => {
+  it('preserves revision port order', () => {
+    const draft: NonNullable<Parameters<typeof designerGraph>[0]> = {
+      actorId: 'actor',
+      content: {
+        document: {
+          bindings: {},
+          graph: {
+            nodes: {
+              task: {
+                concurrency: 1,
+                inputs: {},
+                kind: 'task',
+                task: {
+                  inputs: [{ group: 'Request' }, { handle: 'second', jsonSchema: {}, nullable: false }, { handle: 'first', jsonSchema: {}, nullable: false }],
+                  moduleId: 'module',
+                  name: 'Task',
+                  outputs: [
+                    { handle: 'result-z', jsonSchema: {}, nullable: false },
+                    { group: 'Other', collapsed: true },
+                    { handle: 'result-a', jsonSchema: {}, nullable: false },
+                  ],
+                },
+              },
+            },
+          },
+          subflows: {},
+          tasks: {},
+        },
+        modelVersion: 1,
+        modules: { module: { imports: [], name: 'Task', source: 'export default () => ({})' } },
+      },
+      createdAt: '2026-08-27T00:00:00.000Z',
+      digest: 'digest',
+      flowId: 'flow',
+      modelVersion: 1,
+      parentRevisionId: null,
+      revisionId: 'revision',
+      version: 1,
+    }
+
+    const node = designerGraph(draft, { kind: 'flow' }).nodes[0]
+    if (node == null || node.kind == 'comment') throw new Error('Expected a Task node.')
+
+    expect(node.inputs).toEqual([{ group: 'Request' }, expect.objectContaining({ handle: 'second' }), expect.objectContaining({ handle: 'first' })])
+    expect(node.outputs).toEqual([
+      expect.objectContaining({ handle: 'result-z' }),
+      { collapsed: true, group: 'Other' },
+      expect.objectContaining({ handle: 'result-a' }),
+    ])
+  })
+})
 
 describe('Designer presentation layouts', () => {
   it('stores positions independently for each display mode', () => {

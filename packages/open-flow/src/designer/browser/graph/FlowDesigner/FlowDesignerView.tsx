@@ -8,6 +8,7 @@ import type {
   ConditionExpression,
   ConditionHandleDef,
   DefaultConditionHandleDef,
+  GroupDividerDef,
   HandleInputFrom,
   HandleName,
   InputHandleDef,
@@ -28,7 +29,7 @@ import type { InlineTask } from '../../stores/node/taskNode.store.ts'
 
 import { dispose } from '@wopjs/disposable'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { val } from 'value-enhancer'
+import { derive, val } from 'value-enhancer'
 import { reactiveMap } from 'value-enhancer/collections'
 import { toManifestHandleName, toManifestNodeId } from '../../base/rfHelpers.ts'
 import { MarkdownPreview } from '../../preview/markdownPreview.tsx'
@@ -136,8 +137,8 @@ interface FlowDesignerViewNodeBase {
   readonly diagnostics?: number
   readonly icon?: string
   readonly id: string
-  readonly inputs: readonly FlowDesignerViewInput[]
-  readonly outputs: readonly FlowDesignerViewOutput[]
+  readonly inputs: readonly (FlowDesignerViewInput | GroupDividerDef)[]
+  readonly outputs: readonly (FlowDesignerViewOutput | GroupDividerDef)[]
   readonly position: FlowDesignerViewPosition
   readonly rawIcon?: string
   readonly rawTitle?: string
@@ -317,7 +318,11 @@ export interface FlowDesignerViewProps {
   readonly onChangeNodeTitle?: (nodeId: string, title: string | undefined) => void
   readonly onChangeInput?: (nodeId: string, handle: string, value: unknown) => void
   readonly onChangeInputVariable?: (nodeId: string, handle: string, name: string | undefined) => void
-  readonly onChangeTaskPorts?: (nodeId: string, inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]) => void
+  readonly onChangeTaskPorts?: (
+    nodeId: string,
+    inputs: readonly (FlowDesignerViewInput | GroupDividerDef)[],
+    outputs: readonly (FlowDesignerViewOutput | GroupDividerDef)[],
+  ) => void
   readonly onChangeTriggerConfig?: (triggerId: string, name: string, value: unknown | undefined) => void
   readonly onChangeTriggerSchedule?: (triggerId: string, schedule: readonly FlowDesignerViewTriggerSchedule[]) => void
   readonly onChangeWebhook?: (triggerId: string, webhook: FlowDesignerViewWebhook) => void
@@ -342,9 +347,9 @@ interface NodeValues {
   readonly diagnostics: Val<boolean>
   readonly executorName: Val<string | undefined>
   readonly icon: Val<string | undefined>
-  readonly inputDefs: Val<InputHandleDef[]>
+  readonly inputDefs: Val<(InputHandleDef | GroupDividerDef)[]>
   readonly inputsFrom: Val<readonly HandleInputFrom[] | undefined>
-  readonly outputDefs: Val<OutputHandleDef[]>
+  readonly outputDefs: Val<(OutputHandleDef | GroupDividerDef)[]>
   readonly outputsTo: Val<HandleName[]>
   readonly progress: Val<number | undefined>
   readonly rawIcon: Val<string | undefined>
@@ -408,6 +413,7 @@ function variableInputs(nodes: readonly FlowDesignerViewNode[]): ReadonlyMap<str
   for (const node of nodes) {
     if (node.kind == 'comment') continue
     for (const input of node.inputs) {
+      if (!('handle' in input)) continue
       if (input.variableCompatible || input.variable != null) {
         inputs.set(`${node.id}\0${input.handle}`, {
           compatible: input.variableCompatible ?? false,
@@ -702,6 +708,7 @@ function connectedOutputs(nodes: readonly FlowDesignerViewNode[]): ReadonlyMap<s
   for (const node of nodes) {
     if (node.kind == 'comment') continue
     for (const input of node.inputs) {
+      if (!('handle' in input)) continue
       for (const source of input.sources ?? []) {
         const handles = result.get(source.nodeId) ?? new Set<HandleName>()
         handles.add(source.output as HandleName)
@@ -712,20 +719,25 @@ function connectedOutputs(nodes: readonly FlowDesignerViewNode[]): ReadonlyMap<s
   return result
 }
 
-function inputDefs(node: FlowDesignerViewNode): InputHandleDef[] {
+function inputDefs(node: FlowDesignerViewNode): (InputHandleDef | GroupDividerDef)[] {
   if (node.kind == 'comment') return []
-  return node.inputs.map((input) => ({
-    handle: input.handle as HandleName,
-    description: input.description,
-    json_schema: input.jsonSchema,
-    nullable: input.nullable,
-    value: input.defaultValue,
-  }))
+  return node.inputs.map((input) =>
+    'group' in input
+      ? input
+      : {
+          handle: input.handle as HandleName,
+          description: input.description,
+          json_schema: input.jsonSchema,
+          nullable: input.nullable,
+          value: input.defaultValue,
+        },
+  )
 }
 
 function inputsFrom(node: FlowDesignerViewNode): HandleInputFrom[] {
   if (node.kind == 'comment') return []
   return node.inputs.flatMap((input) => {
+    if (!('handle' in input)) return []
     const fromNode = input.sources?.map((source) => ({ node_id: source.nodeId as NodeId, output_handle: source.output as HandleName }))
     if (input.value === undefined && fromNode?.length == null) return []
     return [
@@ -738,20 +750,27 @@ function inputsFrom(node: FlowDesignerViewNode): HandleInputFrom[] {
   })
 }
 
-function outputDefs(node: FlowDesignerViewNode): OutputHandleDef[] {
+function outputDefs(node: FlowDesignerViewNode): (OutputHandleDef | GroupDividerDef)[] {
   if (node.kind == 'comment') return []
-  return node.outputs.map((output) => ({
-    handle: output.handle as HandleName,
-    description: output.description,
-    json_schema: output.jsonSchema,
-    nullable: output.nullable,
-  }))
+  return node.outputs.map((output) =>
+    'group' in output
+      ? output
+      : {
+          handle: output.handle as HandleName,
+          description: output.description,
+          json_schema: output.jsonSchema,
+          nullable: output.nullable,
+        },
+  )
 }
 
-function taskInputs(defs: readonly InputHandleDef[]): FlowDesignerViewInput[] {
-  const inputs: FlowDesignerViewInput[] = []
+function taskInputs(defs: readonly (InputHandleDef | GroupDividerDef)[]): (FlowDesignerViewInput | GroupDividerDef)[] {
+  const inputs: (FlowDesignerViewInput | GroupDividerDef)[] = []
   for (const input of defs) {
-    if (!isHandleDef(input)) continue
+    if (!isHandleDef(input)) {
+      inputs.push(input)
+      continue
+    }
     inputs.push({
       ...(Object.hasOwn(input, 'value') ? { defaultValue: input.value } : {}),
       description: input.description,
@@ -763,10 +782,13 @@ function taskInputs(defs: readonly InputHandleDef[]): FlowDesignerViewInput[] {
   return inputs
 }
 
-function taskOutputs(defs: readonly OutputHandleDef[]): FlowDesignerViewOutput[] {
-  const outputs: FlowDesignerViewOutput[] = []
+function taskOutputs(defs: readonly (OutputHandleDef | GroupDividerDef)[]): (FlowDesignerViewOutput | GroupDividerDef)[] {
+  const outputs: (FlowDesignerViewOutput | GroupDividerDef)[] = []
   for (const output of defs) {
-    if (!isHandleDef(output)) continue
+    if (!isHandleDef(output)) {
+      outputs.push(output)
+      continue
+    }
     outputs.push({
       description: output.description,
       handle: output.handle,
@@ -792,7 +814,8 @@ function conditionCases(node: FlowDesignerViewConditionNode): ConditionHandleDef
 }
 
 function conditionChange(values: NodeValues): FlowDesignerViewConditionChange {
-  const input = values.inputDefs.value[0]!
+  const input = values.inputDefs.value.find(isHandleDef)
+  if (input == null) throw new Error('Condition input is missing.')
   return {
     cases: values.conditionCases!.value.map((item) => ({
       expressions: (item.expressions ?? []).map((expression) =>
@@ -815,7 +838,7 @@ function conditionChange(values: NodeValues): FlowDesignerViewConditionChange {
         jsonSchema: input.json_schema,
         nullable: input.nullable,
       },
-      Object.hasOwn(input, 'value') ? { defaultValue: input.value } : {},
+      'value' in input ? { defaultValue: input.value } : {},
     ),
   }
 }
@@ -1007,11 +1030,12 @@ function createNodeEntry(
     case 'condition': {
       values.conditionCases = val(conditionCases(node))
       values.defaultCondition = val(node.defaultOutput == null ? undefined : { handle: node.defaultOutput as HandleName })
+      const conditionInputs = derive(values.inputDefs, (defs) => defs.filter(isHandleDef))
       const conditionsSection = new ConditionsSectionStore({
         role: designerStore.$.editable.value ? 'author' : 'guest',
         lang: designerStore.lang$,
         handleOutputsTo: values.outputsTo,
-        inputHandleDefs: values.inputDefs,
+        inputHandleDefs: conditionInputs,
         conditionHandleDefs: values.conditionCases,
         defaultConditionHandleDef: values.defaultCondition,
         showSettings,
@@ -1029,7 +1053,7 @@ function createNodeEntry(
       })
       store.dispose.add(values.conditionCases.reaction(notifyChange, true))
       store.dispose.add(values.defaultCondition.reaction(notifyChange, true))
-      store.dispose.add([values.conditionCases, values.defaultCondition])
+      store.dispose.add([values.conditionCases, values.defaultCondition, conditionInputs])
       break
     }
     case 'subflow': {

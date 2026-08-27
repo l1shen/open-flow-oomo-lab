@@ -10,7 +10,7 @@ import type {
   FlowDesignerViewTriggerNode,
 } from '../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import type { FlowDisplayMode } from '../../../designer/common/flowDisplay.ts'
-import type { ConnectorAction, ConnectorConnection, Diagnostic, Draft, GraphNode, JsonValue, Run, RunEvent, TaskDefinition, TriggerNode } from './api.ts'
+import type { ConnectorAction, ConnectorConnection, Diagnostic, Draft, GraphNode, Group, JsonValue, Run, RunEvent, TaskDefinition, TriggerNode } from './api.ts'
 import type { DesignerTarget } from './designer/flowChanges.ts'
 import type { ResolvedNode, ResolvedSelection, RevisionView } from './revisionView.ts'
 
@@ -275,12 +275,14 @@ function nodePorts(node: ResolvedSelection): NodePorts {
       const mappedInputs = [...inputs]
       inputs.clear()
       for (const port of definition?.inputs ?? []) {
+        if (!('handle' in port)) continue
         inputs.set(port.handle, { defaultValue: port.value, description: port.description, jsonSchema: port.jsonSchema, nullable: port.nullable })
       }
       for (const [handle, port] of mappedInputs) {
         if (!inputs.has(handle)) inputs.set(handle, port)
       }
       for (const port of definition?.outputs ?? []) {
+        if (!('handle' in port)) continue
         outputs.set(port.handle, { description: port.description, jsonSchema: port.jsonSchema, nullable: port.nullable })
       }
       break
@@ -482,7 +484,7 @@ function layoutNodes(
 function designerInputs(nodeId: string, node: GraphNode, ports: NodePorts, revision: RevisionView): readonly FlowDesignerViewInput[] {
   if (!('inputs' in node)) return []
   const inputs: FlowDesignerViewInput[] = []
-  for (const [handle, definition] of [...ports.inputs].toSorted(([a], [b]) => a.localeCompare(b))) {
+  for (const [handle, definition] of ports.inputs) {
     const mapping = node.inputs[handle]
     const sources: { readonly nodeId: string; readonly output: string }[] = []
     const sourceIds = new Set<string>()
@@ -512,7 +514,45 @@ function designerInputs(nodeId: string, node: GraphNode, ports: NodePorts, revis
 }
 
 function designerOutputs(ports: NodePorts): readonly FlowDesignerViewOutput[] {
-  return [...ports.outputs].toSorted(([a], [b]) => a.localeCompare(b)).map(([handle, definition]) => Object.assign({ handle }, definition))
+  return [...ports.outputs].map(([handle, definition]) => Object.assign({ handle }, definition))
+}
+
+function groupedInputs(resolved: ResolvedNode, inputs: readonly FlowDesignerViewInput[]): readonly (FlowDesignerViewInput | Group)[] {
+  if (resolved.kind != 'task' || resolved.definition == null) return inputs
+  const ports = new Map(inputs.map((input) => [input.handle, input]))
+  const result: (FlowDesignerViewInput | Group)[] = []
+  for (const item of resolved.definition.inputs) {
+    if (!('handle' in item)) {
+      result.push(item)
+      continue
+    }
+    const port = ports.get(item.handle)
+    if (port != null) {
+      result.push(port)
+      ports.delete(item.handle)
+    }
+  }
+  result.push(...ports.values())
+  return result
+}
+
+function groupedOutputs(resolved: ResolvedNode, outputs: readonly FlowDesignerViewOutput[]): readonly (FlowDesignerViewOutput | Group)[] {
+  if (resolved.kind != 'task' || resolved.definition == null) return outputs
+  const ports = new Map(outputs.map((output) => [output.handle, output]))
+  const result: (FlowDesignerViewOutput | Group)[] = []
+  for (const item of resolved.definition.outputs) {
+    if (!('handle' in item)) {
+      result.push(item)
+      continue
+    }
+    const port = ports.get(item.handle)
+    if (port != null) {
+      result.push(port)
+      ports.delete(item.handle)
+    }
+  }
+  result.push(...ports.values())
+  return result
 }
 
 function configSource(value: JsonValue | undefined): string {
@@ -626,8 +666,8 @@ function triggerDesignerNode(triggerId: string, trigger: TriggerNode, position: 
 
 function semanticDesignerNode(nodeId: string, resolved: ResolvedNode, ports: NodePorts, position: Point, context: NodeProjectionContext): DesignerNode {
   const node = resolved.node
-  const inputs = designerInputs(nodeId, node, ports, context.revision)
-  const outputs = designerOutputs(ports)
+  const inputs = groupedInputs(resolved, designerInputs(nodeId, node, ports, context.revision))
+  const outputs = groupedOutputs(resolved, designerOutputs(ports))
   const task = resolved.kind == 'task' ? resolved.definition : undefined
   const connector = task != null && 'executor' in task && task.executor.kind == 'connector' ? task.executor : undefined
   const connectorAction = connector == null ? undefined : context.connectorActions[connector.action]

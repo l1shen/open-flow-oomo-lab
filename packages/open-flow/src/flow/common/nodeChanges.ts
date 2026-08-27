@@ -83,8 +83,8 @@ export function createCodeTask(
       codeTaskTemplate,
       generateTyping(
         'javascript',
-        ports.inputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
-        ports.outputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
+        ports.inputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
+        ports.outputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
       ),
     ),
   }
@@ -456,7 +456,9 @@ function graph(content: RevisionContent, target: GraphTarget) {
 
 function defaultInputs(ports: TaskDefinition['inputs']): Readonly<Record<string, InputMapping>> {
   return Object.fromEntries(
-    ports.flatMap((port) => (Object.hasOwn(port, 'value') ? [[port.handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [])),
+    ports.flatMap((port) =>
+      'handle' in port && Object.hasOwn(port, 'value') ? [[port.handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [],
+    ),
   )
 }
 

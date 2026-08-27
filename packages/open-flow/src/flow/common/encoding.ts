@@ -3,6 +3,7 @@ import type {
   FlowDocument,
   Graph,
   GraphNode,
+  Group,
   InlineTaskDefinition,
   InputMapping,
   InputPort,
@@ -49,7 +50,8 @@ function entries<T>(value: Readonly<Record<string, T>>): readonly (readonly [str
     .map((key) => [key, value[key]!] as const)
 }
 
-function canonicalPort(value: InputPort | Port): { readonly [key: string]: JsonValue } {
+function canonicalPort(value: InputPort | Port | Group): { readonly [key: string]: JsonValue } {
+  if (!('handle' in value)) return value.collapsed == null ? { group: value.group } : { collapsed: value.collapsed, group: value.group }
   return {
     ...(value.description == null ? {} : { description: value.description }),
     handle: value.handle,
@@ -59,7 +61,7 @@ function canonicalPort(value: InputPort | Port): { readonly [key: string]: JsonV
   }
 }
 
-export function canonicalPorts(value: readonly (InputPort | Port)[]): JsonValue {
+export function canonicalPorts(value: readonly (InputPort | Port | Group)[]): JsonValue {
   return value.map(canonicalPort)
 }
 

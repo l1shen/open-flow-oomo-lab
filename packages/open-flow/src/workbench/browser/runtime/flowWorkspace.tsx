@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import type { FlowDesignerViewInput, FlowDesignerViewOutput } from '../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
+import type { GroupDividerDef } from '../../../schema/index.ts'
 import type { JsonValue } from './api.ts'
 import type { WorkbenchLocation, WorkbenchTheme } from './contract.ts'
 import type { AddNodeOption } from './designer/addNodeOptions.ts'
@@ -26,25 +27,32 @@ import { WorkbenchStore } from './stores/workbenchStore.ts'
 
 type ContextPanelMode = 'blocks' | 'inspector' | undefined
 
-function codeTaskPorts(inputs: readonly FlowDesignerViewInput[], outputs: readonly FlowDesignerViewOutput[]): CodeTaskPorts {
+function codeTaskPorts(
+  inputs: readonly (FlowDesignerViewInput | GroupDividerDef)[],
+  outputs: readonly (FlowDesignerViewOutput | GroupDividerDef)[],
+): CodeTaskPorts {
   return {
     inputs: inputs.map((input) =>
-      Object.assign(
-        {
-          handle: input.handle,
-          ...(input.description == null ? {} : { description: input.description }),
-          jsonSchema: (input.jsonSchema ?? {}) as JsonValue,
-          nullable: input.nullable ?? false,
-        },
-        input.defaultValue === undefined ? {} : { value: input.defaultValue as JsonValue },
-      ),
+      'group' in input
+        ? input
+        : Object.assign(
+            {
+              handle: input.handle,
+              ...(input.description == null ? {} : { description: input.description }),
+              jsonSchema: (input.jsonSchema ?? {}) as JsonValue,
+              nullable: input.nullable ?? false,
+            },
+            input.defaultValue === undefined ? {} : { value: input.defaultValue as JsonValue },
+          ),
     ),
-    outputs: outputs.map((output) => ({
-      handle: output.handle,
-      ...(output.description == null ? {} : { description: output.description }),
-      jsonSchema: (output.jsonSchema ?? {}) as JsonValue,
-      nullable: output.nullable ?? false,
-    })),
+    outputs: outputs.map((output) =>
+      'group' in output
+        ? output
+        : Object.assign(
+            { handle: output.handle, jsonSchema: (output.jsonSchema ?? {}) as JsonValue, nullable: output.nullable ?? false },
+            output.description == null ? {} : { description: output.description },
+          ),
+    ),
   }
 }
 

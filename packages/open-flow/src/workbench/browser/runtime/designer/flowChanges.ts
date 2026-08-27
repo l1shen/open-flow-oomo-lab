@@ -453,8 +453,8 @@ export function updateCodeTaskPorts(revision: RevisionView, target: DesignerTarg
     selection.module.source,
     generateTyping(
       'javascript',
-      ports.inputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
-      ports.outputs.map((port) => ({ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable })),
+      ports.inputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
+      ports.outputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
     ),
   )
   const cleaned = cleanVariableBindings(revision.revision.content, changes)
@@ -495,16 +495,18 @@ function createSubflowNode(target: DesignerTarget, nodeId: string, subflowId: st
 
 function defaultInputs(ports: TaskDefinition['inputs']): Readonly<Record<string, InputMapping>> {
   return Object.fromEntries(
-    ports.flatMap((port) => (Object.hasOwn(port, 'value') ? [[port.handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [])),
+    ports.flatMap((port) =>
+      'handle' in port && Object.hasOwn(port, 'value') ? [[port.handle, { kind: 'value' as const, value: port.value as JsonValue }]] : [],
+    ),
   ) as Readonly<Record<string, InputMapping>>
 }
 
 function renamedPort(
-  previous: readonly { readonly handle: string }[],
-  next: readonly { readonly handle: string }[],
+  previous: readonly ({ readonly handle: string } | { readonly group: string })[],
+  next: readonly ({ readonly handle: string } | { readonly group: string })[],
 ): readonly [oldName: string, newName: string] | undefined {
-  const previousNames = new Set(previous.map((port) => port.handle))
-  const nextNames = new Set(next.map((port) => port.handle))
+  const previousNames = new Set(previous.flatMap((port) => ('handle' in port ? [port.handle] : [])))
+  const nextNames = new Set(next.flatMap((port) => ('handle' in port ? [port.handle] : [])))
   const removed = [...previousNames].filter((name) => !nextNames.has(name))
   const added = [...nextNames].filter((name) => !previousNames.has(name))
   return removed.length == 1 && added.length == 1 ? [removed[0]!, added[0]!] : undefined
@@ -521,8 +523,8 @@ function replaceCodeTaskPorts(
   if (graph == null || current?.kind != 'task' || current.task == null) return
   const inputRename = renamedPort(current.task.inputs, task.inputs)
   const outputRename = renamedPort(current.task.outputs, task.outputs)
-  const inputNames = new Set(task.inputs.map((port) => port.handle))
-  const outputNames = new Set(task.outputs.map((port) => port.handle))
+  const inputNames = new Set(task.inputs.flatMap((port) => ('handle' in port ? [port.handle] : [])))
+  const outputNames = new Set(task.outputs.flatMap((port) => ('handle' in port ? [port.handle] : [])))
   const changes: ChangeOperation[] = []
 
   for (const [currentNodeId, node] of Object.entries(graph.nodes)) {

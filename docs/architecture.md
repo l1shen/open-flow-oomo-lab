@@ -24,6 +24,7 @@ Flow 有一个可变 Draft head 和不可变的 Revision 历史。Revision 是�
 
 Presentation 独立保存布局、viewport 和 Comment 等展示状态；Flow 的 overview 和 detail 模式分别拥有自己的布局和 viewport。Presentation
 不进入 Revision digest，也不影响 validation、Run、Publication 或 Live。
+Task 的端口分组随有序端口定义保存在 Revision 并参与 digest；分组不创建语义端口，也不参与连接、validation 或 Run。
 Revision 不保存 credential、Run、Engine IR、Provider 状态或部署缓存。
 
 ### Deployment Variable

@@ -7,7 +7,7 @@ import type { SubflowOutputSectionStore } from '../../stores/node/nodeSection/su
 import type { useDragAndDrop } from './dragNDrop.ts'
 
 import { clsx } from 'clsx'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { compute, val } from 'value-enhancer'
@@ -212,10 +212,29 @@ interface EmptyGroupProps {
 
 function EmptyGroup(props: EmptyGroupProps) {
   const t = useTranslate()
+  const [active, setActive] = useState(false)
 
   return (
-    <div className={styles.groupHeader} onDragOver={(ev) => props.onDragOver(ev, null)} onDrop={props.onDrop}>
-      <span className={styles.groupAddTip}>
+    <div
+      className={styles.groupHeader}
+      onDragEnter={(event) => {
+        event.preventDefault()
+        setActive(true)
+      }}
+      onDragLeave={(event) => {
+        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
+        setActive(false)
+      }}
+      onDragOver={(event) => {
+        props.onDragOver(event, null)
+        setActive(true)
+      }}
+      onDrop={(event) => {
+        setActive(false)
+        props.onDrop(event)
+      }}
+    >
+      <span className={clsx(styles.groupAddTip, active && styles.groupAddTipActive)}>
         <i className="i-codicon:add" />
         <span className={styles.groupAddTipText}>{t('handleGroup.dropAdd')}</span>
       </span>

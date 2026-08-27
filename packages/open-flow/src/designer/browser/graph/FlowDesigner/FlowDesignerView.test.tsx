@@ -269,6 +269,48 @@ describe('FlowDesignerView model synchronization', () => {
     view.props.flowDesignerStore.dispose()
   })
 
+  it('reports reordered inline code Task ports', async () => {
+    const onChangeTaskPorts = vi.fn()
+    const editable = {
+      ...task([
+        { handle: 'first', jsonSchema: {} },
+        { handle: 'second', jsonSchema: {} },
+      ]),
+      editablePorts: true,
+    }
+    const view = FlowDesignerView(props(model([editable]), { onChangeTaskPorts })) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    const inputSection = node.findSection<InputSectionStore>(InputSectionStore.TYPE)!
+
+    inputSection.moveHandle({ handle: 'first' as HandleName }, 1)
+    await Promise.resolve()
+
+    expect(onChangeTaskPorts).toHaveBeenCalledWith(
+      'target',
+      [expect.objectContaining({ handle: 'second' }), expect.objectContaining({ handle: 'first' })],
+      [expect.objectContaining({ handle: 'result' })],
+    )
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('reports group dividers for inline code Task ports', async () => {
+    const onChangeTaskPorts = vi.fn()
+    const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }
+    const view = FlowDesignerView(props(model([editable]), { onChangeTaskPorts })) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    const inputSection = node.findSection<InputSectionStore>(InputSectionStore.TYPE)!
+
+    inputSection.addGroup('value' as HandleName)
+    await Promise.resolve()
+
+    expect(onChangeTaskPorts).toHaveBeenLastCalledWith(
+      'target',
+      [{ group: 'Group' }, expect.objectContaining({ handle: 'value' })],
+      [expect.objectContaining({ handle: 'result' })],
+    )
+    view.props.flowDesignerStore.dispose()
+  })
+
   it('persists inline code Task schema changes', async () => {
     const onChangeTaskPorts = vi.fn()
     const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }

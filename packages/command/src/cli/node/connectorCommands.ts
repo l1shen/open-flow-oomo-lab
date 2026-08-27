@@ -127,7 +127,7 @@ export async function connectorCommand(
       if (task == null || !('executor' in task) || task.executor.kind != 'connector') {
         throw new CliError('connector.node-invalid', `Node ${JSON.stringify(second)} is not a Connector Node.`)
       }
-      const taskInputs = Object.fromEntries(task.inputs.map((input) => [input.handle, input]))
+      const taskInputs = Object.fromEntries(task.inputs.flatMap((input) => ('handle' in input ? [[input.handle, input]] : [])))
       const values = await settingValues(args, runtime, taskInputs)
       for (const handle of Object.keys(values)) {
         if (taskInputs[handle] == null) throw new CliError('connector.input-not-found', `Connector input ${JSON.stringify(handle)} was not found.`)

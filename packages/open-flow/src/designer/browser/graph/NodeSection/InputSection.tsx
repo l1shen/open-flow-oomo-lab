@@ -52,7 +52,6 @@ export const InputSection: React.FC<InputSectionProps> = /* @__PURE__ */ memo(({
   const update = useUpdateNodeInternals()
   const reactFlowStore = useStoreApi()
   const dnd = useDragAndDrop(handles, section)
-  const productDnd = useDragAndDrop(productHandles, section)
 
   // Render a default-additional marker before the first additional handle in the block designer.
   const hasDefaultAdditional = section.role === 'author' && additionalInputs && !!section.$$.additionalInputDefs
@@ -219,9 +218,10 @@ export const InputSection: React.FC<InputSectionProps> = /* @__PURE__ */ memo(({
       {productHandles.map((handle) => (
         <InputHandleSection
           key={handle.name}
+          section={section}
           handle={handle}
+          handles={productHandles}
           handleNames={allHandleNames}
-          dnd={productDnd}
           panelWidth$={designerStore.$$.settingsPanelWidth}
           reactFlowStore={reactFlowStore}
           showSchemaSettings={showSchemaSettings}

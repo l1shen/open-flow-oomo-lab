@@ -71,6 +71,12 @@
   justify-content: center;
 }
 
+.groupAddTipActive {
+  color: var(--widget-font-color);
+  background-color: var(--widget-background-highlight-color);
+  border-color: var(--brand-highlight-color);
+}
+
 .groupAddTipText {
   padding-left: 2px;
 }

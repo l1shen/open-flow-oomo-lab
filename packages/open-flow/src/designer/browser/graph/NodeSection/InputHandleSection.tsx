@@ -2,9 +2,10 @@ import styles from './InputHandleSection.module.scss'
 import type { useStoreApi } from '@xyflow/react'
 import type { Val } from 'value-enhancer'
 import type { HandleName } from '../../../../schema/index.ts'
+import type { InputSectionStore } from '../../stores/node/nodeSection/inputSection.store.ts'
 import type { HandleRowStore } from '../../stores/nodeHandle/handleRow.store.ts'
-import type { DragNDropContext } from './dragNDrop.ts'
 
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { setValue } from 'value-enhancer'
@@ -16,11 +17,14 @@ import { iconOf } from '../../jsonSchema/preset.ts'
 import { SchemaEditor } from '../../jsonSchema/schemaEditor.tsx'
 import { ProductInputWidgetRenderer } from '../../llm/llmHandleEditor.tsx'
 import { llmInputWidgetTitle } from '../../llm/widget.ts'
+import { useInputHandleDnd } from '../Nodes/inputHandleDnd.ts'
 import { Card } from './card.tsx'
+import { setHandleDragImage } from './dragNDrop.ts'
 
 export interface InputHandleSectionProps {
-  readonly dnd: DragNDropContext
+  readonly section: InputSectionStore
   readonly handle: HandleRowStore
+  readonly handles: readonly HandleRowStore[]
   readonly handleNames: readonly HandleName[]
   readonly panelWidth$: Val<number | undefined>
   readonly reactFlowStore: ReturnType<typeof useStoreApi>
@@ -32,7 +36,10 @@ export interface InputHandleSectionProps {
 
 export function InputHandleSection(props: InputHandleSectionProps): React.ReactElement {
   const t = useTranslate()
-  const { dnd, handle } = props
+  const { handle, handles, section } = props
+  const [dragHandle, setDragHandle] = useInputHandleDnd()
+  const [dragPosition, setDragPosition] = useState(0)
+  const removeDragImage = useRef<() => void>(() => undefined)
   const widget = useVal(handle.widget$)
   const schema = useVal(handle.schema$)
   const connected = useVal(handle.reference$)
@@ -41,7 +48,60 @@ export function InputHandleSection(props: InputHandleSectionProps): React.ReactE
   const error = useVal(handle.error$)
   const kind = useVal(handle.kind$)
   const title = llmInputWidgetTitle(schema) ?? handle.name
-  const dragTarget = dnd.dragTarget?.handle == handle.name
+
+  useEffect(() => () => removeDragImage.current(), [])
+
+  const onDragStart = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      section.onDragStart(handle.name)
+      removeDragImage.current()
+      removeDragImage.current = setHandleDragImage(event, title)
+      setDragHandle(handle.name)
+    },
+    [handle, section, setDragHandle, title],
+  )
+
+  const onDragOver = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      event.preventDefault()
+      if (!dragHandle) return
+
+      const peers = handles.filter((candidate) => candidate.context.additional == handle.context.additional)
+      const from = peers.findIndex((candidate) => candidate.name == dragHandle)
+      const to = peers.indexOf(handle)
+      setDragPosition(from < 0 || from == to ? 0 : to - from)
+    },
+    [dragHandle, handle, handles],
+  )
+
+  const onDrop = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      event.preventDefault()
+      if (dragHandle && dragPosition) {
+        const peers = handles.filter((candidate) => candidate.context.additional == handle.context.additional)
+        const index = peers.indexOf(handle)
+        if (index >= 0) {
+          section.moveHandle({ handle: dragHandle }, index)
+        }
+      }
+      setDragPosition(0)
+      setDragHandle(undefined)
+      removeDragImage.current()
+      removeDragImage.current = () => undefined
+    },
+    [dragHandle, dragPosition, handle, handles, section, setDragHandle],
+  )
+
+  const onDragEnd = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      event.preventDefault()
+      setDragPosition(0)
+      setDragHandle(undefined)
+      removeDragImage.current()
+      removeDragImage.current = () => undefined
+    },
+    [setDragHandle],
+  )
 
   return (
     <Card
@@ -54,15 +114,16 @@ export function InputHandleSection(props: InputHandleSectionProps): React.ReactE
       help={description}
       collapsed$={widget.collapsed$}
       forceCollapsed={connected ? true : undefined}
-      onDrop={dnd.onDrop}
-      onDragEnd={dnd.onDragEnd}
-      onDragOver={(event) => dnd.onDragOver(event, handle)}
-      dragPosition={dragTarget ? dnd.dragPosition : 0}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={() => setDragPosition(0)}
+      dragPosition={dragPosition}
       prefix={
         <>
           <Handle id={toRFHandleName(handle.name)} type="input" kind={kind} />
           {handle.context.canEditSchema && (
-            <div draggable className={`${styles.dragHandle} nodrag`} onDragStart={(event) => dnd.onDragStart(event, handle)} data-handle={`h:${handle.name}`}>
+            <div draggable className={`${styles.dragHandle} nodrag`} onDragStart={onDragStart} data-handle={`h:${handle.name}`}>
               <i className="i-carbon:draggable" />
             </div>
           )}

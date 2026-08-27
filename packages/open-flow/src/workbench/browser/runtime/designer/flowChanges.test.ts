@@ -60,15 +60,23 @@ describe('Code task port changes', () => {
       ),
     )
     const changes = updateCodeTaskPorts(revisionView(current), { kind: 'flow' }, 'task', {
-      inputs: [{ handle: 'prompt', jsonSchema: { type: 'string' }, nullable: false }],
-      outputs: [{ handle: 'count', jsonSchema: { type: 'number' }, nullable: false }],
+      inputs: [{ group: 'Request' }, { handle: 'prompt', jsonSchema: { type: 'string' }, nullable: false }],
+      outputs: [
+        { group: 'Result', collapsed: true },
+        { handle: 'count', jsonSchema: { type: 'number' }, nullable: false },
+      ],
     })
 
     if (changes == null) throw new Error('Expected code task port changes.')
     const changed = applyFlowChanges(current, changes)
     expect(changed.content.modules.module?.source).toContain(' *   prompt: string;')
     expect(changed.content.modules.module?.source).toContain(' *   count: number;')
-    expect(changed.content.document.graph.nodes.task).toMatchObject({ task: { inputs: [{ handle: 'prompt' }], outputs: [{ handle: 'count' }] } })
+    expect(changed.content.document.graph.nodes.task).toMatchObject({
+      task: {
+        inputs: [{ group: 'Request' }, { handle: 'prompt' }],
+        outputs: [{ collapsed: true, group: 'Result' }, { handle: 'count' }],
+      },
+    })
   })
 
   it('does not recreate a removed generated metadata region', () => {

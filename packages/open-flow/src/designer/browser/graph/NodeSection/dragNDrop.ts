@@ -1,3 +1,4 @@
+import styles from './dragNDrop.module.scss'
 import type { HandleIndex } from '../../stores/node/constants.ts'
 import type { ConditionsSectionStore } from '../../stores/node/nodeSection/conditionsSection.store.ts'
 import type { InputSectionStore } from '../../stores/node/nodeSection/inputSection.store.ts'
@@ -6,7 +7,7 @@ import type { SubflowInputSectionStore } from '../../stores/node/nodeSection/sub
 import type { SubflowOutputSectionStore } from '../../stores/node/nodeSection/subflowOutputSection.store.ts'
 import type { ValueSectionStore } from '../../stores/node/nodeSection/valueSection.store.ts'
 
-import { useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { clamp } from '../../base/trivial.ts'
 import { ConditionRowStore } from '../../stores/conditionHandle/conditionRow.store.ts'
 import { HandleRowStore } from '../../stores/nodeHandle/handleRow.store.ts'
@@ -21,6 +22,22 @@ export interface DragNDropContext {
   onDrop: (ev: React.DragEvent<HTMLElement>) => void
 }
 
+export function setHandleDragImage(ev: React.DragEvent<HTMLElement>, label: string): () => void {
+  const canvas = ev.currentTarget.closest('.oo-designer-root')
+  if (canvas == null) return () => undefined
+  const image = document.createElement('div')
+  const icon = document.createElement('i')
+  const text = document.createElement('span')
+  image.className = styles.dragImage
+  icon.className = 'i-carbon:draggable'
+  text.className = styles.label
+  text.textContent = label
+  image.append(icon, text)
+  canvas.append(image)
+  ev.dataTransfer.setDragImage(image, 12, 12)
+  return () => image.remove()
+}
+
 export function useDragAndDrop(
   handles: (HandleRowStore | ConditionRowStore | string)[],
   section: InputSectionStore | OutputSectionStore | ValueSectionStore | SubflowInputSectionStore | SubflowOutputSectionStore | ConditionsSectionStore,
@@ -29,14 +46,17 @@ export function useDragAndDrop(
   const [additional, setAdditional] = useState(false)
   const [dragTarget, setDragTarget] = useState<HandleIndex>()
   const [dragPosition, setDragPosition] = useState<number>(0)
+  const removeDragImage = useRef<() => void>(() => undefined)
+
+  useEffect(() => () => removeDragImage.current(), [])
 
   const onDragStart = useCallback(
     (ev: React.DragEvent<HTMLElement>, item: HandleRowStore | ConditionRowStore | string) => {
       if (HandleRowStore.is(item) || ConditionRowStore.is(item)) {
         section.onDragStart(item.name)
       }
-      const row = ev.currentTarget.parentElement!.parentElement!
-      ev.dataTransfer.setDragImage(row, 8, 14)
+      removeDragImage.current()
+      removeDragImage.current = setHandleDragImage(ev, typeof item == 'string' ? item : item.name)
       setDragHandle(getIndex(item))
       setAdditional(getAdditional(item))
     },
@@ -79,6 +99,8 @@ export function useDragAndDrop(
       }
       setDragPosition(0)
       setDragHandle(undefined)
+      removeDragImage.current()
+      removeDragImage.current = () => undefined
     },
     [dragHandle, dragTarget, dragPosition, section, handles],
   )
@@ -87,6 +109,8 @@ export function useDragAndDrop(
     ev.preventDefault()
     setDragPosition(0)
     setDragHandle(undefined)
+    removeDragImage.current()
+    removeDragImage.current = () => undefined
   }, [])
 
   return {
