@@ -1,5 +1,6 @@
 import styles from './schemaEditor.module.scss'
 import type { useStoreApi } from '@xyflow/react'
+import type { ErrorObject } from 'ajv'
 import type { JSX } from 'react/jsx-runtime'
 import type { ReadonlyVal, Val } from 'value-enhancer'
 import type { HandleRowProps, IHandleAction } from '../components/handleRow.tsx'
@@ -16,8 +17,6 @@ import type { WidgetType } from './preset.ts'
 import { seq } from '@wopjs/async-seq'
 import { disposableStore } from '@wopjs/disposable'
 import Ajv from 'ajv'
-import ajvEN from 'ajv-i18n/localize/en/index.js'
-import ajvZH from 'ajv-i18n/localize/zh/index.js'
 import { clsx } from 'clsx'
 import { isEqual } from 'radash'
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -38,6 +37,7 @@ import { DesignerCombobox as Select } from '../components/select.tsx'
 import { LabeledSwitch } from '../components/toggleSwitch.tsx'
 import { DesignerTooltip } from '../components/tooltip.tsx'
 import { optionOfStringFormat, stringFormatOptions, typeHasSubpanel } from '../stores/schemaEditor/constants.ts'
+import { localizeAjvErrors } from '../validate/ajvLocalize.ts'
 import { getBaseSchema, iconOf, isUndecidable, optionOf, ui_options, widgetSelectOptions } from './preset.ts'
 import { useHandleTrack } from './useHandleTrack.ts'
 
@@ -121,27 +121,38 @@ function CodeEditor({ store }: CodeEditorProps) {
 
         const ajv = new Ajv({ allErrors: true, verbose: true })
         const queue = dispose.add(seq({ dropHead: true, window: 1 }))
+        // Kept so the reported message can be re-localized when the UI language changes.
+        let schemaErrors: ErrorObject[] | null = null
+        dispose.add(
+          i18n.lang$.reaction((lang) => {
+            if (!isMounted || schemaErrors == null) return
+            localizeAjvErrors(lang, schemaErrors)
+            setError(ajv.errorsText(schemaErrors))
+          }),
+        )
         schema$.reaction((json) =>
           queue.schedule(async () => {
             try {
               const result = tryParseJSON(json)
               if (result.isErr()) {
+                schemaErrors = null
                 if (isMounted) setError(result.unwrapErr())
                 return
               }
               schema = result.unwrap()
               await ajv.validateSchema(schema as any)
+              schemaErrors = ajv.errors != null && ajv.errors.length > 0 ? ajv.errors : null
               if (isMounted) {
-                if (ajv.errors && ajv.errors.length > 0) {
-                  if (i18n.lang.startsWith('zh')) ajvZH(ajv.errors)
-                  else ajvEN(ajv.errors)
-                  setError(ajv.errorsText(ajv.errors))
+                if (schemaErrors != null) {
+                  localizeAjvErrors(i18n.lang, schemaErrors)
+                  setError(ajv.errorsText(schemaErrors))
                 } else {
                   setError(null)
                   store.schema$.set(schema)
                 }
               }
             } catch (err) {
+              schemaErrors = null
               if (isMounted) setError(err + '')
             }
           }),
@@ -412,8 +423,8 @@ function SubpanelString(props: SubpanelProps) {
     <>
       <Field context={context} level={props.level} isLast={false} name={t('inputHandleEditor.widget.string.format')} title="format">
         <Select
-          options={stringFormatOptions(t('inputHandleEditor.unset'))}
-          value={optionOfStringFormat(format, t('inputHandleEditor.unset'))}
+          options={stringFormatOptions(t)}
+          value={optionOfStringFormat(format, t)}
           onChange={(e) => e && setValue(format$, e.value || undefined)}
           disabled={restricted || !context.canEditSchema}
         />

@@ -210,9 +210,7 @@
     "title": "Inspector"
   },
   "language": {
-    "english": "English",
-    "label": "Language",
-    "simplifiedChinese": "简体中文"
+    "label": "Language"
   },
   "jsonViewer": {
     "bin": "Binary",
@@ -418,7 +416,6 @@
     "liveAndDraft": "Live + Draft",
     "liveOnly": "Live only",
     "liveSuspended": "Live is suspended because no compatible Engine is currently available.",
-    "liveOnly": "Live only",
     "localClient": "Local test client",
     "moreActions": "More actions",
     "namePlaceholder": "Name",

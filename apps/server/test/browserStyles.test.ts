@@ -41,7 +41,7 @@ describe('Browser style boundaries', () => {
     expect(app).toMatch(/OpenFlowSessionGate, OpenFlowWorkbench/)
     expect(app).toMatch(/<OpenFlowSessionGate/)
     expect(app.match(/session\.configured === true/g)).toHaveLength(3)
-    expect(app).toMatch(/hostAction=\{t\.signOut\}/)
+    expect(app).toMatch(/hostAction=\{t\('session\.signOut'\)\}/)
     expect(app).toMatch(/hostTitle="Open Flow Server"/)
     expect(app).toMatch(/onHostAction=\{\(\) => void signOut\(\)\}/)
     expect(app).not.toMatch(/operatorMenu|operator-menu/)
