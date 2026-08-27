@@ -1,6 +1,7 @@
 import type { WorkbenchLanguage, WorkbenchLocation, WorkbenchNavigationOptions, WorkbenchNotification, WorkbenchTheme } from '@oomol-lab/open-flow/workbench'
 import type { FormEvent, ReactElement } from 'react'
 
+import { ControlClient } from '@oomol-lab/open-flow/control-api'
 import { OpenFlowSessionGate, OpenFlowWorkbench } from '@oomol-lab/open-flow/workbench'
 import { useEffect, useMemo, useState } from 'react'
 import { Toaster, toast } from 'sonner'
@@ -9,6 +10,7 @@ import { createBrowserHost } from './host.ts'
 import { createI18n } from './i18n.ts'
 import { initialLanguage, languagePreference } from './language.ts'
 import { parseRoute, routePath } from './route.ts'
+import { VariablesPage } from './variables.tsx'
 
 const notificationId = 'open-flow-workbench'
 const preferencePrefix = 'open-flow.workbench.server.'
@@ -53,11 +55,13 @@ function notify(notification: WorkbenchNotification | undefined): void {
 
 function Shell({ language, onLanguageChange, theme }: Props): ReactElement {
   const [route, setRoute] = useState(() => parseRoute(window.location.pathname))
+  const [variablesOpen, setVariablesOpen] = useState(window.location.pathname == '/variables')
   const [session, setSession] = useState<Session>({ kind: 'checking' })
   const [token, setToken] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const t = useTranslate()
   const host = useMemo(() => createBrowserHost(notify, () => setSession({ configured: true, kind: 'signed-out' })), [])
+  const client = useMemo(() => new ControlClient((input, init) => host.request(input, init)), [host])
   const preferences = useMemo(
     () => ({
       getItem: (key: string): string | null => localStorage.getItem(`${preferencePrefix}${key}`),
@@ -85,15 +89,24 @@ function Shell({ language, onLanguageChange, theme }: Props): ReactElement {
 
   useEffect(() => void checkSession(), [])
   useEffect(() => {
-    const restore = (): void => setRoute(parseRoute(window.location.pathname))
+    const restore = (): void => {
+      setVariablesOpen(window.location.pathname == '/variables')
+      setRoute(parseRoute(window.location.pathname))
+    }
     window.addEventListener('popstate', restore)
     return () => window.removeEventListener('popstate', restore)
   }, [])
-
   function navigate(next: WorkbenchLocation, options: WorkbenchNavigationOptions): void {
     const path = routePath(next)
     if (path != window.location.pathname) window.history[options.replace ? 'replaceState' : 'pushState'](null, '', path)
     setRoute(next)
+    setVariablesOpen(false)
+  }
+
+  function openPage(path: '/' | '/variables'): void {
+    if (path != window.location.pathname) window.history.pushState(null, '', path)
+    setVariablesOpen(path == '/variables')
+    if (path == '/') setRoute({ view: 'design' })
   }
 
   async function signIn(event: FormEvent): Promise<void> {
@@ -134,22 +147,39 @@ function Shell({ language, onLanguageChange, theme }: Props): ReactElement {
   return (
     <div className="open-flow-theme server-host" data-theme={theme}>
       {session.kind == 'signed-in' ? (
-        <div className="workbench-frame">
-          <OpenFlowWorkbench
-            hrefFor={routePath}
-            host={host}
-            hostAction={t('session.signOut')}
-            hostTitle="Open Flow Server"
-            language={language}
-            location={route}
-            onHostAction={() => void signOut()}
-            onLanguageChange={onLanguageChange}
-            onNavigate={navigate}
-            preferences={preferences}
-            sessionKey="server-operator"
-            theme={theme}
-          />
-        </div>
+        <>
+          <header className="server-nav">
+            <div className="server-nav-title">Open Flow Server</div>
+            <nav aria-label="Open Flow Server">
+              <button aria-current={variablesOpen ? undefined : 'page'} onClick={() => openPage('/')} type="button">
+                {t('shell.flows')}
+              </button>
+              <button aria-current={variablesOpen ? 'page' : undefined} onClick={() => openPage('/variables')} type="button">
+                {t('shell.variables')}
+              </button>
+            </nav>
+            <button className="server-sign-out" onClick={() => void signOut()} type="button">
+              {t('session.signOut')}
+            </button>
+          </header>
+          <div className="workbench-frame">
+            {variablesOpen ? (
+              <VariablesPage client={client} language={language} />
+            ) : (
+              <OpenFlowWorkbench
+                hrefFor={routePath}
+                host={host}
+                language={language}
+                location={route}
+                onLanguageChange={onLanguageChange}
+                onNavigate={navigate}
+                preferences={preferences}
+                sessionKey="server-operator"
+                theme={theme}
+              />
+            )}
+          </div>
+        </>
       ) : (
         <OpenFlowSessionGate
           action={
