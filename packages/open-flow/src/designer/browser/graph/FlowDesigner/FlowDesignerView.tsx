@@ -945,6 +945,14 @@ function createNodeEntry(
   callbacks: ViewCallbacks,
 ): SemanticNodeEntry {
   const nodeInputsFrom = inputsFrom(node)
+  const variablePrefix = `${node.id}\0`
+  const boundHandles = derive(designerStore.$.variableInputs, (inputs) => {
+    const handles = new Set<HandleName>()
+    for (const [key, input] of inputs) {
+      if (key.startsWith(variablePrefix) && input.name != null) handles.add(key.slice(variablePrefix.length) as HandleName)
+    }
+    return handles
+  })
   const values: NodeValues = {
     concurrency: val(node.concurrency),
     description: val(node.description),
@@ -970,11 +978,13 @@ function createNodeEntry(
   const inputSection = new InputSectionStore({
     role: inputRole,
     lang: designerStore.lang$,
+    boundHandles,
     handleInputsFrom: values.inputsFrom,
     inputHandleDefs: values.inputDefs,
     showSettings,
     createSchemaEditor: () => undefined,
   })
+  inputSection.dispose.add(boundHandles)
   let previousInputValues = new Map(nodeInputsFrom.flatMap((input) => (Object.hasOwn(input, 'value') ? [[input.handle, input.value] as const] : [])))
   inputSection.dispose.add(
     values.inputsFrom.reaction((inputs) => {

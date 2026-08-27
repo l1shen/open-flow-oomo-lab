@@ -9,7 +9,7 @@ import type {
   FlowDesignerViewValueNode,
 } from './FlowDesignerView.tsx'
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConditionsSectionStore } from '../../stores/node/nodeSection/conditionsSection.store.ts'
 import { InputSectionStore } from '../../stores/node/nodeSection/inputSection.store.ts'
 import { OutputSectionStore } from '../../stores/node/nodeSection/outputSection.store.ts'
@@ -146,6 +146,33 @@ function update(initial: FlowDesignerViewProps, next: FlowDesignerViewProps): Fl
   return view.props.flowDesignerStore
 }
 
+function captureIdleValidation(): () => void {
+  const callbacks: IdleRequestCallback[] = []
+  vi.stubGlobal(
+    'requestIdleCallback',
+    vi.fn((callback: IdleRequestCallback) => {
+      callbacks.push(callback)
+      return callbacks.length
+    }),
+  )
+  vi.stubGlobal('cancelIdleCallback', vi.fn())
+  return () => {
+    for (const callback of callbacks.splice(0)) callback({ didTimeout: false, timeRemaining: () => 50 })
+  }
+}
+
+function firstInput(store: FlowDesignerProps['flowDesignerStore']) {
+  const node = [...store.$.nodes.values()][0]
+  if (node == null) throw new Error('Expected a node.')
+  const section = node.findSection<InputSectionStore>(InputSectionStore.TYPE)
+  if (section == null) throw new Error('Expected an input section.')
+  const row = section.$.handles.value.find(HandleRowStore.is)
+  if (row == null) throw new Error('Expected an input Handle.')
+  return { node, row, section }
+}
+
+afterEach(() => vi.unstubAllGlobals())
+
 describe('FlowDesignerView model synchronization', () => {
   beforeEach(() => {
     hooks.cleanups = []
@@ -223,6 +250,78 @@ describe('FlowDesignerView model synchronization', () => {
 
     expect(onOpenVariables).toHaveBeenCalledOnce()
     expect(onChangeInputVariable).toHaveBeenCalledWith('target', 'value', 'ENDPOINT')
+    store.dispose()
+  })
+
+  it('treats a valid Variable binding as an input source', () => {
+    const validate = captureIdleValidation()
+    const value: FlowDesignerViewModel = {
+      nodes: [task([{ handle: 'value', jsonSchema: { type: 'string' }, variable: 'API_TOKEN', variableCompatible: true }])],
+      variableNames: ['API_TOKEN'],
+      variableNamesLoaded: true,
+      variableNamesLoading: false,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }
+    const view = FlowDesignerView(props(value)) as React.ReactElement<FlowDesignerProps>
+    const { node, row, section } = firstInput(view.props.flowDesignerStore)
+
+    validate()
+
+    expect(row.reference$.value).toBe(true)
+    expect(row.error$.value).toBeUndefined()
+    expect(section.hasError$.value).toBe(false)
+    expect(node.$.hasError.value).toBe(false)
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('restores literal validation after clearing a Variable binding', async () => {
+    const validate = captureIdleValidation()
+    const bound: FlowDesignerViewModel = {
+      nodes: [task([{ handle: 'value', jsonSchema: { type: 'string' }, variable: 'API_TOKEN', variableCompatible: true }])],
+      variableNames: ['API_TOKEN'],
+      variableNamesLoaded: true,
+      variableNamesLoading: false,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }
+    const cleared: FlowDesignerViewModel = {
+      ...bound,
+      nodes: [task([{ handle: 'value', jsonSchema: { type: 'string' }, variableCompatible: true }])],
+    }
+    const view = FlowDesignerView(props(bound)) as React.ReactElement<FlowDesignerProps>
+    const { node, row, section } = firstInput(view.props.flowDesignerStore)
+    validate()
+
+    FlowDesignerView(props(cleared))
+
+    expect(row.reference$.value).toBe(false)
+    await vi.waitFor(() => expect(row.error$.value).toEqual({ type: 'typeError' }))
+    expect(section.hasError$.value).toBe(true)
+    expect(node.$.hasError.value).toBe(true)
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('keeps a missing Variable binding separate from literal validation', () => {
+    const validate = captureIdleValidation()
+    const bound: FlowDesignerViewModel = {
+      nodes: [task([{ handle: 'value', jsonSchema: { type: 'string' }, variable: 'API_TOKEN', variableCompatible: true }])],
+      variableNames: ['API_TOKEN'],
+      variableNamesLoaded: true,
+      variableNamesLoading: false,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }
+    const missing: FlowDesignerViewModel = { ...bound, variableNames: [] }
+    const view = FlowDesignerView(props(bound)) as React.ReactElement<FlowDesignerProps>
+    const store = view.props.flowDesignerStore
+    const { node, row } = firstInput(store)
+    validate()
+
+    FlowDesignerView(props(missing))
+
+    expect(store.$.variableInputs.value.get('target\0value')?.name).toBe('API_TOKEN')
+    expect(store.$.variableNames.value).toEqual([])
+    expect(row.reference$.value).toBe(true)
+    expect(row.error$.value).toBeUndefined()
+    expect(node.$.hasError.value).toBe(false)
     store.dispose()
   })
 

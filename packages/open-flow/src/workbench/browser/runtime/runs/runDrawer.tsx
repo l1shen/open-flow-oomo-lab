@@ -636,6 +636,19 @@ function RunLog({
               </div>
             </li>
           )}
+          {outputs == null && result != null && (
+            <li className={`run-log-event run-log-result ${result.status == 'completed' ? 'success' : result.status == 'canceled' ? 'neutral' : 'danger'}`}>
+              <span className="run-log-icon">
+                <Icon name={result.status == 'completed' ? 'check' : result.status == 'canceled' ? 'flow' : 'alert'} size={14} />
+              </span>
+              <time dateTime={result.finishedAt} title={new Date(result.finishedAt).toLocaleString(language)}>
+                {eventTime(result.finishedAt, language)}
+              </time>
+              <div className="run-log-main">
+                <RunResultView result={result} />
+              </div>
+            </li>
+          )}
           {submitting ? (
             <li aria-live="polite" className="run-log-empty">
               {t('run.submitting')}

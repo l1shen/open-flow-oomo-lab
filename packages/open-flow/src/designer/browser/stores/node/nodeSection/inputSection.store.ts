@@ -86,6 +86,7 @@ export type InputSectionStoreProps = {
   readonly inputHandleDefs: Val<(InputHandleDef | GroupDividerDef)[] | undefined> | ReadonlyVal<(InputHandleDef | GroupDividerDef)[] | undefined>
   readonly additionalInputs?: ReadonlyVal<boolean | InputHandleDef | undefined>
   readonly additionalInputDefs?: Val<InputHandleDef[] | undefined>
+  readonly boundHandles?: ReadonlyVal<ReadonlySet<HandleName>>
   // Undefined means that no settings panel is open.
   readonly showSettings: Val<NodeShowSettings | undefined>
   readonly initialUIState?: Record<PropertyKey, unknown>
@@ -493,6 +494,7 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
     connectedHandles$: ReadonlyVal<ReadonlySet<HandleName>>,
   ): ReadonlyVal<(HandleRowStore | string)[]> {
     const indices$ = this.deriveHandleIndices$(props.inputHandleDefs)
+    const boundHandles = props.boundHandles
 
     let oldHandles: HandleRowStore[] | undefined
     const inputHandleRows$ = compute<(HandleRowStore | string)[]>(
@@ -531,7 +533,9 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
             setPartial(height, handle),
           )
 
-          const reference$ = derive(connectedHandles$, (set) => set.has(handle))
+          const reference$ = boundHandles
+            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
+            : derive(connectedHandles$, (set) => set.has(handle))
 
           const context = new WidgetContext(
             {
@@ -608,7 +612,9 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
             setPartial(height, handle),
           )
 
-          const reference$ = derive(connectedHandles$, (set) => set.has(handle))
+          const reference$ = boundHandles
+            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
+            : derive(connectedHandles$, (set) => set.has(handle))
 
           const context = new WidgetContext(
             {
