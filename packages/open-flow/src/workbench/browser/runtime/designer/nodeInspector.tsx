@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../ui/browser
 import { Textarea } from '../../../../ui/browser/textarea.tsx'
 import { Icon } from '../icons.tsx'
 import { CodeEditor } from './codeEditor.tsx'
+import { codeTyping } from './flowChanges.ts'
 import { taskDiagnosticReady, taskInspectorSection } from './nodeInspectorBehavior.ts'
 
 export function inspectorIcon(node: ResolvedSelection | undefined, target: DesignerTarget): IconName {
@@ -267,6 +268,7 @@ function TaskDefinition({
           location={moduleLocation == null ? undefined : { column: moduleLocation.column, line: moduleLocation.line }}
           onChange={(value) => store.updateModuleSource(value)}
           theme={theme}
+          typing={codeTyping(task)}
           uri={`file:///modules/${moduleEditor.moduleId}.js`}
           value={moduleEditor.source}
         />

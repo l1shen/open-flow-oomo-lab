@@ -30,8 +30,7 @@ type StoryNode = Node<StoryNodeData, 'story'>
 
 const nodeTypes = { story: StoryNodeView }
 
-const codeEditorSource = `//#region generated meta
-/**
+const codeEditorTyping = `/**
  * @typedef {{
  *   value: string;
  * }} Inputs;
@@ -39,15 +38,9 @@ const codeEditorSource = `//#region generated meta
  *   result: string;
  * }} Outputs;
  */
-//#endregion
+`
 
-/**
- * @import { TaskContext } from "@oomol-lab/open-flow"
- * @param {Inputs} input
- * @param {TaskContext<Outputs>} context
- * @returns {Promise<Partial<Outputs> | undefined | void>}
- */
-export default async function (input, context) {
+const codeEditorSource = `export default async function (input, context) {
   await context.reportProgress(20)
   const response = await context.fetch("https://example.com")
   const text = await response.text()
@@ -172,6 +165,7 @@ function CodeEditorStory({ dark, log }: { readonly dark: boolean; readonly log: 
           log('code.change', { length: source.length })
         }}
         theme={dark ? 'dark' : 'light'}
+        typing={codeEditorTyping}
         uri="file:///modules/designer-lab.js"
         value={value}
       />

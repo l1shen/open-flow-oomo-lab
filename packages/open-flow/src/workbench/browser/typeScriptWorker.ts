@@ -1,5 +1,6 @@
 import { createSystem, createVirtualTypeScriptEnvironment } from '@typescript/vfs'
 import ts, { displayPartsToString } from 'typescript-lsp'
+import { ShadowDocument } from './typeScriptShadow.ts'
 
 const compilerOptions: import('typescript-lsp').CompilerOptions = {
   allowJs: true,
@@ -34,7 +35,8 @@ files.set('file:///node_modules/@oomol-lab/open-flow/package.json', JSON.stringi
 files.set('file:///node_modules/@oomol-lab/open-flow/index.d.ts', platformTypes)
 
 const system = createSystem(files)
-const openDocuments = new Map<string, string>()
+const openDocuments = new Map<string, ShadowDocument>()
+const typings = new Map<string, string>()
 const compiler = ts as unknown as Parameters<typeof createVirtualTypeScriptEnvironment>[2]
 let environment = createVirtualTypeScriptEnvironment(system, libraryFiles, compiler, compilerOptions)
 
@@ -61,31 +63,24 @@ const completionKinds: Readonly<Record<string, number>> = {
 }
 
 function ensureFile(uri: string, text: string): void {
-  openDocuments.set(uri, text)
-  if (environment.getSourceFile(uri) == null) environment.createFile(uri, text)
-  else environment.updateFile(uri, text)
+  const document = new ShadowDocument(text, typings.get(uri) ?? '')
+  openDocuments.set(uri, document)
+  if (environment.getSourceFile(uri) == null) environment.createFile(uri, document.text)
+  else environment.updateFile(uri, document.text)
 }
 
 function removeFile(uri: string): void {
   openDocuments.delete(uri)
+  typings.delete(uri)
   if (environment.getSourceFile(uri) != null) environment.deleteFile(uri)
 }
 
 function positionToOffset(uri: string, position: { readonly character: number; readonly line: number }): number {
-  const source = environment.getSourceFile(uri)
-  if (source == null) return 0
-  const starts = source.getLineStarts()
-  const line = Math.min(Math.max(position.line, 0), starts.length - 1)
-  const start = starts[line]!
-  const end = line + 1 < starts.length ? starts[line + 1]! : source.end
-  return Math.min(start + Math.max(position.character, 0), end)
+  return openDocuments.get(uri)?.offsetAt(position) ?? 0
 }
 
-function offsetToPosition(uri: string, offset: number): { readonly character: number; readonly line: number } {
-  const source = environment.getSourceFile(uri)
-  if (source == null) return { character: 0, line: 0 }
-  const position = source.getLineAndCharacterOfPosition(Math.min(Math.max(offset, 0), source.end))
-  return { character: position.character, line: position.line }
+function offsetToPosition(uri: string, offset: number): { readonly character: number; readonly line: number } | undefined {
+  return openDocuments.get(uri)?.positionAt(offset)
 }
 
 function handleRequest(method: string, params: any): unknown {
@@ -138,11 +133,14 @@ function handleRequest(method: string, params: any): unknown {
       if (documentation && documentation !== ';') {
         contents += '\n\n' + documentation
       }
+      const start = offsetToPosition(uri, info.textSpan.start)
+      const end = offsetToPosition(uri, info.textSpan.start + info.textSpan.length)
+      if (start == null || end == null) return null
       return {
         contents: { kind: 'markdown', value: contents },
         range: {
-          end: offsetToPosition(uri, info.textSpan.start + info.textSpan.length),
-          start: offsetToPosition(uri, info.textSpan.start),
+          end,
+          start,
         },
       }
     }
@@ -197,6 +195,14 @@ function handleNotification(method: string, params: any): void {
   switch (method) {
     case 'initialized':
       return
+    case 'openFlow/typing': {
+      const uri = params.uri
+      if (typeof uri != 'string' || typeof params.typing != 'string') return
+      typings.set(uri, params.typing)
+      const document = openDocuments.get(uri)
+      if (document != null) ensureFile(uri, document.source)
+      return
+    }
     case 'textDocument/didOpen':
       ensureFile(params.textDocument.uri, params.textDocument.text)
       return

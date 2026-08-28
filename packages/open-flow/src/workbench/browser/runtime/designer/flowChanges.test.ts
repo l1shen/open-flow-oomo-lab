@@ -53,12 +53,19 @@ describe('Code task port changes', () => {
     expect(changed.content.modules['new-code']).toMatchObject({ name: 'New code' })
   })
 
-  it('updates an intact generated metadata region with the port contract', () => {
-    const current = draft(
-      ['//#region generated meta', '/**', ' * @typedef {{}} Inputs', ' * @typedef {{}} Outputs', ' */', '//#endregion', '', 'export default () => {}', ''].join(
-        '\n',
-      ),
-    )
+  it('does not rewrite module source when ports change', () => {
+    const source = [
+      '//#region generated meta',
+      '/**',
+      ' * @typedef {{}} Inputs',
+      ' * @typedef {{}} Outputs',
+      ' */',
+      '//#endregion',
+      '',
+      'export default () => {}',
+      '',
+    ].join('\n')
+    const current = draft(source)
     const changes = updateCodeTaskPorts(revisionView(current), { kind: 'flow' }, 'task', {
       inputs: [{ group: 'Request' }, { handle: 'prompt', jsonSchema: { type: 'string' }, nullable: false }],
       outputs: [
@@ -69,8 +76,7 @@ describe('Code task port changes', () => {
 
     if (changes == null) throw new Error('Expected code task port changes.')
     const changed = applyFlowChanges(current, changes)
-    expect(changed.content.modules.module?.source).toContain(' *   prompt: string;')
-    expect(changed.content.modules.module?.source).toContain(' *   count: number;')
+    expect(changed.content.modules.module?.source).toBe(source)
     expect(changed.content.document.graph.nodes.task).toMatchObject({
       task: {
         inputs: [{ group: 'Request' }, { handle: 'prompt' }],

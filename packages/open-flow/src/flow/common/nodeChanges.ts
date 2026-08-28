@@ -14,23 +14,9 @@ import type {
   WebhookOptions,
 } from './change.ts'
 
-import { generateTyping, mergeTypingIntoSourceFile } from '../../manifest/common/meta/block/generateTyping.ts'
 import { applyFlowChanges } from './change.ts'
 
-const codeTaskTemplate = `//#region generated meta
-/**
- * @typedef {{}} Inputs
- * @typedef {{}} Outputs
- */
-//#endregion
-
-/**
- * @import { TaskContext } from "@oomol-lab/open-flow"
- * @param {Inputs} input
- * @param {TaskContext<Outputs>} context
- * @returns {Promise<Partial<Outputs> | undefined | void>}
- */
-export default async function (input, context) {
+const codeTaskTemplate = `export default async function (input, context) {
   return { result: input.value }
 }
 `
@@ -79,14 +65,7 @@ export function createCodeTask(
 ): readonly ChangeOperation[] {
   const codeModule = module ?? {
     imports: [],
-    source: mergeTypingIntoSourceFile(
-      codeTaskTemplate,
-      generateTyping(
-        'javascript',
-        ports.inputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
-        ports.outputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
-      ),
-    ),
+    source: codeTaskTemplate,
   }
   return [
     {

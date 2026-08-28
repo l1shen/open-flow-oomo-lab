@@ -34,7 +34,6 @@ import {
   updateTriggerConfig,
   updateTriggerSchedule,
 } from '../../../../flow/common/nodeChanges.ts'
-import { generateTyping, mergeTypingIntoSourceFile } from '../../../../manifest/common/meta/block/generateTyping.ts'
 import { addNodeIntent } from '../designer/addNodeOptions.ts'
 import {
   addNode as addFlowNode,
@@ -571,26 +570,8 @@ export class WorkspaceStore {
     const revision = this.$.revision.value
     const target = this.#model.value.target
     if (revision == null || target == null) return false
-    const selection = revision.node(target, nodeId)
-    const editor = this.#model.value.moduleEditor
-    const editorSource =
-      selection?.kind == 'task' && selection.node.task != null && editor?.moduleId == selection.node.task.moduleId
-        ? mergeTypingIntoSourceFile(
-            editor.source,
-            generateTyping(
-              'javascript',
-              ports.inputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
-              ports.outputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
-            ),
-          )
-        : undefined
     const changes = updateCodeTaskPorts(revision, target, nodeId, ports)
-    if (changes == null || (await this.#changeDraft(changes)) == null) return false
-    const currentEditor = this.#model.value.moduleEditor
-    if (editorSource != null && currentEditor != null && editor != null && currentEditor.moduleId == editor.moduleId && currentEditor.source == editor.source) {
-      this.#set({ moduleEditor: { ...currentEditor, source: editorSource } })
-    }
-    return true
+    return changes != null && (await this.#changeDraft(changes)) != null
   }
 
   public async setConnectorConnection(taskId: string, connectionId: string): Promise<boolean> {

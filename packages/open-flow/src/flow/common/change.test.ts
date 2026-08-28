@@ -40,14 +40,11 @@ describe('Flow changes', () => {
     expect(createAuthoringId()).toMatch(/^[23456789abcdefghjkmnpqrstuvwxyz]{10}$/)
   })
 
-  it('creates code tasks with generated JavaScript input and output types', () => {
+  it('creates code tasks with clean JavaScript source', () => {
     const changed = applyFlowChanges(revision(), createCodeTask(target, { moduleId: 'module', nodeId: 'task' }, 'Code'))
     const source = changed.modules.module?.source
 
-    expect(source).toContain('//#region generated meta')
-    expect(source).toContain(' *   value: any;')
-    expect(source).toContain(' *   result: any;')
-    expect(source).toContain('@param {TaskContext<Outputs>} context')
+    expect(source).toBe('export default async function (input, context) {\n  return { result: input.value }\n}\n')
   })
 
   it('applies every resource lifecycle operation in order', () => {

@@ -144,8 +144,8 @@
     pointer-events: none;
   }
 
-  // Combobox must render outside the node without an intermediate absolutely positioned element.
-  &:has([data-slot='combobox-content']) {
+  // Select must render outside the node without an intermediate absolutely positioned element.
+  &:global(:has(.react-select__control--is-focused)) {
     position: static;
 
     &::after {

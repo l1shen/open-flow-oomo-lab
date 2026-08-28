@@ -33,11 +33,12 @@ interface Props {
   readonly location?: { readonly column: number; readonly line: number }
   readonly onChange: (value: string) => void
   readonly theme: WorkbenchTheme
+  readonly typing: string
   readonly uri: string
   readonly value: string
 }
 
-export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, location, onChange, theme, uri, value }: Props): ReactElement {
+export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, location, onChange, theme, typing, uri, value }: Props): ReactElement {
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<Editor>()
   const syncing = useRef(false)
@@ -45,12 +46,14 @@ export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, loca
   const disabledRef = useRef(disabled)
   const locationRef = useRef(location)
   const onChangeRef = useRef(onChange)
+  const typingRef = useRef(typing)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(true)
   valueRef.current = value
   disabledRef.current = disabled
   locationRef.current = location
   onChangeRef.current = onChange
+  typingRef.current = typing
 
   useEffect(() => {
     const container = host.current!
@@ -60,7 +63,9 @@ export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, loca
     let disposed = false
     setFailed(false)
     setLoading(true)
-    const extension = import('../../typeScriptSession.ts').then(({ loadTypeScriptExtension }) => loadTypeScriptExtension(uri)).catch(() => undefined)
+    const extension = import('../../typeScriptSession.ts')
+      .then(({ loadTypeScriptExtension }) => loadTypeScriptExtension(uri, typingRef.current))
+      .catch(() => undefined)
     void Promise.all([import('@uiw/codemirror-theme-github'), claimEditor(uri)])
       .then(([{ githubDark, githubLight }, nextRelease]) => {
         release = nextRelease
@@ -125,6 +130,10 @@ export function CodeEditor({ ariaLabel, disabled, errorLabel, loadingLabel, loca
   useEffect(() => {
     editor.current?.monacoEditor.updateOptions({ readOnly: disabled })
   }, [disabled])
+
+  useEffect(() => {
+    void import('../../typeScriptSession.ts').then(({ updateTypeScriptTyping }) => updateTypeScriptTyping(uri, typing)).catch(noop)
+  }, [typing, uri])
 
   useEffect(() => {
     if (location != null) editor.current?.revealPosition?.(location.line, location.column)

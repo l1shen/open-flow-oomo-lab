@@ -16,7 +16,6 @@ import type {
 import type { RevisionView } from '../revisionView.ts'
 
 import { applyFlowChanges as reduceFlowChanges } from '../../../../flow/common/change.ts'
-import { replaceSource as replaceModuleSource } from '../../../../flow/common/moduleChanges.ts'
 import {
   cleanVariableBindings,
   createCodeTask,
@@ -31,7 +30,7 @@ import {
   setInputVariable as setGraphInputVariable,
   updateSettings,
 } from '../../../../flow/common/nodeChanges.ts'
-import { generateTyping, mergeTypingIntoSourceFile } from '../../../../manifest/common/meta/block/generateTyping.ts'
+import { generateTyping } from '../../../../manifest/common/meta/block/generateTyping.ts'
 
 export type DesignerTarget = { readonly kind: 'flow' } | { readonly id: string; readonly kind: 'subflow' }
 
@@ -72,6 +71,14 @@ export type TaskSettings =
   | (TaskSettingsBase & { readonly kind: 'llm'; readonly mode: 'chat' | 'json' })
 
 export type CodeTaskPorts = Pick<TaskDefinition, 'inputs' | 'outputs'>
+
+export function codeTyping(ports: CodeTaskPorts): string {
+  return generateTyping(
+    'javascript',
+    ports.inputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
+    ports.outputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
+  )
+}
 
 export interface SubflowSettings {
   readonly inputs: NonNullable<ReturnType<RevisionView['subflow']>>['inputs']
@@ -449,16 +456,7 @@ export function updateCodeTaskPorts(revision: RevisionView, target: DesignerTarg
   if (selection?.kind != 'task' || selection.node.task == null || selection.module == null) return
   const changes = replaceCodeTaskPorts(revision, target, nodeId, { ...selection.node.task, ...ports })
   if (changes == null) return
-  const source = mergeTypingIntoSourceFile(
-    selection.module.source,
-    generateTyping(
-      'javascript',
-      ports.inputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
-      ports.outputs.flatMap((port) => ('handle' in port ? [{ handle: port.handle, json_schema: port.jsonSchema, nullable: port.nullable }] : [])),
-    ),
-  )
-  const cleaned = cleanVariableBindings(revision.revision.content, changes)
-  return source == selection.module.source ? cleaned : [...cleaned, ...replaceModuleSource(selection.node.task.moduleId, source, selection.module.imports)]
+  return cleanVariableBindings(revision.revision.content, changes)
 }
 
 export function updateWebhook(
