@@ -14,31 +14,81 @@
 
 </div>
 
-Open Flow 是一个开源的工作流自动化平台。你可以在画布上连接有类型约束的节点，在合适的位置编写 JavaScript 或
-TypeScript，直接运行和调试 Flow，再把它发布成持续工作的自动化流程，并部署在自己控制的环境中。
+Open Flow 是一个开源、面向 Agent 的工作流自动化平台。告诉 Codex、Claude Code 或其他终端 Agent 你想自动化什么；它可以通过
+[`oo flow`](https://github.com/oomol-lab/oo-cli) 发现 Action 和 Trigger、生成类型化工作流、编写代码、检查、运行并发布工作流。
+
+同一个 Flow 会始终显示在 Workbench 中并可继续编辑。你也可以在可视化画布上连接类型化步骤，在合适的位置保留 JavaScript 或
+TypeScript，并在自己控制的部署中运行最终的自动化流程。
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/light.png">
-    <img alt="Open Flow Workbench 中正在运行的 Hacker News 工作流" src="assets/light.png">
-  </picture>
+  <img alt="A Gmail-to-Feishu workflow running successfully in the Open Flow Workbench" src="assets/workbench-overview.png">
 </p>
 
 > [!IMPORTANT]
 > Open Flow 目前处于 Alpha 阶段。公开协议有版本管理，但产品还没有发布第一个稳定版本。
 
+## 使用 AI Agent 构建工作流
+
+`oo flow` 将完整的创作生命周期开放为有版本、机器可读的命令。能够使用终端的 Agent 可以：
+
+- 发现准确的 Connector Action 和 Provider Trigger；
+- 创建和编辑类型化 Node、Edge、Code Task 和 Trigger binding；
+- 检查 Draft、运行它并读取结果；
+- 在你明确要求时发布到 Live，或者在 Workbench 中打开同一个 Flow。
+
+> **示例请求：**“构建一个工作流，读取未读 Gmail 邮件，整理格式后发送到飞书。”
+
+Agent 创建的是所选 Open Flow 部署中的真实 Draft，而不是用完即弃的本地配置。CLI 和 Workbench 使用同一个 Control API，因此 AI 创建的改动会立即出现在同一个可视化流程图中，并且人和 Agent 都可以继续编辑。
+
+[安装 `oo` CLI](https://github.com/oomol-lab/oo-cli)，即可通过 Codex、Claude Code 或其他终端 Agent 创作 Open Flow。
+
+## 选择 Open Flow 的运行方式
+
+两种支持的方式使用同一套 Open Flow 产品和 Workbench。
+
+<table>
+  <tr>
+    <td width="50%" align="center"><strong>☁️ OOMOL Hosted</strong></td>
+    <td width="50%" align="center"><strong>🐳 Docker Self-hosted</strong></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">无需准备、更新或监控服务器，打开即可使用。OOMOL 负责运行部署，并为支持的集成提供托管 OAuth App，免去固定服务器成本和单独配置 OAuth App 的工作。</td>
+    <td width="50%" valign="top">使用内置 Docker 镜像运行在自己的基础设施中。部署、存储、备份、升级、网络以及 Connector 或 OAuth App 配置均由你管理。</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">🚀 <a href="https://oomol.com"><strong>使用 OOMOL Hosted</strong></a></td>
+    <td width="50%" align="center"><a href="#快速开始"><strong>使用 Docker 自部署</strong></a></td>
+  </tr>
+</table>
+
 ## 为什么选择 Open Flow
 
+- **使用 AI Agent 构建。** 在 Codex、Claude Code 或其他终端 Agent 中使用 `oo flow`，创建、检查、运行和发布 Workbench 中的同一个 Flow。
 - **可视化设计，用代码扩展。** 在画布上组合有类型约束的节点和 Subflow；遇到更适合代码的逻辑，直接使用 Script 或 CodeModule
   节点，写的是真正的 TypeScript，而不是藏在表单里的表达式。
 - **运行和调试在同一处。** 运行前检查输入和 Flow 结构，运行时查看每个节点的进度、输出和完整事件记录。
 - **发布为长期运行的自动化。** Flow 可以手动启动，也可以由 Cron、Webhook、轮询数据源或 Provider Event 触发。
 - **运行状态集中管理。** Project、不可变 Revision、Publication、Live 版本、Run 和 Trigger 状态都由当前部署管理，不会散落在本地文件和隐藏服务中。
 - **安全地执行用户代码。** Server 在长驻的 Executor 进程中为每次代码 Task 调用创建全新的 V8 isolate，只暴露该 Task 明确声明的 Capability。
-- **自由选择运行环境。** 可以使用仓库自带的 Server 自行部署，也可以让同一套 Workbench 和 CLI 连接其他兼容 Control API 的实现。
+- **自由选择运行环境。** 可以直接使用 OOMOL Hosted，也可以通过 Docker 在自己的基础设施上运行仓库内置的 Server。
 
 Open Flow 适合已经超过简单无代码原型，但又不想变成一堆脚本和基础设施的工作流。流程图仍然容易理解，需要写的代码也保留为正常代码，运行环境由你选择。
+
+### 类型化可视编排
+
+详细视图会在画布上明确展示每个输入、输出、类型、可空约束和连接关系。
+
+<p align="center">
+  <img src="assets/typed-node-details.jpg" alt="Typed input and output handles in the Open Flow Workbench detailed view">
+</p>
+
+### 在合适的位置写代码
+
+Code Task 会把自定义 JavaScript 或 TypeScript 与它连接的节点放在一起，并保留类型化的输入和输出。
+
+<p align="center">
+  <img src="assets/code-task-editor.jpg" alt="Editing a custom Code Task in the Open Flow Workbench">
+</p>
 
 ## 工作原理
 
@@ -87,6 +137,10 @@ docker run --rm \
 
 要对 GitHub、Gmail、Slack、Notion 等服务执行 Action 和 Provider Trigger，需要把 Server 指向一个 Connector 运行时。自行部署的
 [OpenConnector](https://github.com/oomol-lab/open-connector) 和 OOMOL 托管的 Connector 都提供所需的运行时 API。
+
+<p align="center">
+  <img src="assets/connector-actions.jpg" alt="Browsing Gmail Provider Triggers and Actions in the Open Flow Workbench">
+</p>
 
 ```dotenv
 OPEN_FLOW_CONNECTOR_ORIGIN=http://open-connector:3000
@@ -185,5 +239,5 @@ Issue。[SECURITY.md](../SECURITY.md) 说明了受支持的版本、披露流程
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/star-history/star-history-dark.svg">
-  <img alt="Star 历史" src="../assets/star-history/star-history-light.svg">
+  <img alt="Star history" src="../assets/star-history/star-history-light.svg">
 </picture>

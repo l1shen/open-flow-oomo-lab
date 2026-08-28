@@ -12,24 +12,66 @@
 
 </div>
 
-Open Flow is an open-source workflow automation platform for building on a visual canvas without
-giving up code. Connect typed steps, write JavaScript or TypeScript where it belongs, run flows
-interactively, and publish them for continuous execution on a deployment you control.
+Open Flow is an open-source, agent-native workflow automation platform. Tell Codex, Claude Code, or
+another terminal Agent what you want to automate; through
+[`oo flow`](https://github.com/oomol-lab/oo-cli), it can discover Actions and Triggers, generate a
+typed workflow, write code, check it, run it, and publish it.
+
+The same Flow stays visible and editable in the Workbench. Connect typed steps on a visual canvas,
+keep JavaScript or TypeScript where it belongs, and run the resulting automation on a deployment
+you control.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="./docs/assets/light.png">
-    <img alt="A Hacker News workflow running in the Open Flow Workbench" src="./docs/assets/light.png">
-  </picture>
+  <img alt="A Gmail-to-Feishu workflow running successfully in the Open Flow Workbench" src="./docs/assets/workbench-overview.png">
 </p>
 
 > [!IMPORTANT]
 > Open Flow is in alpha. Its contracts are versioned, but the product has not reached its first
 > stable release.
 
+## Build Workflows with an AI Agent
+
+`oo flow` exposes the authoring lifecycle as versioned, machine-readable commands. An Agent that can
+use a terminal can:
+
+- discover exact Connector Actions and Provider Triggers;
+- create and edit typed Nodes, Edges, Code Tasks, and Trigger bindings;
+- check a Draft, run it, and inspect the result;
+- publish it to Live or open the same Flow in the Workbench when you ask.
+
+> **Example request:** “Build a workflow that reads unread Gmail messages, formats them, and sends
+> them to Feishu.”
+
+The Agent creates a real Draft in the selected Open Flow deployment, not a disposable local config.
+The CLI and Workbench use the same Control API, so an AI-authored change appears in the same visual
+graph and remains editable by both people and Agents.
+
+[Install the `oo` CLI](https://github.com/oomol-lab/oo-cli) to author Open Flow from Codex, Claude
+Code, or another terminal Agent.
+
+## Choose How to Run Open Flow
+
+Use the same Open Flow product and Workbench through either supported path.
+
+<table>
+  <tr>
+    <td width="50%" align="center"><strong>☁️ OOMOL Hosted</strong></td>
+    <td width="50%" align="center"><strong>🐳 Docker Self-hosted</strong></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">Ready to use without provisioning, patching, or monitoring a server. OOMOL operates the deployment and provides managed OAuth apps for supported integrations, so you avoid fixed server costs and separate OAuth app setup.</td>
+    <td width="50%" valign="top">Run on your own infrastructure with the included Docker image. You manage deployment, storage, backups, upgrades, networking, and any Connector or OAuth app setup.</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">🚀 <a href="https://oomol.com"><strong>Use OOMOL Hosted</strong></a></td>
+    <td width="50%" align="center"><a href="#quick-start"><strong>Self-host with Docker</strong></a></td>
+  </tr>
+</table>
+
 ## Why Open Flow
 
+- **Build with an AI Agent.** Use `oo flow` from Codex, Claude Code, or another terminal Agent to
+  create, check, run, and publish the same Flow you see in the Workbench.
 - **Design visually, extend with code.** Compose typed nodes and Subflows on the canvas, then use
   Script and CodeModule nodes for logic that should stay explicit. The code remains code, with real
   TypeScript instead of expressions hidden in form fields.
@@ -42,12 +84,30 @@ interactively, and publish them for continuous execution on a deployment you con
   files and hidden services.
 - **Run untrusted code safely.** The Server executes every code Task in a fresh V8 isolate inside a
   long-lived Executor process, with only the Capabilities that Task declared.
-- **Choose where it runs.** Use the included self-hosted Server, or connect the same Workbench and
-  CLI to another implementation of the versioned Control API.
+- **Choose where it runs.** Use OOMOL Hosted, or run the included Server with Docker on your own
+  infrastructure.
 
 Open Flow is built for workflows that outgrow a no-code prototype but should not become an opaque
 collection of scripts and infrastructure. The graph remains understandable, the code remains
 code, and the deployment remains under your control.
+
+### Typed visual authoring
+
+Detailed view keeps each input, output, type, nullable constraint, and connection explicit on the
+canvas.
+
+<p align="center">
+  <img src="./docs/assets/typed-node-details.jpg" alt="Typed input and output handles in the Open Flow Workbench detailed view">
+</p>
+
+### Code where it belongs
+
+Code Tasks keep custom JavaScript or TypeScript visible beside the nodes they connect, with typed
+inputs and outputs.
+
+<p align="center">
+  <img src="./docs/assets/code-task-editor.jpg" alt="Editing a custom Code Task in the Open Flow Workbench">
+</p>
 
 ## How It Works
 
@@ -104,6 +164,10 @@ To run Actions and Provider Triggers against services such as GitHub, Gmail, Sla
 point the Server at a Connector runtime. Both a self-hosted
 [OpenConnector](https://github.com/oomol-lab/open-connector) and the OOMOL-hosted Connector expose
 the required runtime API.
+
+<p align="center">
+  <img src="./docs/assets/connector-actions.jpg" alt="Browsing Gmail Provider Triggers and Actions in the Open Flow Workbench">
+</p>
 
 ```dotenv
 OPEN_FLOW_CONNECTOR_ORIGIN=http://open-connector:3000

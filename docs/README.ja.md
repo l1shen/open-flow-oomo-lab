@@ -14,23 +14,57 @@
 
 </div>
 
-Open Flow は、コードを手放すことなくビジュアルキャンバス上で構築できるオープンソースのワークフロー自動化プラットフォームです。
-型付けされたステップを接続し、必要な場所で JavaScript または TypeScript を記述し、Flow を対話的に実行し、自分で管理するデプロイメント上で
-継続的に実行されるように公開できます。
+Open Flow は、オープンソースで Agent ネイティブなワークフロー自動化プラットフォームです。Codex、Claude Code、または他のターミナル Agent に
+自動化したい内容を伝えると、[`oo flow`](https://github.com/oomol-lab/oo-cli) を通じて Action と Trigger を探索し、型付きワークフローを生成し、
+コードを記述し、検査、実行、公開できます。
+
+同じ Flow は Workbench 上で表示および編集できます。ビジュアルキャンバスで型付きステップを接続し、必要な場所に JavaScript または TypeScript を残し、
+自分で管理するデプロイメント上で自動化を実行できます。
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/light.png">
-    <img alt="Open Flow Workbench で実行中の Hacker News ワークフロー" src="assets/light.png">
-  </picture>
+  <img alt="A Gmail-to-Feishu workflow running successfully in the Open Flow Workbench" src="assets/workbench-overview.png">
 </p>
 
 > [!IMPORTANT]
 > Open Flow は現在 Alpha 段階です。公開されている契約（contract）はバージョン管理されていますが、プロダクトとしての最初の安定版はまだリリースされていません。
 
+## AI Agent でワークフローを構築する
+
+`oo flow` は、作成ライフサイクルをバージョン管理された機械可読コマンドとして公開します。ターミナルを使用できる Agent は次の操作ができます。
+
+- 正確な Connector Action と Provider Trigger を探索する。
+- 型付き Node、Edge、Code Task、Trigger binding を作成および編集する。
+- Draft を検査して実行し、結果を確認する。
+- 明示的に依頼された場合に Live へ公開するか、同じ Flow を Workbench で開く。
+
+> **依頼の例：**「未読の Gmail メッセージを読み、整形して Feishu に送信するワークフローを構築して。」
+
+Agent が作成するのは、使い捨てのローカル設定ではなく、選択した Open Flow デプロイメント内の実際の Draft です。CLI と Workbench は同じ Control API を使用するため、AI が作成した変更は同じビジュアルグラフに表示され、人と Agent のどちらも編集を続けられます。
+
+[Codex、Claude Code、または他のターミナル Agent から Open Flow を作成するために `oo` CLI をインストールします。](https://github.com/oomol-lab/oo-cli)
+
+## Open Flow の実行方法を選ぶ
+
+どちらの対応パスでも、同じ Open Flow プロダクトと Workbench を利用できます。
+
+<table>
+  <tr>
+    <td width="50%" align="center"><strong>☁️ OOMOL Hosted</strong></td>
+    <td width="50%" align="center"><strong>🐳 Docker Self-hosted</strong></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">サーバーの準備、更新、監視なしですぐに利用できます。OOMOL がデプロイメントを運用し、対応する連携にはマネージド OAuth App を提供するため、固定のサーバー費用や個別の OAuth App 設定が不要です。</td>
+    <td width="50%" valign="top">同梱の Docker イメージを使って自分のインフラストラクチャで実行します。デプロイ、ストレージ、バックアップ、アップグレード、ネットワーク、Connector または OAuth App の設定を自分で管理します。</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">🚀 <a href="https://oomol.com"><strong>OOMOL Hosted を使う</strong></a></td>
+    <td width="50%" align="center"><a href="#クイックスタート"><strong>Docker でセルフホストする</strong></a></td>
+  </tr>
+</table>
+
 ## Open Flow を選ぶ理由
 
+- **AI Agent で構築する。** Codex、Claude Code、または他のターミナル Agent から `oo flow` を使用して、Workbench に表示される同じ Flow を作成、検査、実行、公開できます。
 - **ビジュアルで設計し、コードで拡張する。** キャンバス上で型付けされたノードと Subflow を組み合わせ、明示的に残すべきロジックには Script ノードや
   CodeModule ノードを使います。コードはあくまでコードのままで、フォーム項目に隠された式ではなく、本物の TypeScript を書けます。
 - **実行とデバッグを一か所で。** 実行前に入力と Flow の構造を検証し、各ノードの進行状況と出力を確認し、すべての Run の完全なイベント履歴を追跡できます。
@@ -39,10 +73,26 @@ Open Flow は、コードを手放すことなくビジュアルキャンバス�
   分散することなく、選択された一つのデプロイメントに属します。
 - **信頼できないコードを安全に実行する。** Server は、長時間稼働する Executor プロセス内で、コードの Task ごとに新しい V8 isolate を作成し、
   その Task が宣言した Capability だけを公開します。
-- **実行場所を選べる。** 同梱のセルフホスト Server を使うことも、同じ Workbench と CLI をバージョン管理された Control API の別の実装に接続することもできます。
+- **実行場所を選べる。** OOMOL Hosted を利用するか、同梱の Server を Docker で自分のインフラストラクチャ上に実行できます。
 
 Open Flow は、ノーコードのプロトタイプでは収まらなくなったものの、不透明なスクリプトとインフラの寄せ集めにはしたくないワークフローのために作られています。
 グラフは理解しやすいまま、コードはコードのまま、そしてデプロイメントは自分の管理下に残ります。
+
+### 型付きビジュアルオーサリング
+
+詳細ビューでは、各入力、出力、型、nullable 制約、接続がキャンバス上に明示されます。
+
+<p align="center">
+  <img src="assets/typed-node-details.jpg" alt="Typed input and output handles in the Open Flow Workbench detailed view">
+</p>
+
+### 必要な場所にコードを書く
+
+Code Task では、カスタム JavaScript や TypeScript を接続先のノードと並べて表示し、型付きの入力と出力を維持できます。
+
+<p align="center">
+  <img src="assets/code-task-editor.jpg" alt="Editing a custom Code Task in the Open Flow Workbench">
+</p>
 
 ## 仕組み
 
@@ -91,6 +141,10 @@ Server は外部サービスなしでも利用できます。Connector を利用
 
 GitHub、Gmail、Slack、Notion などのサービスに対して Action や Provider Trigger を実行するには、Server を Connector ランタイムに向けます。
 セルフホストの [OpenConnector](https://github.com/oomol-lab/open-connector) と OOMOL がホストする Connector のどちらも、必要なランタイム API を提供しています。
+
+<p align="center">
+  <img src="assets/connector-actions.jpg" alt="Browsing Gmail Provider Triggers and Actions in the Open Flow Workbench">
+</p>
 
 ```dotenv
 OPEN_FLOW_CONNECTOR_ORIGIN=http://open-connector:3000
@@ -188,5 +242,5 @@ Open Flow の開発にご協力いただいたすべての皆さまに感謝し�
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/star-history/star-history-dark.svg">
-  <img alt="Star 履歴" src="../assets/star-history/star-history-light.svg">
+  <img alt="Star history" src="../assets/star-history/star-history-light.svg">
 </picture>

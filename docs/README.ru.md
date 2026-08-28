@@ -14,25 +14,60 @@
 
 </div>
 
-Open Flow является платформой автоматизации workflow с открытым исходным кодом. Вы строите процесс на
-визуальном холсте, не отказываясь от кода: соединяете типизированные шаги, пишете JavaScript или
-TypeScript там, где это уместно, запускаете Flow в интерактивном режиме и публикуете его для
-непрерывного выполнения на deployment, который контролируете вы.
+Open Flow — это open-source платформа автоматизации workflow, изначально предназначенная для Agent.
+Опишите Codex, Claude Code или другому терминальному Agent, что нужно автоматизировать: через
+[`oo flow`](https://github.com/oomol-lab/oo-cli) он сможет найти Actions и Triggers, создать
+типизированный workflow, написать код, проверить, запустить и опубликовать его.
+
+Тот же Flow остаётся видимым и редактируемым в Workbench. Соединяйте типизированные шаги на визуальном
+холсте, оставляйте JavaScript или TypeScript там, где он нужен, и запускайте автоматизацию на
+deployment под вашим контролем.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/light.png">
-    <img alt="Workflow для Hacker News, выполняющийся в Open Flow Workbench" src="assets/light.png">
-  </picture>
+  <img alt="A Gmail-to-Feishu workflow running successfully in the Open Flow Workbench" src="assets/workbench-overview.png">
 </p>
 
 > [!IMPORTANT]
 > Open Flow находится на стадии alpha. Его контракты версионируются, но продукт ещё не достиг первого
 > стабильного релиза.
 
+## Создавайте workflow с помощью AI Agent
+
+`oo flow` предоставляет жизненный цикл создания в виде версионированных машиночитаемых команд. Agent с доступом к терминалу может:
+
+- находить точные Connector Actions и Provider Triggers;
+- создавать и редактировать типизированные Nodes, Edges, Code Tasks и Trigger bindings;
+- проверять Draft, запускать его и получать результат;
+- по вашему явному запросу публиковать в Live или открывать тот же Flow в Workbench.
+
+> **Пример запроса:** «Создай workflow, который читает непрочитанные сообщения Gmail, форматирует их и отправляет в Feishu».
+
+Agent создаёт настоящий Draft в выбранном deployment Open Flow, а не одноразовую локальную конфигурацию. CLI и Workbench используют один Control API, поэтому изменения, созданные AI, появляются в том же визуальном графе и остаются доступными для редактирования как людям, так и Agent.
+
+[Установите `oo` CLI](https://github.com/oomol-lab/oo-cli), чтобы создавать Open Flow из Codex, Claude Code или другого терминального Agent.
+
+## Выберите способ запуска Open Flow
+
+Оба поддерживаемых варианта используют один и тот же продукт Open Flow и Workbench.
+
+<table>
+  <tr>
+    <td width="50%" align="center"><strong>☁️ OOMOL Hosted</strong></td>
+    <td width="50%" align="center"><strong>🐳 Docker Self-hosted</strong></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">Готово к работе без подготовки, обновления и мониторинга сервера. OOMOL управляет deployment и предоставляет управляемые OAuth App для поддерживаемых интеграций, поэтому вам не нужны постоянные расходы на сервер и отдельная настройка OAuth App.</td>
+    <td width="50%" valign="top">Запускайте на своей инфраструктуре с помощью включённого Docker image. Вы управляете deployment, хранилищем, резервным копированием, обновлениями, сетью и настройкой Connector или OAuth App.</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">🚀 <a href="https://oomol.com"><strong>Использовать OOMOL Hosted</strong></a></td>
+    <td width="50%" align="center"><a href="#быстрый-старт"><strong>Развернуть самостоятельно с Docker</strong></a></td>
+  </tr>
+</table>
+
 ## Почему Open Flow
 
+- **Создавайте с помощью AI Agent.** Используйте `oo flow` из Codex, Claude Code или другого терминального Agent, чтобы создавать, проверять, запускать и публиковать тот же Flow, который отображается в Workbench.
 - **Проектируйте визуально, расширяйте кодом.** Собирайте типизированные узлы и Subflow на холсте, а
   логику, которая должна оставаться явной, выносите в узлы Script и CodeModule. Код остаётся кодом:
   это настоящий TypeScript, а не выражения, спрятанные в полях формы.
@@ -47,12 +82,30 @@ TypeScript там, где это уместно, запускаете Flow в и
 - **Безопасно выполняйте недоверенный код.** Server выполняет каждый кодовый Task в новом V8 isolate
   внутри долгоживущего процесса Executor и предоставляет только те Capability, которые объявил этот
   Task.
-- **Выбирайте, где всё работает.** Используйте входящий в комплект self-hosted Server или подключите
-  те же Workbench и CLI к другой реализации версионированного Control API.
+- **Выбирайте, где всё работает.** Используйте OOMOL Hosted или запускайте входящий в комплект Server
+  с Docker на собственной инфраструктуре.
 
 Open Flow создан для workflow, которые переросли no-code прототип, но не должны превращаться в
 непрозрачный набор скриптов и инфраструктуры. Граф остаётся понятным, код остаётся кодом, а
 deployment остаётся под вашим контролем.
+
+### Визуальное создание с типами
+
+В подробном представлении каждый вход, выход, тип, nullable-ограничение и соединение явно показаны
+на холсте.
+
+<p align="center">
+  <img src="assets/typed-node-details.jpg" alt="Typed input and output handles in the Open Flow Workbench detailed view">
+</p>
+
+### Код там, где он нужен
+
+Code Task показывает пользовательский JavaScript или TypeScript рядом с соединёнными узлами,
+сохраняя типизированные входы и выходы.
+
+<p align="center">
+  <img src="assets/code-task-editor.jpg" alt="Editing a custom Code Task in the Open Flow Workbench">
+</p>
 
 ## Как это работает
 
@@ -109,6 +162,10 @@ Server полезен и без внешних сервисов. Action на б�
 Чтобы выполнять Action и Trigger от Provider для таких сервисов, как GitHub, Gmail, Slack или Notion,
 укажите Server среду выполнения Connector. Необходимый runtime API предоставляют как self-hosted
 [OpenConnector](https://github.com/oomol-lab/open-connector), так и Connector, размещённый OOMOL.
+
+<p align="center">
+  <img src="assets/connector-actions.jpg" alt="Browsing Gmail Provider Triggers and Actions in the Open Flow Workbench">
+</p>
 
 ```dotenv
 OPEN_FLOW_CONNECTOR_ORIGIN=http://open-connector:3000
@@ -221,5 +278,5 @@ Issue и pull request приветствуются. Настройка окру�
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/star-history/star-history-dark.svg">
-  <img alt="История звёзд" src="../assets/star-history/star-history-light.svg">
+  <img alt="Star history" src="../assets/star-history/star-history-light.svg">
 </picture>

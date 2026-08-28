@@ -14,31 +14,81 @@
 
 </div>
 
-Open Flow 是一個開源的工作流程自動化平台。你可以在畫布上連接具型別約束的節點，在合適的位置撰寫 JavaScript 或
-TypeScript，直接執行和偵錯 Flow，再把它發布成持續運作的自動化流程，並部署在自己掌控的環境中。
+Open Flow 是一個開源、面向 Agent 的工作流程自動化平台。告訴 Codex、Claude Code 或其他終端 Agent 你想自動化什麼；它可以透過
+[`oo flow`](https://github.com/oomol-lab/oo-cli) 探索 Action 和 Trigger、產生類型化工作流程、撰寫程式碼、檢查、執行並發布工作流程。
+
+同一個 Flow 會持續顯示在 Workbench 中並可繼續編輯。你也可以在視覺化畫布上連接類型化步驟，在合適的位置保留 JavaScript 或
+TypeScript，並在自己掌控的部署中執行最終的自動化流程。
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/light.png">
-    <img alt="Open Flow Workbench 中正在執行的 Hacker News 工作流程" src="assets/light.png">
-  </picture>
+  <img alt="A Gmail-to-Feishu workflow running successfully in the Open Flow Workbench" src="assets/workbench-overview.png">
 </p>
 
 > [!IMPORTANT]
 > Open Flow 目前處於 Alpha 階段。公開協定有版本管理，但產品尚未發布第一個穩定版本。
 
+## 使用 AI Agent 建立工作流程
+
+`oo flow` 將完整的創作生命週期開放為有版本、機器可讀的命令。能夠使用終端的 Agent 可以：
+
+- 探索準確的 Connector Action 和 Provider Trigger；
+- 建立和編輯類型化 Node、Edge、Code Task 和 Trigger binding；
+- 檢查 Draft、執行它並讀取結果；
+- 在你明確要求時發布到 Live，或在 Workbench 中開啟同一個 Flow。
+
+> **範例請求：**「建立一個工作流程，讀取未讀 Gmail 郵件，整理格式後傳送到飛書。」
+
+Agent 建立的是所選 Open Flow 部署中的真實 Draft，而不是用完即棄的本機設定。CLI 和 Workbench 使用同一個 Control API，因此 AI 建立的變更會立即出現在同一個視覺化流程圖中，並且人和 Agent 都可以繼續編輯。
+
+[安裝 `oo` CLI](https://github.com/oomol-lab/oo-cli)，即可透過 Codex、Claude Code 或其他終端 Agent 創作 Open Flow。
+
+## 選擇 Open Flow 的執行方式
+
+兩種支援的方式使用同一套 Open Flow 產品和 Workbench。
+
+<table>
+  <tr>
+    <td width="50%" align="center"><strong>☁️ OOMOL Hosted</strong></td>
+    <td width="50%" align="center"><strong>🐳 Docker Self-hosted</strong></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">無需準備、更新或監控伺服器，開啟即可使用。OOMOL 負責執行部署，並為支援的整合提供託管 OAuth App，省去固定伺服器成本和另外設定 OAuth App 的工作。</td>
+    <td width="50%" valign="top">使用內建 Docker 映像檔在自己的基礎設施中執行。部署、儲存、備份、升級、網路以及 Connector 或 OAuth App 設定均由你管理。</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">🚀 <a href="https://oomol.com"><strong>使用 OOMOL Hosted</strong></a></td>
+    <td width="50%" align="center"><a href="#快速開始"><strong>使用 Docker 自行部署</strong></a></td>
+  </tr>
+</table>
+
 ## 為什麼選擇 Open Flow
 
+- **使用 AI Agent 建立。** 在 Codex、Claude Code 或其他終端 Agent 中使用 `oo flow`，建立、檢查、執行和發布 Workbench 中的同一個 Flow。
 - **視覺化設計，用程式碼擴充。** 在畫布上組合具型別約束的節點和 Subflow；遇到更適合用程式碼處理的邏輯，直接使用 Script 或 CodeModule
   節點，寫的是真正的 TypeScript，而不是藏在表單裡的運算式。
 - **執行和偵錯在同一處。** 執行前檢查輸入和 Flow 結構，執行時查看每個節點的進度、輸出和完整事件記錄。
 - **發布為長期執行的自動化。** Flow 可以手動啟動，也可以由 Cron、Webhook、輪詢資料來源或 Provider Event 觸發。
 - **執行狀態集中管理。** Project、不可變的 Revision、Publication、Live 版本、Run 和 Trigger 狀態都由目前的部署管理，不會散落在本機檔案和隱藏服務中。
 - **安全地執行使用者程式碼。** Server 在常駐的 Executor 程序中為每次程式碼 Task 呼叫建立全新的 V8 isolate，只開放該 Task 明確宣告的 Capability。
-- **自由選擇執行環境。** 可以使用儲存庫內建的 Server 自行部署，也可以讓同一套 Workbench 和 CLI 連接其他相容 Control API 的實作。
+- **自由選擇執行環境。** 可以直接使用 OOMOL Hosted，也可以透過 Docker 在自己的基礎設施上執行儲存庫內建的 Server。
 
 Open Flow 適合已經超出簡單無程式碼原型，但又不想變成一堆腳本和基礎設施的工作流程。流程圖仍然容易理解，需要撰寫的程式碼也保留為正常的程式碼，執行環境由你決定。
+
+### 類型化視覺編排
+
+詳細檢視會在畫布上明確顯示每個輸入、輸出、類型、可為空限制和連接關係。
+
+<p align="center">
+  <img src="assets/typed-node-details.jpg" alt="Typed input and output handles in the Open Flow Workbench detailed view">
+</p>
+
+### 在合適的位置撰寫程式碼
+
+Code Task 會把自訂 JavaScript 或 TypeScript 與它連接的節點放在一起，並保留類型化的輸入和輸出。
+
+<p align="center">
+  <img src="assets/code-task-editor.jpg" alt="Editing a custom Code Task in the Open Flow Workbench">
+</p>
 
 ## 運作方式
 
@@ -87,6 +137,10 @@ docker run --rm \
 
 要對 GitHub、Gmail、Slack、Notion 等服務執行 Action 和 Provider Trigger，需要把 Server 指向一個 Connector 執行環境。自行部署的
 [OpenConnector](https://github.com/oomol-lab/open-connector) 和 OOMOL 託管的 Connector 都提供所需的執行環境 API。
+
+<p align="center">
+  <img src="assets/connector-actions.jpg" alt="Browsing Gmail Provider Triggers and Actions in the Open Flow Workbench">
+</p>
 
 ```dotenv
 OPEN_FLOW_CONNECTOR_ORIGIN=http://open-connector:3000
@@ -183,5 +237,5 @@ Issue。[SECURITY.md](../SECURITY.md) 說明了受支援的版本、揭露流程
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/star-history/star-history-dark.svg">
-  <img alt="Star 歷史" src="../assets/star-history/star-history-light.svg">
+  <img alt="Star history" src="../assets/star-history/star-history-light.svg">
 </picture>
