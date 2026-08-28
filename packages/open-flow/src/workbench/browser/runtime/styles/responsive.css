@@ -246,29 +246,6 @@
       min-width: 720px;
     }
 
-    .event-row {
-      min-height: 52px;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: start;
-      gap: 4px 12px;
-      padding: 8px 12px;
-    }
-
-    .event-subject,
-    .event-summary {
-      grid-column: 1;
-    }
-
-    .event-row > code,
-    .event-row > time {
-      grid-column: 2;
-      text-align: right;
-    }
-
-    .event-summary {
-      white-space: normal;
-    }
-
     .runs-view.narrow {
       display: block;
       overflow: auto;

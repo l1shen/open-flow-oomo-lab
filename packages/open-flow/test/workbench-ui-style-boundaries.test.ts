@@ -410,7 +410,8 @@ test('keeps responsive control density on component APIs', async () => {
   )
   assert.doesNotMatch(responsiveStyles, /@media \(max-width:|legacy viewport|must win/)
   assert.doesNotMatch(runStyles, /@media \(max-width:/)
-  assert.match(responsiveStyles, /@container open-flow-workbench \(width <= 720px\)[\s\S]*?\.event-row/)
+  assert.match(runStyles, /\.run-log-event/)
+  assert.doesNotMatch(responsiveStyles, /\.run-log-event/)
 })
 
 test('keeps Workbench feedback on semantic theme surfaces', async () => {
@@ -479,7 +480,7 @@ test('keeps repeated feature selectors consolidated at their owner', async () =>
   ])
 
   assert.equal((canvasStyles.match(/  \.canvas-empty \{/g) ?? []).length, 1)
-  assert.equal((runStyles.match(/  \.event-subject \{/g) ?? []).length, 1)
+  assert.equal((runStyles.match(/  \.run-log-event \{/g) ?? []).length, 1)
 })
 
 test('keeps Run input values on the WorkbenchRunInputs public contract', async () => {
