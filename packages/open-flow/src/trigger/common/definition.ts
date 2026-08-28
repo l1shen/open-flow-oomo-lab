@@ -71,7 +71,7 @@ const schemaKeys = new Set([
   'type',
 ])
 const schemaType = z.enum(['array', 'boolean', 'integer', 'null', 'number', 'object', 'string'])
-const nonNegativeInteger = z.number().int().nonnegative().safe()
+const nonNegativeInteger = z.number().int().nonnegative()
 const schemaNode = z.strictObject({
   additionalProperties: z.union([z.boolean(), jsonObjectSchema]).optional(),
   const: jsonValueSchema.optional(),

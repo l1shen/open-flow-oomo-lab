@@ -22,7 +22,7 @@ const releaseSchema = z
       .object({
         digest: z.string().regex(/^[0-9a-f]{64}$/),
         length: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-        url: z.string().url(),
+        url: z.url(),
       })
       .strict(),
     bunVersion: z.string().min(1),

@@ -93,7 +93,7 @@ export const ConditionNodeSchema = /* @__PURE__ */ z
 
 const TriggerIdentitySchema = /* @__PURE__ */ z.string().min(1)
 const JsonValueSchema: z.ZodType<JsonValue, JsonValue> = /* @__PURE__ */ z.lazy(() =>
-  z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(JsonValueSchema), JsonObjectSchema]),
+  z.union([z.null(), z.boolean(), z.number(), z.string(), z.array(JsonValueSchema), JsonObjectSchema]),
 )
 const JsonObjectSchema: z.ZodType<JsonObject, JsonObject> = /* @__PURE__ */ z
   .record(z.string(), JsonValueSchema)
@@ -129,7 +129,7 @@ export const TriggerPollTimeSchema = /* @__PURE__ */ z.discriminatedUnion('type'
   z.strictObject({
     type: z.literal('every'),
     unit: z.enum(['minute', 'hour', 'day', 'week', 'month']),
-    value: z.number().int().positive().safe(),
+    value: z.number().int().positive(),
   }),
 ])
 
