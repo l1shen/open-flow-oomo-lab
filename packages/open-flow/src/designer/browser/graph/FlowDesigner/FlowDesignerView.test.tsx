@@ -200,6 +200,20 @@ describe('FlowDesignerView model synchronization', () => {
     }
   })
 
+  it('does not publish unchanged Variable projections while mounting', () => {
+    const value = model([task([{ handle: 'value', jsonSchema: { type: 'string' }, variableCompatible: true }])])
+    const view = FlowDesignerView(props(value)) as React.ReactElement<FlowDesignerProps>
+    const store = view.props.flowDesignerStore
+    const inputs = store.$.variableInputs.value
+    const names = store.$.variableNames.value
+
+    FlowDesignerView(props(value))
+
+    expect(store.$.variableInputs.value).toBe(inputs)
+    expect(store.$.variableNames.value).toBe(names)
+    store.dispose()
+  })
+
   it('does not clear an input value after the model replaces it with a connection', async () => {
     const onChangeInput = vi.fn()
     const initial = task([{ handle: 'value', jsonSchema: {}, value: null }])
