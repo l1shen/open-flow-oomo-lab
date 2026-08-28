@@ -3,6 +3,8 @@ import type { IntegrationDefinition } from '@oomol-lab/open-flow/integration-tri
 import type { DestinationStream, Logger } from 'pino'
 
 import { IntegrationConnectionError, PermanentIntegrationError, TransientIntegrationError } from '@oomol-lab/open-flow/integration-trigger'
+import * as Effect from 'effect/Effect'
+import { TestClock } from 'effect/testing'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -11,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createServerApp } from '../node/http.ts'
 import { createLogger } from '../node/logger.ts'
 import { ServerService } from '../node/service.ts'
+import { closeService, openService, startService } from './serviceFixture.ts'
 
 const directories: string[] = []
 let sequence = 0
@@ -119,17 +122,9 @@ function runtime() {
 
 it('requires HTTPS for non-loopback Integration callback origins', async () => {
   const file = await databaseFile()
-  expect(() =>
-    ServerService.open(
-      file,
-      undefined,
-      Date.now,
-      { integration: { callbackKey: 'callback-key', publicOrigin: 'http://flow.example' } },
-      undefined,
-      undefined,
-      [],
-    ),
-  ).toThrow('Integration public origin must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.')
+  await expect(
+    openService(file, undefined, Date.now, { integration: { callbackKey: 'callback-key', publicOrigin: 'http://flow.example' } }, undefined, undefined, []),
+  ).rejects.toThrow('Integration public origin must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.')
 })
 
 it('rejects Integration publication when the callback runtime is not configured', async () => {
@@ -138,15 +133,95 @@ it('rejects Integration publication when the callback runtime is not configured'
     reconcile: () => Promise.resolve({ outcome: 'ready' }),
     snapshot,
   }
-  const service = ServerService.open(await databaseFile(), undefined, Date.now, {}, undefined, undefined, [definition])
+  const service = await openService(await databaseFile(), undefined, Date.now, {}, undefined, undefined, [definition])
   try {
     await expect(publish(service, 'ready', null)).rejects.toMatchObject({ code: 'trigger-invalid', message: 'Integration runtime is not configured.' })
   } finally {
-    await service.close()
+    await closeService(service)
   }
 })
 
 describe('Server Integration reconciliation', () => {
+  it('aborts an in-flight Provider reconciliation when the service closes', async () => {
+    const entered = Promise.withResolvers<void>()
+    const canceled = Promise.withResolvers<void>()
+    let providerSignal: AbortSignal | undefined
+    const definition: IntegrationDefinition = {
+      initialState: { checkpoint: null, subscription: {} },
+      receive: () => ({ outcome: 'ignored', reason: 'unused' }),
+      async reconcile(context) {
+        const signal = context.signal
+        providerSignal = signal
+        if (signal == null) throw new Error('Integration reconciliation signal is missing.')
+        entered.resolve()
+        return await new Promise((_resolve, reject) => {
+          const abort = (): void => {
+            canceled.resolve()
+            reject(signal.reason)
+          }
+          if (signal.aborted) abort()
+          else signal.addEventListener('abort', abort, { once: true })
+        })
+      },
+      snapshot,
+    }
+    const at = Date.parse('2026-08-21T00:00:00.000Z')
+    const service = await openService(await databaseFile(), undefined, () => at, runtime(), undefined, undefined, [definition])
+    await publish(service, 'ready', null)
+    await startService(service)
+    await entered.promise
+
+    await closeService(service)
+    await canceled.promise
+
+    expect(providerSignal?.aborted).toBe(true)
+  })
+
+  it('times out an in-flight Provider reconciliation through the Effect clock', async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* TestClock.make()
+          const at = Date.parse('2026-08-21T00:00:00.000Z')
+          yield* clock.setTime(at)
+          const file = yield* Effect.promise(databaseFile)
+          const entered = Promise.withResolvers<void>()
+          const canceled = Promise.withResolvers<void>()
+          const definition: IntegrationDefinition = {
+            initialState: { checkpoint: null, subscription: {} },
+            receive: () => ({ outcome: 'ignored', reason: 'unused' }),
+            async reconcile(context) {
+              const signal = context.signal
+              if (signal == null) throw new Error('Integration reconciliation signal is missing.')
+              return await new Promise((_resolve, reject) => {
+                signal.addEventListener(
+                  'abort',
+                  () => {
+                    canceled.resolve()
+                    reject(signal.reason)
+                  },
+                  { once: true },
+                )
+                entered.resolve()
+              })
+            },
+            snapshot,
+          }
+          const service = yield* ServerService.open(file, undefined, clock, runtime(), undefined, undefined, [definition])
+          yield* Effect.tryPromise({ try: () => publish(service, 'ready', null), catch: (error) => error })
+          const ticking = service.tickIntegration(new Date(at).toISOString())
+          yield* Effect.promise(() => entered.promise)
+
+          yield* clock.adjust(30_000)
+          yield* Effect.promise(() => ticking)
+          yield* Effect.promise(() => canceled.promise)
+
+          expect(service.integrationState('main', 'integration')).toMatchObject({ health: 'initializing' })
+        }),
+      ),
+    )
+  })
+
   it('serializes concurrent reconciliation ticks', async () => {
     let active = 0
     let calls = 0
@@ -172,7 +247,7 @@ describe('Server Integration reconciliation', () => {
       snapshot,
     }
     const at = Date.parse('2026-08-21T00:00:00.000Z')
-    const service = ServerService.open(await databaseFile(), undefined, () => at, runtime(), undefined, undefined, [definition])
+    const service = await openService(await databaseFile(), undefined, () => at, runtime(), undefined, undefined, [definition])
     try {
       await publish(service, 'transient', null)
       const first = service.tickIntegration(new Date(at).toISOString())
@@ -186,36 +261,47 @@ describe('Server Integration reconciliation', () => {
       expect(maximumActive).toBe(1)
     } finally {
       release()
-      await service.close()
+      await closeService(service)
     }
   })
 
   it('cancels an armed reconciliation timer when the service closes', async () => {
-    let calls = 0
     const at = Date.parse('2026-08-21T00:00:00.000Z')
-    const definition: IntegrationDefinition = {
-      initialState: { checkpoint: null, subscription: {} },
-      receive: () => ({ outcome: 'ignored', reason: 'unused' }),
-      async reconcile(context) {
-        calls += 1
-        await context.state?.saveSubscription({}, new Date(at + 10))
-        return { outcome: 'ready' }
-      },
-      snapshot,
-    }
-    const service = ServerService.open(await databaseFile(), undefined, () => at, runtime(), undefined, undefined, [definition])
-    let closed = false
-    try {
-      await publish(service, 'ready', null)
-      await service.tickIntegration(new Date(at).toISOString())
-      service.start()
-      await service.close()
-      closed = true
-      await new Promise<void>((resolve) => setTimeout(resolve, 25))
-      expect(calls).toBe(1)
-    } finally {
-      if (!closed) await service.close()
-    }
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* TestClock.make()
+          yield* clock.setTime(at)
+          const file = yield* Effect.promise(databaseFile)
+          let calls = 0
+          const definition: IntegrationDefinition = {
+            initialState: { checkpoint: null, subscription: {} },
+            receive: () => ({ outcome: 'ignored', reason: 'unused' }),
+            async reconcile(context) {
+              calls += 1
+              await context.state?.saveSubscription({}, new Date(at + 10))
+              return { outcome: 'ready' }
+            },
+            snapshot,
+          }
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const service = yield* ServerService.open(file, undefined, clock, runtime(), undefined, undefined, [definition])
+              yield* Effect.tryPromise({
+                try: async () => {
+                  await publish(service, 'ready', null)
+                  await service.tickIntegration(new Date(at).toISOString())
+                },
+                catch: (error) => error,
+              })
+              yield* service.start()
+            }),
+          )
+          yield* clock.adjust(25)
+          expect(calls).toBe(1)
+        }),
+      ),
+    )
   })
 
   it('applies a one-second transient retry floor without a busy loop', async () => {
@@ -231,7 +317,7 @@ describe('Server Integration reconciliation', () => {
       snapshot,
     }
     const at = Date.parse('2026-08-21T00:00:00.000Z')
-    const service = ServerService.open(await databaseFile(), undefined, () => at, runtime(), undefined, captured.logger, [definition])
+    const service = await openService(await databaseFile(), undefined, () => at, runtime(), undefined, captured.logger, [definition])
     try {
       await publish(service, 'transient', null)
       await service.tickIntegration(new Date(at).toISOString())
@@ -243,7 +329,7 @@ describe('Server Integration reconciliation', () => {
       expect(captured.output().match(/"category":"trigger.integration.retrying"/g)).toHaveLength(1)
       expect(captured.output()).not.toContain('"retry"')
     } finally {
-      await service.close()
+      await closeService(service)
     }
   })
 
@@ -261,7 +347,7 @@ describe('Server Integration reconciliation', () => {
     }
     let now = Date.parse('2026-08-21T00:00:00.000Z')
     const file = await databaseFile()
-    const service = ServerService.open(file, undefined, () => now, runtime(), undefined, undefined, [definition])
+    const service = await openService(file, undefined, () => now, runtime(), undefined, undefined, [definition])
     try {
       let publicationId = await publish(service, 'connection', null)
       await service.tickIntegration(new Date(now).toISOString())
@@ -285,7 +371,7 @@ describe('Server Integration reconciliation', () => {
       database.close()
       expect(publicationId).toMatch(/^publication_/)
     } finally {
-      await service.close()
+      await closeService(service)
     }
   })
 })
@@ -326,7 +412,7 @@ describe('Server Integration callback fencing', () => {
     }
     let now = Date.parse('2026-08-21T00:00:00.000Z')
     const file = await databaseFile()
-    const service = ServerService.open(file, undefined, () => now, runtime(), undefined, undefined, [definition])
+    const service = await openService(file, undefined, () => now, runtime(), undefined, undefined, [definition])
     try {
       let publicationId = await publish(service, 'ready', null)
       await service.tickIntegration(new Date(now).toISOString())
@@ -360,7 +446,7 @@ describe('Server Integration callback fencing', () => {
       expect(outcomes.filter((outcome) => outcome.status == 'rejected').map((outcome) => outcome.reason)).toEqual([expect.any(TransientIntegrationError)])
       expect(service.integrationState('main', 'integration')?.checkpoint).toEqual({ deliveryId: 'delivery-main' })
     } finally {
-      await service.close()
+      await closeService(service)
     }
   })
 })

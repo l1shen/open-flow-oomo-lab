@@ -12,6 +12,7 @@ import { ConnectorClient } from '../node/connector.ts'
 import { createLogger } from '../node/logger.ts'
 import { ServerService } from '../node/service.ts'
 import { acceptRun } from './runFixture.ts'
+import { closeService, openService, startService as startRuntime } from './serviceFixture.ts'
 
 const directories: string[] = []
 const servers: Server[] = []
@@ -22,7 +23,7 @@ afterEach(async () => {
   const currentServers = servers.splice(0)
   for (const server of currentServers) server.closeAllConnections()
   await Promise.allSettled(currentServers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))))
-  await Promise.allSettled(services.splice(0).map((service) => service.close()))
+  await Promise.allSettled(services.splice(0).map(closeService))
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
 })
 
@@ -112,9 +113,9 @@ async function startConnector(handler: (request: IncomingMessage, response: Serv
 
 async function startService(origin: string, token = 'runtime-token', timeoutMs = 30_000, logger?: Logger): Promise<{ file: string; service: ServerService }> {
   const file = await databaseFile()
-  const service = ServerService.open(file, new ConnectorClient(origin, token, timeoutMs, logger))
+  const service = await openService(file, new ConnectorClient(origin, token, timeoutMs, logger))
   services.push(service)
-  service.start()
+  await startRuntime(service)
   return { file, service }
 }
 
@@ -366,16 +367,16 @@ describe('Server Connector client', () => {
   })
 
   it('uses only the explicit public Console origin for Connection pages', async () => {
-    const configured = ServerService.open(await databaseFile(), undefined, Date.now, {}, 'https://connector.example')
+    const configured = await openService(await databaseFile(), undefined, Date.now, {}, 'https://connector.example')
     services.push(configured)
     expect(configured.control.connectorConnectionPage('mail/work')).toBe('https://connector.example/providers/mail%2Fwork')
 
-    const unconfigured = ServerService.open(await databaseFile())
+    const unconfigured = await openService(await databaseFile())
     services.push(unconfigured)
     expect(() => unconfigured.control.connectorConnectionPage('mail')).toThrow(expect.objectContaining({ code: 'connector.unavailable', status: 503 }))
 
     const insecureFile = await databaseFile()
-    expect(() => ServerService.open(insecureFile, undefined, Date.now, {}, 'http://connector.example')).toThrow(
+    await expect(openService(insecureFile, undefined, Date.now, {}, 'http://connector.example')).rejects.toThrow(
       'Connector Console origin must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.',
     )
   })

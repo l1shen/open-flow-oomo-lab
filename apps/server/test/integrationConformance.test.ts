@@ -8,7 +8,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, it } from 'vitest'
 import { createServerApp } from '../node/http.ts'
-import { ServerService } from '../node/service.ts'
+import { closeService, openService } from './serviceFixture.ts'
 
 let sequence = 0
 
@@ -96,8 +96,8 @@ async function createHarness(fixture: IntegrationConformanceFixture): Promise<In
     snapshot,
   }
   let now = Date.parse(fixture.publishedAt)
-  const open = () => ServerService.open(file, undefined, () => now, { integration: { callbackKey, publicOrigin } }, undefined, undefined, [definition])
-  let service = open()
+  const open = () => openService(file, undefined, () => now, { integration: { callbackKey, publicOrigin } }, undefined, undefined, [definition])
+  let service = await open()
   let revisionId = next('revision')
   const published = await service.publishFlow({
     expectedLivePublicationId: null,
@@ -117,7 +117,7 @@ async function createHarness(fixture: IntegrationConformanceFixture): Promise<In
     callbackSecret: await integrationCallbackSecret(callbackKey, endpointId),
     endpointUrl,
     async dispose() {
-      await service.close()
+      await closeService(service)
       await rm(directory, { force: true, recursive: true })
     },
     async reconcile(at) {
@@ -140,8 +140,8 @@ async function createHarness(fixture: IntegrationConformanceFixture): Promise<In
       return await app.request(request)
     },
     async restart() {
-      await service.close()
-      service = open()
+      await closeService(service)
+      service = await open()
       app = createServerApp(service)
     },
     async retire(at) {

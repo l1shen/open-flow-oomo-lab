@@ -5,12 +5,13 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ServerService } from '../node/service.ts'
+import { closeService, openService } from './serviceFixture.ts'
 
 const directories: string[] = []
 const services = new Set<ServerService>()
 
 afterEach(async () => {
-  await Promise.allSettled([...services].map((service) => service.close()))
+  await Promise.allSettled([...services].map(closeService))
   services.clear()
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
 })
@@ -98,7 +99,7 @@ function publish(
 
 describe('Server Publication and Webhook target', () => {
   it('checks Variable eligibility after Publish idempotency replay', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile())
     services.add(service)
     const input = {
       expectedLivePublicationId: null,
@@ -124,7 +125,7 @@ describe('Server Publication and Webhook target', () => {
   })
 
   it('publishes one immutable Live target without exposing deployment state', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile())
     services.add(service)
     const content = revision()
     const accepted = await publish(service, {
@@ -167,7 +168,7 @@ describe('Server Publication and Webhook target', () => {
   })
 
   it('deduplicates concurrent Publish and rejects a conflicting idempotency key', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile())
     services.add(service)
     const input = {
       expectedLivePublicationId: null,
@@ -190,7 +191,7 @@ describe('Server Publication and Webhook target', () => {
   })
 
   it('moves Live with CAS while preserving endpoint identity and immutable operation replay', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile())
     services.add(service)
     const firstInput = {
       expectedLivePublicationId: null,
@@ -242,7 +243,7 @@ describe('Server Publication and Webhook target', () => {
 
   it('retires and restores the same endpoint across a SQLite reopen', async () => {
     const file = await databaseFile()
-    let service = ServerService.open(file)
+    let service = await openService(file)
     services.add(service)
     const first = await publish(service, {
       expectedLivePublicationId: null,
@@ -273,9 +274,9 @@ describe('Server Publication and Webhook target', () => {
     expect(service.webhookEndpoint('main', 'incoming')).toBe(endpointId)
     expect(service.webhookTarget(endpointId)).toMatchObject({ publicationId: restored.publicationId, runtimeVersion: 3 })
 
-    await service.close()
+    await closeService(service)
     services.delete(service)
-    service = ServerService.open(file)
+    service = await openService(file)
     services.add(service)
     expect(service.webhookEndpoint('main', 'incoming')).toBe(endpointId)
     expect(service.webhookTarget(endpointId)).toMatchObject({
@@ -287,7 +288,7 @@ describe('Server Publication and Webhook target', () => {
   })
 
   it('rejects a resolved target that becomes stale before Run admission', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile())
     services.add(service)
     const first = await publish(service, {
       expectedLivePublicationId: null,

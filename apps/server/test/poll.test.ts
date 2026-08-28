@@ -3,6 +3,8 @@ import type { PollDefinition, PollResult } from '@oomol-lab/open-flow/poll-trigg
 import type { DestinationStream, Logger } from 'pino'
 
 import { PollConnectionError, TransientPollError } from '@oomol-lab/open-flow/poll-trigger'
+import * as Effect from 'effect/Effect'
+import { TestClock } from 'effect/testing'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -12,6 +14,7 @@ import { createLogger } from '../node/logger.ts'
 import { ServerService } from '../node/service.ts'
 import { Store } from '../node/store.ts'
 import { createConnectorHost } from './connectorHost.ts'
+import { closeService, openService, startService } from './serviceFixture.ts'
 
 const directories: string[] = []
 
@@ -108,6 +111,88 @@ async function publish(service: ServerService, content = revision(), expectedLiv
 }
 
 describe('Server Poll Trigger', () => {
+  it('aborts an in-flight Provider and Connector request when the service closes', async () => {
+    const entered = Promise.withResolvers<void>()
+    const canceled = Promise.withResolvers<void>()
+    let providerSignal: AbortSignal | undefined
+    const requestSignal = new AbortController().signal
+    const waitingConnector = createConnectorHost({
+      async proxy(_provider, _connectionId, _rateLimitId, _request, signal) {
+        entered.resolve()
+        return await new Promise((_resolve, reject) => {
+          const abort = (): void => {
+            canceled.resolve()
+            reject(signal.reason)
+          }
+          if (signal.aborted) abort()
+          else signal.addEventListener('abort', abort, { once: true })
+        })
+      },
+    })
+    const definition: PollDefinition = {
+      snapshot,
+      async poll(context) {
+        providerSignal = context.signal
+        await context.connector.execute({ endpoint: '/events', method: 'GET' }, requestSignal)
+        return { checkpoint: null, events: [] }
+      },
+    }
+    let now = publishedAt
+    const service = await openService(await databaseFile(), waitingConnector, () => now, {}, undefined, undefined, [definition])
+    await publish(service)
+    now = Date.parse('2026-08-21T00:01:00.000Z')
+    await startService(service)
+    await entered.promise
+
+    await closeService(service)
+    await canceled.promise
+
+    expect(providerSignal?.aborted).toBe(true)
+    expect(requestSignal.aborted).toBe(false)
+  })
+
+  it('times out an in-flight Provider through the Effect clock', async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* TestClock.make()
+          yield* clock.setTime(publishedAt)
+          const file = yield* Effect.promise(databaseFile)
+          const entered = Promise.withResolvers<void>()
+          const canceled = Promise.withResolvers<void>()
+          const definition: PollDefinition = {
+            snapshot,
+            async poll(context) {
+              const signal = context.signal
+              if (signal == null) throw new Error('Poll Provider signal is missing.')
+              return await new Promise((_resolve, reject) => {
+                signal.addEventListener(
+                  'abort',
+                  () => {
+                    canceled.resolve()
+                    reject(signal.reason)
+                  },
+                  { once: true },
+                )
+                entered.resolve()
+              })
+            },
+          }
+          const service = yield* ServerService.open(file, connector, clock, {}, undefined, undefined, [definition])
+          yield* Effect.tryPromise({ try: () => publish(service), catch: (error) => error })
+          const ticking = service.tickPoll('2026-08-21T00:01:00.000Z')
+          yield* Effect.promise(() => entered.promise)
+
+          yield* clock.adjust(30_000)
+          yield* Effect.promise(() => ticking)
+          yield* Effect.promise(() => canceled.promise)
+
+          expect(service.pollState('main', 'poll')).toMatchObject({ checkpoint: null, health: 'initializing' })
+        }),
+      ),
+    )
+  })
+
   it('publishes its injected Trigger Key and tests a fixed Poll binding without changing runtime state', async () => {
     const file = await databaseFile()
     let calls = 0
@@ -125,7 +210,7 @@ describe('Server Poll Trigger', () => {
         }
       },
     }
-    const service = ServerService.open(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
+    const service = await openService(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
     try {
       const created = await service.control.createFlow('operator', 'Poll control', 'poll-control-flow')
       const content = revision()
@@ -161,7 +246,7 @@ describe('Server Poll Trigger', () => {
       expect(database.prepare('SELECT COUNT(*) AS count FROM runs').get()).toEqual({ count: 0 })
       database.close()
     } finally {
-      await service.close()
+      await closeService(service)
     }
   })
 
@@ -177,21 +262,21 @@ describe('Server Poll Trigger', () => {
         return { checkpoint: { page: 2 }, events: [] }
       },
     }
-    let service = ServerService.open(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
+    let service = await openService(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
     await publish(service)
 
     await service.tickPoll('2026-08-21T00:01:00.000Z')
     expect(calls).toBe(2)
     expect(service.pollState('main', 'poll')).toMatchObject({ checkpoint: { page: 1 }, health: 'initializing' })
-    await service.close()
+    await closeService(service)
 
-    service = ServerService.open(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
+    service = await openService(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
     await service.tickPoll('2026-08-21T00:01:00.000Z')
     expect(calls).toBe(2)
     await service.tickPoll('2026-08-21T00:01:01.000Z')
     expect(calls).toBe(3)
     expect(service.pollState('main', 'poll')).toMatchObject({ checkpoint: { page: 2 }, health: 'healthy' })
-    await service.close()
+    await closeService(service)
   })
 
   it('stops scheduling a Poll binding that needs Connection reauthorization', async () => {
@@ -203,7 +288,7 @@ describe('Server Poll Trigger', () => {
         throw new PollConnectionError('Connection requires reauthorization.')
       },
     }
-    const service = ServerService.open(file, connector, () => publishedAt, {}, undefined, captured.logger, [definition])
+    const service = await openService(file, connector, () => publishedAt, {}, undefined, captured.logger, [definition])
     await publish(service)
 
     await service.tickPoll('2026-08-21T00:01:00.000Z')
@@ -218,7 +303,7 @@ describe('Server Poll Trigger', () => {
     expect(captured.output()).toContain('"health":"needs_reauth"')
     expect(captured.output()).not.toContain('Connection requires reauthorization.')
     database.close()
-    await service.close()
+    await closeService(service)
   })
 
   it('fences an in-flight page when Poll semantics are republished', async () => {
@@ -233,7 +318,7 @@ describe('Server Poll Trigger', () => {
       },
     }
     let now = Date.parse('2026-08-21T00:00:30.000Z')
-    const service = ServerService.open(file, connector, () => now, {}, undefined, undefined, [definition])
+    const service = await openService(file, connector, () => now, {}, undefined, undefined, [definition])
     const publicationId = await publish(service)
     const ticking = service.tickPoll('2026-08-21T00:01:00.000Z')
     await entered.promise
@@ -248,15 +333,15 @@ describe('Server Poll Trigger', () => {
     expect(database.prepare('SELECT COUNT(*) AS count FROM poll_claims').get()).toEqual({ count: 0 })
     expect(database.prepare('SELECT COUNT(*) AS count FROM poll_admissions').get()).toEqual({ count: 0 })
     database.close()
-    await service.close()
+    await closeService(service)
   })
 
   it('allows an expired durable claim lease to be reacquired', async () => {
     const file = await databaseFile()
     const definition: PollDefinition = { snapshot, poll: () => Promise.resolve({ checkpoint: null, events: [] }) }
-    const service = ServerService.open(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
+    const service = await openService(file, connector, () => publishedAt, {}, undefined, undefined, [definition])
     await publish(service)
-    await service.close()
+    await closeService(service)
 
     const store = new Store(file)
     const target = store.triggers.duePoll(Date.parse('2026-08-21T00:01:00.000Z'), 1)[0]

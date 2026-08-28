@@ -1,6 +1,8 @@
 import type { RevisionContent } from '@oomol-lab/open-flow/flow-change'
 
 import { controlErrorCode } from '@oomol-lab/open-flow/control-api'
+import * as Effect from 'effect/Effect'
+import { TestClock } from 'effect/testing'
 import { execFile } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -10,6 +12,7 @@ import { promisify } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ServerService } from '../node/service.ts'
 import { acceptRun } from './runFixture.ts'
+import { closeService, openService, startService } from './serviceFixture.ts'
 
 const directories: string[] = []
 const execFileAsync = promisify(execFile)
@@ -166,7 +169,16 @@ async function waitForStatus(service: ServerService, runId: string, status: stri
 
 describe('Server application service', () => {
   it('checks Variable eligibility after idempotency and fails unresolved queued Runs before start', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile(), undefined, Date.now, { maxConcurrentRuns: 1 })
+    await startService(service)
+    const blocker = await acceptRun(service, {
+      flowId: 'blocker',
+      idempotencyKey: 'variable-blocker',
+      revision: hangingFlow(),
+      revisionId: 'revision-variable-blocker',
+    })
+    if (blocker.kind != 'accepted') throw new Error('Variable blocker Run was not accepted.')
+    await waitForStatus(service, blocker.runId, 'running')
     await expect(
       acceptRun(service, { flowId: 'main', idempotencyKey: 'variable-missing', revision: variableFlow(), revisionId: 'revision-variable' }),
     ).rejects.toMatchObject({ code: controlErrorCode.bindingUnresolved })
@@ -184,17 +196,26 @@ describe('Server application service', () => {
       acceptRun(service, { flowId: 'main', idempotencyKey: 'variable-run', revision: variableFlow(), revisionId: 'revision-variable' }),
     ).resolves.toMatchObject({ created: false, runId: accepted.runId })
 
-    service.start()
+    service.cancel(blocker.runId)
     await service.waitForIdle()
 
     expect(service.control.getRunResult(accepted.runId)).toMatchObject({ error: { code: controlErrorCode.bindingUnresolved }, status: 'failed' })
     expect(service.run(accepted.runId)).toMatchObject({ status: 'failed' })
     expect(service.events(accepted.runId).some(({ kind }) => kind == 'run.started')).toBe(false)
-    await service.close()
+    await closeService(service)
   })
 
   it('resolves one Variable snapshot at Run start without copying it into node.started', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile(), undefined, Date.now, { maxConcurrentRuns: 1 })
+    await startService(service)
+    const blocker = await acceptRun(service, {
+      flowId: 'blocker',
+      idempotencyKey: 'snapshot-blocker',
+      revision: hangingFlow(),
+      revisionId: 'revision-snapshot-blocker',
+    })
+    if (blocker.kind != 'accepted') throw new Error('Variable snapshot blocker Run was not accepted.')
+    await waitForStatus(service, blocker.runId, 'running')
     service.control.putVariable('TOKEN', 'queued-value')
     const accepted = await acceptRun(service, {
       flowId: 'main',
@@ -205,7 +226,7 @@ describe('Server application service', () => {
     if (accepted.kind != 'accepted') throw new Error('Variable Run was not accepted.')
     service.control.putVariable('TOKEN', 'start-value')
 
-    service.start()
+    service.cancel(blocker.runId)
     await service.waitForIdle()
 
     expect(service.control.getRunResult(accepted.runId)).toMatchObject({
@@ -214,12 +235,12 @@ describe('Server application service', () => {
     })
     const started = service.events(accepted.runId).filter(({ kind }) => kind == 'node.started')
     expect(JSON.stringify(started)).not.toContain('start-value')
-    await service.close()
+    await closeService(service)
   })
 
   it('executes a fixed full Flow through Scheduler and isolated-vm and persists public events', async () => {
-    const service = ServerService.open(await databaseFile())
-    service.start()
+    const service = await openService(await databaseFile())
+    await startService(service)
     const accepted = await acceptRun(service, {
       flowId: 'main',
       idempotencyKey: 'full-flow',
@@ -262,12 +283,21 @@ describe('Server application service', () => {
     await expect(acceptRun(service, { flowId: 'main', idempotencyKey: 'full-flow', revision: fullFlow(4), revisionId: 'revision-b' })).resolves.toEqual({
       kind: 'conflict',
     })
-    await service.close()
+    await closeService(service)
   })
 
-  it('reopens queued work before the start barrier and completes the same Run once', async () => {
+  it('reopens queued work after Scope interruption and completes the same Run once', async () => {
     const file = await databaseFile()
-    let service = ServerService.open(file)
+    let service = await openService(file, undefined, Date.now, { maxConcurrentRuns: 1 })
+    await startService(service)
+    const blocker = await acceptRun(service, {
+      flowId: 'blocker',
+      idempotencyKey: 'reopen-blocker',
+      revision: hangingFlow(),
+      revisionId: 'revision-reopen-blocker',
+    })
+    if (blocker.kind != 'accepted') throw new Error('Reopen blocker Run was not accepted.')
+    await waitForStatus(service, blocker.runId, 'running')
     const accepted = await acceptRun(service, {
       flowId: 'main',
       idempotencyKey: 'before-barrier',
@@ -276,20 +306,29 @@ describe('Server application service', () => {
     })
     if (accepted.kind != 'accepted') throw new Error('Initial Run acceptance conflicted.')
     expect(service.run(accepted.runId)?.status).toBe('queued')
-    await service.close()
+    await closeService(service)
 
-    service = ServerService.open(file)
-    service.start()
+    service = await openService(file, undefined, Date.now, { maxConcurrentRuns: 1 })
+    await startService(service)
     await service.waitForIdle()
     expect(service.run(accepted.runId)?.status).toBe('completed')
     expect(service.events(accepted.runId).filter((event) => event.kind == 'run.started')).toHaveLength(2)
     expect(service.events(accepted.runId).filter((event) => event.kind == 'run.completed')).toHaveLength(1)
-    await service.close()
+    await closeService(service)
   })
 
   it('fails an unstartable Run without poisoning later work or readiness', async () => {
     const file = await databaseFile()
-    let service = ServerService.open(file)
+    let service = await openService(file, undefined, Date.now, { maxConcurrentRuns: 1 })
+    await startService(service)
+    const blocker = await acceptRun(service, {
+      flowId: 'blocker',
+      idempotencyKey: 'poisoned-blocker',
+      revision: hangingFlow(),
+      revisionId: 'revision-poisoned-blocker',
+    })
+    if (blocker.kind != 'accepted') throw new Error('Poisoned Run blocker was not accepted.')
+    await waitForStatus(service, blocker.runId, 'running')
     const poisoned = await acceptRun(service, {
       flowId: 'main',
       idempotencyKey: 'poisoned',
@@ -303,15 +342,15 @@ describe('Server application service', () => {
       revisionId: 'revision-a',
     })
     if (poisoned.kind != 'accepted' || healthy.kind != 'accepted') throw new Error('Run acceptance conflicted.')
-    await expect(service.ready()).resolves.toBe(false)
-    await service.close()
+    await expect(service.ready()).resolves.toBe(true)
+    await closeService(service)
 
     const database = new DatabaseSync(file)
     database.prepare('UPDATE runs SET engine_digest = ? WHERE run_id = ?').run('sha256:unavailable', poisoned.runId)
     database.close()
 
-    service = ServerService.open(file)
-    service.start()
+    service = await openService(file, undefined, Date.now, { maxConcurrentRuns: 1 })
+    await startService(service)
     await expect(service.ready()).resolves.toBe(true)
     await service.waitForIdle()
 
@@ -325,13 +364,12 @@ describe('Server application service', () => {
     })
     expect(service.events(poisoned.runId).map((event) => event.kind)).toEqual(['run.queued', 'run.failed'])
     expect(service.run(healthy.runId)?.status).toBe('completed')
-    await service.close()
-    await expect(service.ready()).resolves.toBe(false)
+    await closeService(service)
   })
 
   it('lets cancellation win once and terminates the active Executor', async () => {
-    const service = ServerService.open(await databaseFile())
-    service.start()
+    const service = await openService(await databaseFile())
+    await startService(service)
     const accepted = await acceptRun(service, {
       flowId: 'main',
       idempotencyKey: 'cancel',
@@ -349,13 +387,38 @@ describe('Server application service', () => {
     expect(service.events(accepted.runId).filter((event) => ['run.canceled', 'run.completed', 'run.failed'].includes(event.kind))).toEqual([
       expect.objectContaining({ kind: 'run.canceled' }),
     ])
-    await service.close()
+    await closeService(service)
+  })
+
+  it('interrupts active Runs when the service Scope closes', async () => {
+    const file = await databaseFile()
+    let service = await openService(file)
+    await startService(service)
+    const accepted = await acceptRun(service, {
+      flowId: 'main',
+      idempotencyKey: 'scope-close',
+      revision: hangingFlow(),
+      revisionId: 'revision-scope-close',
+    })
+    if (accepted.kind != 'accepted') throw new Error('Scope close Run acceptance conflicted.')
+    await waitForStatus(service, accepted.runId, 'running')
+    await closeService(service)
+
+    service = await openService(file)
+    expect(service.run(accepted.runId)).toMatchObject({
+      result: { error: { code: 'execution.terminal-unknown' } },
+      status: 'indeterminate',
+    })
+    expect(service.events(accepted.runId).filter(({ kind }) => ['run.canceled', 'run.completed', 'run.failed', 'run.indeterminate'].includes(kind))).toEqual([
+      expect.objectContaining({ kind: 'run.indeterminate' }),
+    ])
+    await closeService(service)
   })
 
   it('runs different Flows concurrently without overlapping Runs from one Flow', async () => {
     const releases: (() => void)[] = []
     let invocation = 0
-    const service = ServerService.open(await databaseFile(), undefined, Date.now, {
+    const service = await openService(await databaseFile(), undefined, Date.now, {
       llm: async () => {
         invocation += 1
         if (invocation > 2) return { kind: 'completed', value: { answer: 'done' }, version: 1 }
@@ -365,12 +428,12 @@ describe('Server application service', () => {
       },
       maxConcurrentRuns: 2,
     })
+    await startService(service)
     const first = await acceptRun(service, { flowId: 'main', idempotencyKey: 'revision-a-first', revision: llmFlow(), revisionId: 'revision-a' })
     const second = await acceptRun(service, { flowId: 'main', idempotencyKey: 'revision-a-second', revision: llmFlow(), revisionId: 'revision-a' })
     const other = await acceptRun(service, { flowId: 'main', idempotencyKey: 'revision-b', revision: llmFlow(), revisionId: 'revision-b' })
     if (first.kind != 'accepted' || second.kind != 'accepted' || other.kind != 'accepted') throw new Error('Concurrent Run setup conflicted.')
 
-    service.start()
     await Promise.all([waitForStatus(service, first.runId, 'running'), waitForStatus(service, other.runId, 'running')])
     expect(service.run(second.runId)?.status).toBe('queued')
     await vi.waitFor(() => expect(releases).toHaveLength(2))
@@ -378,14 +441,14 @@ describe('Server application service', () => {
     for (const release of releases) release()
     await service.waitForIdle()
     expect([first.runId, second.runId, other.runId].map((runId) => service.run(runId)?.status)).toEqual(['completed', 'completed', 'completed'])
-    await service.close()
+    await closeService(service)
   })
 
   it('fails concurrent Flow sessions once on shared Executor loss and rebuilds for later Runs', async () => {
     let aborted = 0
     let calls = 0
     const started = Promise.withResolvers<void>()
-    const service = ServerService.open(await databaseFile(), undefined, Date.now, {
+    const service = await openService(await databaseFile(), undefined, Date.now, {
       llm: async ({ signal }) => {
         calls += 1
         if (calls > 2) return { kind: 'completed', value: { answer: 'recovered' }, version: 1 }
@@ -403,11 +466,11 @@ describe('Server application service', () => {
       },
       maxConcurrentRuns: 2,
     })
+    await startService(service)
     const first = await acceptRun(service, { flowId: 'main', idempotencyKey: 'executor-loss-a', revision: llmFlow(), revisionId: 'executor-loss-a' })
     const second = await acceptRun(service, { flowId: 'main', idempotencyKey: 'executor-loss-b', revision: llmFlow(), revisionId: 'executor-loss-b' })
     if (first.kind != 'accepted' || second.kind != 'accepted') throw new Error('Concurrent Run setup conflicted.')
 
-    service.start()
     await started.promise
     const { stdout } = await execFileAsync('ps', ['-A', '-o', 'pid=,ppid=,command='])
     const executor = stdout
@@ -440,37 +503,51 @@ describe('Server application service', () => {
     await service.waitForIdle()
     expect(service.run(recovered.runId)?.status).toBe('completed')
     expect(calls).toBe(3)
-    await service.close()
+    await closeService(service)
   })
 
   it('fails a Run that exceeds its execution deadline', async () => {
-    const service = ServerService.open(await databaseFile(), undefined, Date.now, { runTimeoutMs: 25 })
-    service.start()
-    const accepted = await acceptRun(service, {
-      flowId: 'main',
-      idempotencyKey: 'timeout',
-      revision: hangingFlow(),
-      revisionId: 'revision-timeout',
-    })
-    if (accepted.kind != 'accepted') throw new Error('Timeout Run acceptance conflicted.')
-    await service.waitForIdle()
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* TestClock.make()
+          const file = yield* Effect.promise(databaseFile)
+          const service = yield* ServerService.open(file, undefined, clock, { runTimeoutMs: 25 })
+          yield* service.start()
+          yield* Effect.tryPromise({
+            try: async () => {
+              const accepted = await acceptRun(service, {
+                flowId: 'main',
+                idempotencyKey: 'timeout',
+                revision: hangingFlow(),
+                revisionId: 'revision-timeout',
+              })
+              if (accepted.kind != 'accepted') throw new Error('Timeout Run acceptance conflicted.')
+              await waitForStatus(service, accepted.runId, 'running')
+              await Effect.runPromise(clock.adjust(25))
+              await service.waitForIdle()
 
-    expect(service.run(accepted.runId)).toMatchObject({
-      result: { error: { code: 'run.timeout', message: 'The Run exceeded its execution deadline.' } },
-      status: 'failed',
-    })
-    await service.close()
+              expect(service.run(accepted.runId)).toMatchObject({
+                result: { error: { code: 'run.timeout', message: 'The Run exceeded its execution deadline.' } },
+                status: 'failed',
+              })
+            },
+            catch: (error) => error,
+          })
+        }),
+      ),
+    )
   })
 
   it('executes LLM Tasks through the deployment host and projects stable host failures', async () => {
     const invocations: { readonly input: unknown; readonly mode: string }[] = []
-    const configured = ServerService.open(await databaseFile(), undefined, Date.now, {
+    const configured = await openService(await databaseFile(), undefined, Date.now, {
       llm: async ({ input, mode }) => {
         invocations.push({ input, mode })
         return { kind: 'completed', value: { answer: 'Hello back' }, version: 1 }
       },
     })
-    configured.start()
+    await startService(configured)
     const completed = await acceptRun(configured, { flowId: 'main', idempotencyKey: 'llm-completed', revision: llmFlow(), revisionId: 'revision-llm' })
     if (completed.kind != 'accepted') throw new Error('LLM Run acceptance conflicted.')
     await configured.waitForIdle()
@@ -480,10 +557,10 @@ describe('Server application service', () => {
       result: { kind: 'node-results', nodes: [{ jobs: [{ outputs: { answer: 'Hello back' } }], nodeId: 'llm' }] },
       status: 'completed',
     })
-    await configured.close()
+    await closeService(configured)
 
-    const unavailable = ServerService.open(await databaseFile())
-    unavailable.start()
+    const unavailable = await openService(await databaseFile())
+    await startService(unavailable)
     const failed = await acceptRun(unavailable, { flowId: 'main', idempotencyKey: 'llm-unavailable', revision: llmFlow(), revisionId: 'revision-llm' })
     if (failed.kind != 'accepted') throw new Error('LLM Run acceptance conflicted.')
     await unavailable.waitForIdle()
@@ -491,14 +568,14 @@ describe('Server application service', () => {
     expect(unavailable.events(failed.runId).find((event) => event.kind == 'node.failed')).toMatchObject({
       payload: { error: { code: 'llm.unavailable', message: 'The LLM request could not be completed.' } },
     })
-    await unavailable.close()
+    await closeService(unavailable)
 
-    const transport = ServerService.open(await databaseFile(), undefined, Date.now, {
+    const transport = await openService(await databaseFile(), undefined, Date.now, {
       llm: async () => {
         throw new Error('provider-secret-detail')
       },
     })
-    transport.start()
+    await startService(transport)
     const rejected = await acceptRun(transport, { flowId: 'main', idempotencyKey: 'llm-rejected', revision: llmFlow(), revisionId: 'revision-llm' })
     if (rejected.kind != 'accepted') throw new Error('LLM Run acceptance conflicted.')
     await transport.waitForIdle()
@@ -506,7 +583,7 @@ describe('Server application service', () => {
       payload: { error: { code: 'llm.unavailable', message: 'The LLM request could not be completed.' } },
     })
     expect(JSON.stringify(transport.events(rejected.runId))).not.toContain('provider-secret-detail')
-    await transport.close()
+    await closeService(transport)
   })
 
   it('propagates Run cancellation into the active LLM Task host', async () => {
@@ -515,7 +592,7 @@ describe('Server application service', () => {
       started = resolve
     })
     let aborted = false
-    const service = ServerService.open(await databaseFile(), undefined, Date.now, {
+    const service = await openService(await databaseFile(), undefined, Date.now, {
       llm: async ({ signal }) => {
         started()
         return await new Promise<never>((_resolve, reject) => {
@@ -530,7 +607,7 @@ describe('Server application service', () => {
         })
       },
     })
-    service.start()
+    await startService(service)
     const accepted = await acceptRun(service, { flowId: 'main', idempotencyKey: 'llm-canceled', revision: llmFlow(), revisionId: 'revision-llm' })
     if (accepted.kind != 'accepted') throw new Error('LLM Run acceptance conflicted.')
     await invoked
@@ -539,17 +616,17 @@ describe('Server application service', () => {
 
     expect(aborted).toBe(true)
     expect(service.run(accepted.runId)?.status).toBe('canceled')
-    await service.close()
+    await closeService(service)
   })
 
   it.each([
     ['llm.output-invalid', 'The model output did not match the requested schema.'],
     ['llm.unavailable', 'The model service is unavailable.'],
   ] as const)('preserves the deployment LLM failure %s', async (code, message) => {
-    const service = ServerService.open(await databaseFile(), undefined, Date.now, {
+    const service = await openService(await databaseFile(), undefined, Date.now, {
       llm: async () => ({ code, kind: 'failed', message, version: 1 }),
     })
-    service.start()
+    await startService(service)
     const accepted = await acceptRun(service, { flowId: 'main', idempotencyKey: code, revision: llmFlow(), revisionId: 'revision-llm' })
     if (accepted.kind != 'accepted') throw new Error('LLM failure Run acceptance conflicted.')
     await service.waitForIdle()
@@ -557,6 +634,6 @@ describe('Server application service', () => {
     expect(service.events(accepted.runId).find((event) => event.kind == 'node.failed')).toMatchObject({
       payload: { error: { code, message } },
     })
-    await service.close()
+    await closeService(service)
   })
 })

@@ -1,7 +1,13 @@
 import type { ConnectorProxy } from '@oomol-lab/open-flow/connector-proxy'
 import type { JsonValue, RevisionContent, TriggerNode } from '@oomol-lab/open-flow/flow-change'
 import type { PreparedFlow } from '@oomol-lab/open-flow/flow-semantics'
-import type { IntegrationDefinition, IntegrationReceiveContext, IntegrationStateContext } from '@oomol-lab/open-flow/integration-trigger'
+import type {
+  IntegrationDefinition,
+  IntegrationReceiveContext,
+  IntegrationReconcileContext,
+  IntegrationReconcileResult,
+  IntegrationStateContext,
+} from '@oomol-lab/open-flow/integration-trigger'
 import type { Logger } from 'pino'
 import type { ConnectorHost } from './connector.ts'
 import type { IntegrationHealth, StoredIntegrationBinding, StoredIntegrationState, StoredIntegrationTarget } from './trigger-store.ts'
@@ -55,6 +61,7 @@ export interface IntegrationRuntimeState {
 type ValidateFlow = (revision: RevisionContent) => Promise<{ readonly content: string; readonly prepared: PreparedFlow; readonly revisionDigest: string }>
 
 const batchSize = 100
+const reconcileTimeoutMs = 30_000
 const retryMs = 1_000
 
 export class IntegrationRuntime {
@@ -261,6 +268,28 @@ export class IntegrationRuntime {
     return { status: target.trigger.definition.endpoint.successStatus }
   }
 
+  #invokeReconcile(
+    definition: IntegrationDefinition,
+    bindingId: string,
+    connectionId: string,
+    context: Omit<IntegrationReconcileContext, 'connector' | 'signal'>,
+  ): Effect.Effect<IntegrationReconcileResult, unknown> {
+    return Effect.tryPromise({
+      try: (signal) =>
+        definition.reconcile({
+          ...context,
+          connector: this.#connectorProxy(definition, bindingId, connectionId, signal),
+          signal,
+        }),
+      catch: (error) => error,
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: reconcileTimeoutMs,
+        orElse: () => Effect.fail(new TransientIntegrationError('Integration reconciliation exceeded its execution deadline.')),
+      }),
+    )
+  }
+
   #reconcile(binding: StoredIntegrationBinding, now: number): Effect.Effect<void> {
     return Effect.gen({ self: this }, function* () {
       const callbackSecret = yield* Effect.tryPromise({
@@ -273,19 +302,13 @@ export class IntegrationRuntime {
       if (state != null && state.runtimeVersion != binding.runtimeVersion) {
         const previousState = state
         const previous = this.#trigger(previousState.triggerJson)
-        const outcome = yield* Effect.tryPromise({
-          try: () =>
-            previous.definition.reconcile({
-              active: false,
-              callbackSecret,
-              config: previous.trigger.config,
-              connector: this.#connectorProxy(previous.definition, binding.bindingId, previousState.connectionId),
-              endpointUrl,
-              now: new Date(now),
-              signal: AbortSignal.timeout(30_000),
-              state: this.#stateContext(previousState, now),
-            }),
-          catch: (error) => error,
+        const outcome = yield* this.#invokeReconcile(previous.definition, binding.bindingId, previousState.connectionId, {
+          active: false,
+          callbackSecret,
+          config: previous.trigger.config,
+          endpointUrl,
+          now: new Date(now),
+          state: this.#stateContext(previousState, now),
         })
         if (outcome.outcome == 'pending') {
           return yield* Effect.fail(new TransientIntegrationError('Previous Integration subscription is still retiring.'))
@@ -300,19 +323,13 @@ export class IntegrationRuntime {
       const resolved = this.#trigger(binding.triggerJson)
       if (!active) {
         if (!retiredPrevious && (state != null || resolved.definition.initialState == null)) {
-          const outcome = yield* Effect.tryPromise({
-            try: () =>
-              resolved.definition.reconcile({
-                active: false,
-                callbackSecret,
-                config: resolved.trigger.config,
-                connector: this.#connectorProxy(resolved.definition, binding.bindingId, binding.connectionId),
-                endpointUrl,
-                now: new Date(now),
-                signal: AbortSignal.timeout(30_000),
-                ...(state == null ? {} : { state: this.#stateContext(state, now) }),
-              }),
-            catch: (error) => error,
+          const outcome = yield* this.#invokeReconcile(resolved.definition, binding.bindingId, binding.connectionId, {
+            active: false,
+            callbackSecret,
+            config: resolved.trigger.config,
+            endpointUrl,
+            now: new Date(now),
+            ...(state == null ? {} : { state: this.#stateContext(state, now) }),
           })
           if (outcome.outcome == 'pending') {
             return yield* Effect.fail(new TransientIntegrationError('Integration subscription is still retiring.'))
@@ -332,19 +349,13 @@ export class IntegrationRuntime {
           return yield* Effect.fail(new TransientIntegrationError('Integration runtime state changed.'))
         }
       }
-      const outcome = yield* Effect.tryPromise({
-        try: () =>
-          resolved.definition.reconcile({
-            active: true,
-            callbackSecret,
-            config: resolved.trigger.config,
-            connector: this.#connectorProxy(resolved.definition, binding.bindingId, binding.connectionId),
-            endpointUrl,
-            now: new Date(now),
-            signal: AbortSignal.timeout(30_000),
-            state: this.#stateContext(state, now),
-          }),
-        catch: (error) => error,
+      const outcome = yield* this.#invokeReconcile(resolved.definition, binding.bindingId, binding.connectionId, {
+        active: true,
+        callbackSecret,
+        config: resolved.trigger.config,
+        endpointUrl,
+        now: new Date(now),
+        state: this.#stateContext(state, now),
       })
       if (outcome.outcome == 'pending') {
         return yield* Effect.fail(new TransientIntegrationError('Integration subscription is still converging.'))
@@ -397,12 +408,15 @@ export class IntegrationRuntime {
     )
   }
 
-  #connectorProxy(definition: IntegrationDefinition, bindingId: string, connectionId: string): ConnectorProxy {
+  #connectorProxy(definition: IntegrationDefinition, bindingId: string, connectionId: string, parentSignal?: AbortSignal): ConnectorProxy {
     return {
       execute: async (request, signal) => {
         try {
           if (this.#connector == null) throw new ConnectorTaskError('connector.unavailable', 'The Connector request could not be completed.')
-          return await this.#connector.proxy(definition.snapshot.provider, connectionId, bindingId, request, signal ?? AbortSignal.timeout(30_000))
+          let connectorSignal = signal ?? parentSignal
+          if (signal != null && parentSignal != null) connectorSignal = AbortSignal.any([parentSignal, signal])
+          connectorSignal ??= AbortSignal.timeout(30_000)
+          return await this.#connector.proxy(definition.snapshot.provider, connectionId, bindingId, request, connectorSignal)
         } catch (cause) {
           if (cause instanceof ConnectorTaskError && cause.code == 'connector.connection-required') {
             throw new IntegrationConnectionError('Integration Connection requires reauthorization.', { cause })

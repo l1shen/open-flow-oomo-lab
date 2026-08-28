@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, it } from 'vitest'
-import { ServerService } from '../node/service.ts'
 import { createConnectorHost } from './connectorHost.ts'
+import { closeService, openService } from './serviceFixture.ts'
 
 const directories: string[] = []
 let sequence = 0
@@ -99,7 +99,7 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
   }
   const connector = createConnectorHost()
   let now = Date.parse(fixture.publishedAt)
-  let service = ServerService.open(file, connector, () => now, {}, undefined, undefined, [definition])
+  let service = await openService(file, connector, () => now, {}, undefined, undefined, [definition])
   let config = fixture.config
   let connectionId = fixture.connectionId
   let active = true
@@ -117,7 +117,7 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
 
   return {
     async dispose() {
-      await service.close()
+      await closeService(service)
     },
     async replayLast() {
       if (lastOccurrence != null) await service.processPollOccurrence(lastOccurrence)
@@ -138,8 +138,8 @@ async function createHarness(fixture: PollConformanceFixture): Promise<PollConfo
       nextAt = nextTriggerScheduledAt(fixture.rules, now)
     },
     async restart() {
-      await service.close()
-      service = ServerService.open(file, connector, () => now, {}, undefined, undefined, [definition])
+      await closeService(service)
+      service = await openService(file, connector, () => now, {}, undefined, undefined, [definition])
     },
     async retire(at) {
       now = Date.parse(at)
