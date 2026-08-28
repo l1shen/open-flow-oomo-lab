@@ -643,10 +643,24 @@ class FlowDesignerViewAdapter {
   #syncModel(model: FlowDesignerViewModel): void {
     const runStatus = model.runStatus == 'running' ? FLOW_RUN_STATUS.Running : FLOW_RUN_STATUS.Idle
     if (this.#runStatus.value != runStatus) this.#runStatus.set(runStatus)
-    this.#variableInputs.set(variableInputs(model.nodes))
-    this.#variableNames.set(model.variableNames ?? [])
-    this.#variableNamesLoaded.set(model.variableNamesLoaded ?? false)
-    this.#variableNamesLoading.set(model.variableNamesLoading ?? false)
+    const inputs = variableInputs(model.nodes)
+    const currentInputs = this.#variableInputs.value
+    if (
+      inputs.size != currentInputs.size ||
+      [...inputs].some(([key, input]) => {
+        const current = currentInputs.get(key)
+        return current == null || current.compatible != input.compatible || current.enabled != input.enabled || current.name != input.name
+      })
+    ) {
+      this.#variableInputs.set(inputs)
+    }
+    const names = model.variableNames ?? []
+    const currentNames = this.#variableNames.value
+    if (names.length != currentNames.length || names.some((name, index) => name != currentNames[index])) this.#variableNames.set(names)
+    const namesLoaded = model.variableNamesLoaded ?? false
+    if (this.#variableNamesLoaded.value != namesLoaded) this.#variableNamesLoaded.set(namesLoaded)
+    const namesLoading = model.variableNamesLoading ?? false
+    if (this.#variableNamesLoading.value != namesLoading) this.#variableNamesLoading.set(namesLoading)
     if (
       this.#modelViewport == null ||
       this.#modelViewport.x != model.viewport.x ||
