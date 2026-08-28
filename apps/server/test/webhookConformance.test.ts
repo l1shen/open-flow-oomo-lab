@@ -8,7 +8,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, it } from 'vitest'
 import { createServerApp } from '../node/http.ts'
-import { ServerService } from '../node/service.ts'
+import { closeService, openService } from './serviceFixture.ts'
 
 let sequence = 0
 
@@ -44,7 +44,7 @@ function revision(fixture: WebhookConformanceFixture, enabled = true): RevisionC
 async function createHarness(fixture: WebhookConformanceFixture): Promise<WebhookConformanceHarness> {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-webhook-conformance-'))
   const file = path.join(directory, 'open-flow.sqlite')
-  const service = ServerService.open(file)
+  const service = await openService(file)
   let revisionId = next('revision')
   const published = await service.publishFlow({
     expectedLivePublicationId: null,
@@ -62,7 +62,7 @@ async function createHarness(fixture: WebhookConformanceFixture): Promise<Webhoo
   return {
     endpointUrl: `http://server.local/v1/webhooks/${endpointId}`,
     async dispose() {
-      await service.close()
+      await closeService(service)
       await rm(directory, { force: true, recursive: true })
     },
     async payloads() {

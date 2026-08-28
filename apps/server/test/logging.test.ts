@@ -9,12 +9,13 @@ import { createServerApp } from '../node/http.ts'
 import { createLogger } from '../node/logger.ts'
 import { ServerService } from '../node/service.ts'
 import { acceptRun } from './runFixture.ts'
+import { closeService, openService, startService } from './serviceFixture.ts'
 
 const directories: string[] = []
 const services: ServerService[] = []
 
 afterEach(async () => {
-  await Promise.allSettled(services.splice(0).map((service) => service.close()))
+  await Promise.allSettled(services.splice(0).map(closeService))
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
 })
 
@@ -93,7 +94,7 @@ it('writes Pino JSON and redacts common secret fields', () => {
 
 it('correlates an unknown HTTP failure without logging headers or request bodies', async () => {
   const captured = capture()
-  const service = ServerService.open(await databaseFile())
+  const service = await openService(await databaseFile())
   services.push(service)
   const app = createServerApp(service, {
     logger: captured.logger,
@@ -134,7 +135,7 @@ it('correlates an unknown HTTP failure without logging headers or request bodies
 
 it('does not log callback endpoint identities', async () => {
   const captured = capture()
-  const service = ServerService.open(await databaseFile())
+  const service = await openService(await databaseFile())
   services.push(service)
   const app = createServerApp(service, { logger: captured.logger })
   const endpointId = 'endpoint_0123456789abcdef0123456789abcdef'
@@ -153,9 +154,9 @@ it('does not log callback endpoint identities', async () => {
 
 it('logs Run lifecycle metadata without copying user errors or Run payloads', async () => {
   const captured = capture()
-  const service = ServerService.open(await databaseFile(), undefined, Date.now, {}, undefined, captured.logger)
+  const service = await openService(await databaseFile(), undefined, Date.now, {}, undefined, captured.logger)
   services.push(service)
-  service.start()
+  await startService(service)
 
   const accepted = await acceptRun(service, {
     flowId: 'main',

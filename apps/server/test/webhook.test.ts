@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createServerApp } from '../node/http.ts'
 import { ServerService } from '../node/service.ts'
 import { storeRevision } from './runFixture.ts'
+import { closeService, openService, startService } from './serviceFixture.ts'
 
 const directories: string[] = []
 const services: ServerService[] = []
@@ -23,7 +24,7 @@ const payloadPort = {
 } as const
 
 afterEach(async () => {
-  await Promise.allSettled(services.splice(0).map((service) => service.close()))
+  await Promise.allSettled(services.splice(0).map(closeService))
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
 })
 
@@ -79,7 +80,7 @@ async function publishedWebhook(service: ServerService) {
 
 describe('Server Webhook Trigger admission', () => {
   it('does not expose resolved occurrence admission as an HTTP route', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile())
     services.push(service)
     const app = createServerApp(service)
 
@@ -93,7 +94,7 @@ describe('Server Webhook Trigger admission', () => {
   })
 
   it('executes one ordinary Run and deduplicates concurrent occurrence delivery', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile())
     services.push(service)
     const target = await publishedWebhook(service)
 
@@ -108,7 +109,7 @@ describe('Server Webhook Trigger admission', () => {
     const accepted = acceptedRuns.find((candidate) => candidate.created)
     if (accepted == null) throw new Error('Concurrent Webhook occurrence did not create a Run.')
     expect(acceptedRuns.filter((candidate) => candidate.created)).toHaveLength(1)
-    service.start()
+    await startService(service)
     await service.waitForIdle()
     expect(service.run(accepted.runId)).toMatchObject({
       result: { kind: 'node-results', nodes: [{ jobs: [{ outputs: { message: 'hello' } }], nodeId: 'capture' }] },
@@ -126,7 +127,7 @@ describe('Server Webhook Trigger admission', () => {
   })
 
   it('bounds pending Runs without blocking idempotent replay', async () => {
-    const service = ServerService.open(await databaseFile(), undefined, Date.now, { maxPendingRuns: 1 })
+    const service = await openService(await databaseFile(), undefined, Date.now, { maxPendingRuns: 1 })
     services.push(service)
     const target = await publishedWebhook(service)
 
@@ -145,7 +146,7 @@ describe('Server Webhook Trigger admission', () => {
   })
 
   it('rate limits requests to a valid callback endpoint', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile())
     services.push(service)
     const target = await publishedWebhook(service)
     const app = createServerApp(service, { callbackRequestsPerMinute: 1 })
@@ -168,18 +169,18 @@ describe('Server Webhook Trigger admission', () => {
 
   it('recovers a queued occurrence into the same Run after reopening SQLite', async () => {
     const file = await databaseFile()
-    let service = ServerService.open(file)
+    let service = await openService(file)
     services.push(service)
     const target = await publishedWebhook(service)
     const accepted = await service.acceptWebhookTarget(target, 'delivery-1', { message: 'hello' })
     if (accepted == null) throw new Error('Initial Webhook target disappeared.')
     if (accepted.kind != 'accepted') throw new Error('Initial Webhook occurrence unexpectedly conflicted.')
     expect(service.run(accepted.runId)?.status).toBe('queued')
-    await service.close()
+    await closeService(service)
 
-    service = ServerService.open(file)
+    service = await openService(file)
     services.push(service)
-    service.start()
+    await startService(service)
     await service.waitForIdle()
     expect(service.run(accepted.runId)?.status).toBe('completed')
     expect(service.events(accepted.runId).filter((event) => event.kind == 'run.completed')).toHaveLength(1)
@@ -191,7 +192,7 @@ describe('Server Webhook Trigger admission', () => {
   })
 
   it('rejects a mismatched payload or non-Webhook Trigger before acceptance', async () => {
-    const service = ServerService.open(await databaseFile())
+    const service = await openService(await databaseFile())
     services.push(service)
     const target = await publishedWebhook(service)
 

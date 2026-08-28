@@ -9,13 +9,14 @@ import { ConnectorTaskError } from '../node/connector.ts'
 import { ServerService } from '../node/service.ts'
 import { createConnectorHost } from './connectorHost.ts'
 import { acceptRun } from './runFixture.ts'
+import { closeService, openService, startService } from './serviceFixture.ts'
 
 const directories: string[] = []
 const services: ServerService[] = []
 const port = { jsonSchema: {}, nullable: false } as const
 
 afterEach(async () => {
-  await Promise.allSettled(services.splice(0).map((service) => service.close()))
+  await Promise.allSettled(services.splice(0).map(closeService))
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
 })
 
@@ -99,9 +100,9 @@ function capabilityFlow(
 }
 
 async function open(connector?: Parameters<typeof ServerService.open>[1], connectorConsoleOrigin?: string): Promise<ServerService> {
-  const service = ServerService.open(await databaseFile(), connector, Date.now, {}, connectorConsoleOrigin)
+  const service = await openService(await databaseFile(), connector, Date.now, {}, connectorConsoleOrigin)
   services.push(service)
-  service.start()
+  await startService(service)
   return service
 }
 

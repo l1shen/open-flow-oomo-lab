@@ -5,13 +5,13 @@ import path from 'node:path'
 import { expect, it } from 'vitest'
 import { createServerApp } from '../node/http.ts'
 import { OperatorSession } from '../node/operator.ts'
-import { ServerService } from '../node/service.ts'
+import { closeService, openService } from './serviceFixture.ts'
 
 const token = 'open-flow-server-operator-token-00000001'
 
 it('uses a signed operator session, expires it on time or token rotation, and clears its cookie on logout', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-operator-'))
-  const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
+  const service = await openService(path.join(directory, 'open-flow.sqlite'))
   let now = Date.UTC(2026, 7, 22)
   const operator = new OperatorSession(token, false, () => now)
   const app = createServerApp(service, { operator })
@@ -85,14 +85,14 @@ it('uses a signed operator session, expires it on time or token rotation, and cl
     expect(callback.status).toBe(404)
     expect(await callback.text()).toBe('')
   } finally {
-    await service.close()
+    await closeService(service)
     await rm(directory, { force: true, recursive: true })
   }
 })
 
 it('rate limits operator login attempts', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-operator-limit-'))
-  const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
+  const service = await openService(path.join(directory, 'open-flow.sqlite'))
   const app = createServerApp(service, {
     operator: new OperatorSession(token, false),
     operatorLoginAttemptsPerMinute: 1,
@@ -113,14 +113,14 @@ it('rate limits operator login attempts', async () => {
     expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0)
     expect(limited.headers.get('set-cookie')).toBeNull()
   } finally {
-    await service.close()
+    await closeService(service)
     await rm(directory, { force: true, recursive: true })
   }
 })
 
 it('reports missing operator configuration without disabling callbacks or health', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-operator-missing-'))
-  const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
+  const service = await openService(path.join(directory, 'open-flow.sqlite'))
   const app = createServerApp(service)
   try {
     expect(await (await app.request('/auth/session')).json()).toEqual({ authenticated: false, configured: false, version: 1 })
@@ -131,14 +131,14 @@ it('reports missing operator configuration without disabling callbacks or health
     expect((await app.request('/healthz')).status).toBe(200)
     expect((await app.request('/v1/webhooks/not-an-endpoint')).status).toBe(404)
   } finally {
-    await service.close()
+    await closeService(service)
     await rm(directory, { force: true, recursive: true })
   }
 })
 
 it('streams independent Flow catalog and current Flow invalidations', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-notifications-'))
-  const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
+  const service = await openService(path.join(directory, 'open-flow.sqlite'))
   const app = createServerApp(service, { resolveControlActor: () => 'operator' })
   try {
     expect((await createServerApp(service).request('/v1/flows/notifications')).status).toBe(401)
@@ -181,14 +181,14 @@ it('streams independent Flow catalog and current Flow invalidations', async () =
     await reader.cancel()
     await catalogReader.cancel()
   } finally {
-    await service.close()
+    await closeService(service)
     await rm(directory, { force: true, recursive: true })
   }
 })
 
 it('closes Flow notification streams during shutdown', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-notification-shutdown-'))
-  const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
+  const service = await openService(path.join(directory, 'open-flow.sqlite'))
   const shutdown = new AbortController()
   try {
     const created = await service.control.createFlow('operator', 'Shutdown', 'shutdown-flow')
@@ -201,7 +201,7 @@ it('closes Flow notification streams during shutdown', async () => {
     shutdown.abort()
     await expect(reader.read()).resolves.toEqual({ done: true, value: undefined })
   } finally {
-    await service.close()
+    await closeService(service)
     await rm(directory, { force: true, recursive: true })
   }
 })
@@ -212,7 +212,7 @@ it('serves immutable assets and limits the SPA fallback to non-reserved HTML nav
   await mkdir(path.join(publicDirectory, 'assets'), { recursive: true })
   await writeFile(path.join(publicDirectory, 'index.html'), '<!doctype html><title>Server shell</title>')
   await writeFile(path.join(publicDirectory, 'assets', 'app-1234.js'), 'globalThis.openFlow = true')
-  const service = ServerService.open(path.join(directory, 'open-flow.sqlite'))
+  const service = await openService(path.join(directory, 'open-flow.sqlite'))
   const app = createServerApp(service, { publicDirectory })
   try {
     for (const target of ['/', '/flows/main/design', '/flows/main/runs']) {
@@ -240,7 +240,7 @@ it('serves immutable assets and limits the SPA fallback to non-reserved HTML nav
     expect(withoutAssets.status).toBe(404)
     expect(withoutAssets.headers.get('content-type')).toContain('application/json')
   } finally {
-    await service.close()
+    await closeService(service)
     await rm(directory, { force: true, recursive: true })
   }
 })

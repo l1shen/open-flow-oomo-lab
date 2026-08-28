@@ -1,15 +1,29 @@
 import type { RevisionContent, TriggerSchedule } from '@oomol-lab/open-flow/flow-change'
 
 import { scheduledTriggerOccurrenceId } from '@oomol-lab/open-flow/cron-trigger'
+import * as Effect from 'effect/Effect'
+import { TestClock } from 'effect/testing'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AcceptanceError } from '../node/error.ts'
-import { ServerService } from '../node/service.ts'
+import { closeService, openService, startService } from './serviceFixture.ts'
 
 const directories: string[] = []
+
+async function withClock<Value>(at: number, run: (clock: TestClock.TestClock) => Promise<Value>): Promise<Value> {
+  return await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* TestClock.make()
+        yield* clock.setTime(at)
+        return yield* Effect.tryPromise({ try: () => run(clock), catch: (error) => error })
+      }),
+    ),
+  )
+}
 
 function revision(rules: readonly TriggerSchedule[]): RevisionContent {
   return {
@@ -45,7 +59,7 @@ afterEach(async () => {
 describe('Server Cron Trigger', () => {
   it('rejects invalid schedules without moving Live or creating bindings', async () => {
     const file = await databaseFile()
-    const service = ServerService.open(file, undefined, () => Date.parse('2026-08-21T00:00:30.000Z'))
+    const service = await openService(file, undefined, () => Date.parse('2026-08-21T00:00:30.000Z'))
     await expect(
       service.publishFlow({
         expectedLivePublicationId: null,
@@ -55,7 +69,7 @@ describe('Server Cron Trigger', () => {
         revisionId: 'revision-invalid',
       }),
     ).rejects.toMatchObject({ code: 'trigger-invalid' } satisfies Partial<AcceptanceError>)
-    await service.close()
+    await closeService(service)
 
     const database = new DatabaseSync(file, { readOnly: true })
     try {
@@ -69,7 +83,7 @@ describe('Server Cron Trigger', () => {
 
   it('recovers the earliest due grid from SQLite and advances past the actual tick', async () => {
     const file = await databaseFile()
-    let service = ServerService.open(file, undefined, () => Date.parse('2026-08-21T00:00:30.000Z'))
+    let service = await openService(file, undefined, () => Date.parse('2026-08-21T00:00:30.000Z'))
     const published = await service.publishFlow({
       expectedLivePublicationId: null,
       flowId: 'main',
@@ -78,11 +92,11 @@ describe('Server Cron Trigger', () => {
       revisionId: 'revision-a',
     })
     expect(published.kind).toBe('published')
-    await service.close()
+    await closeService(service)
 
-    service = ServerService.open(file, undefined, () => Date.parse('2026-08-21T00:03:30.000Z'))
+    service = await openService(file, undefined, () => Date.parse('2026-08-21T00:03:30.000Z'))
     await service.tickCron()
-    await service.close()
+    await closeService(service)
 
     const database = new DatabaseSync(file, { readOnly: true })
     try {
@@ -109,20 +123,23 @@ describe('Server Cron Trigger', () => {
 
   it('uses the process timer to wake and execute a due ordinary Run', async () => {
     const file = await databaseFile()
-    let now = Date.parse('2026-08-21T00:00:30.000Z')
-    const service = ServerService.open(file, undefined, () => now)
-    await service.publishFlow({
-      expectedLivePublicationId: null,
-      flowId: 'main',
-      idempotencyKey: 'publish-timer',
-      revision: revision([{ type: 'every', unit: 'minute', value: 1 }]),
-      revisionId: 'revision-timer',
+    await withClock(Date.parse('2026-08-21T00:00:30.000Z'), async (clock) => {
+      const service = await openService(file, undefined, clock)
+      try {
+        await service.publishFlow({
+          expectedLivePublicationId: null,
+          flowId: 'main',
+          idempotencyKey: 'publish-timer',
+          revision: revision([{ type: 'every', unit: 'minute', value: 1 }]),
+          revisionId: 'revision-timer',
+        })
+        await Effect.runPromise(clock.setTime(Date.parse('2026-08-21T00:01:00.000Z')))
+        await startService(service)
+        await service.waitForIdle()
+      } finally {
+        await closeService(service)
+      }
     })
-    now = Date.parse('2026-08-21T00:01:00.000Z')
-    service.start()
-    await new Promise<void>((resolve) => setTimeout(resolve, 10))
-    await service.waitForIdle()
-    await service.close()
 
     const database = new DatabaseSync(file, { readOnly: true })
     try {
@@ -138,17 +155,19 @@ describe('Server Cron Trigger', () => {
 
   it('cancels an armed process timer when the service closes', async () => {
     const file = await databaseFile()
-    const service = ServerService.open(file, undefined, () => Date.parse('2026-08-21T00:00:59.990Z'))
-    await service.publishFlow({
-      expectedLivePublicationId: null,
-      flowId: 'main',
-      idempotencyKey: 'publish-close',
-      revision: revision([{ type: 'every', unit: 'minute', value: 1 }]),
-      revisionId: 'revision-close',
+    await withClock(Date.parse('2026-08-21T00:00:59.990Z'), async (clock) => {
+      const service = await openService(file, undefined, clock)
+      await service.publishFlow({
+        expectedLivePublicationId: null,
+        flowId: 'main',
+        idempotencyKey: 'publish-close',
+        revision: revision([{ type: 'every', unit: 'minute', value: 1 }]),
+        revisionId: 'revision-close',
+      })
+      await startService(service)
+      await closeService(service)
+      await Effect.runPromise(clock.adjust(25))
     })
-    service.start()
-    await service.close()
-    await new Promise<void>((resolve) => setTimeout(resolve, 25))
 
     const database = new DatabaseSync(file, { readOnly: true })
     try {
@@ -162,7 +181,7 @@ describe('Server Cron Trigger', () => {
   it('fences a due target when Publish advances during admission', async () => {
     const file = await databaseFile()
     let now = Date.parse('2026-08-21T00:00:30.000Z')
-    const service = ServerService.open(file, undefined, () => now)
+    const service = await openService(file, undefined, () => now)
     const published = await service.publishFlow({
       expectedLivePublicationId: null,
       flowId: 'main',
@@ -211,7 +230,7 @@ describe('Server Cron Trigger', () => {
       else Object.defineProperty(subtle, 'digest', descriptor)
     }
     await ticking
-    await service.close()
+    await closeService(service)
 
     const database = new DatabaseSync(file, { readOnly: true })
     try {

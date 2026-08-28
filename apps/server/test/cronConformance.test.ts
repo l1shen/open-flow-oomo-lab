@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, it } from 'vitest'
-import { ServerService } from '../node/service.ts'
+import { closeService, openService } from './serviceFixture.ts'
 
 let sequence = 0
 
@@ -44,7 +44,7 @@ async function createHarness(fixture: CronConformanceFixture): Promise<CronConfo
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-cron-conformance-'))
   const file = path.join(directory, 'open-flow.sqlite')
   let now = Date.parse(fixture.publishedAt)
-  const service = ServerService.open(file, undefined, () => now)
+  const service = await openService(file, undefined, () => now)
   let revisionId = next('revision')
   const published = await service.publishFlow({
     expectedLivePublicationId: null,
@@ -58,7 +58,7 @@ async function createHarness(fixture: CronConformanceFixture): Promise<CronConfo
 
   return {
     async dispose() {
-      await service.close()
+      await closeService(service)
       await rm(directory, { force: true, recursive: true })
     },
     async payloads() {

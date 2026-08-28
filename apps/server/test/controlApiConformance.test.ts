@@ -13,8 +13,8 @@ import path from 'node:path'
 import { describe, it } from 'vitest'
 import { ConnectorTaskError } from '../node/connector.ts'
 import { createServerApp } from '../node/http.ts'
-import { ServerService } from '../node/service.ts'
 import { createConnectorHost } from './connectorHost.ts'
+import { closeService, openService } from './serviceFixture.ts'
 
 const connectorProvider: ConnectorProvider = {
   icon: 'https://connector.example/icons/mail.svg',
@@ -68,7 +68,7 @@ async function createHarness(): Promise<ControlApiConformanceHarness> {
   })
   let now = Date.UTC(2026, 7, 22)
   const open = () =>
-    ServerService.open(
+    openService(
       file,
       connector,
       () => {
@@ -81,11 +81,11 @@ async function createHarness(): Promise<ControlApiConformanceHarness> {
   const options = {
     resolveControlActor: (request: Request) => (request.headers.get('authorization') == 'Bearer control-api-conformance' ? 'server-operator' : undefined),
   }
-  let service = open()
+  let service = await open()
   let app = createServerApp(service, options)
   return {
     async dispose() {
-      await service.close()
+      await closeService(service)
       await rm(directory, { force: true, recursive: true })
     },
     origin: 'http://server.local',
@@ -94,8 +94,8 @@ async function createHarness(): Promise<ControlApiConformanceHarness> {
       headers.set('authorization', 'Bearer control-api-conformance')
       const response = await app.request(new Request(request, { headers }))
       if (request.method == 'POST' && new URL(request.url).pathname.endsWith('/pause') && response.ok) {
-        await service.close()
-        service = open()
+        await closeService(service)
+        service = await open()
         app = createServerApp(service, options)
       }
       return response

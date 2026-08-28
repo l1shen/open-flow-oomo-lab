@@ -4,8 +4,9 @@ import type { PreparedFlow } from '@oomol-lab/open-flow/flow-semantics'
 import type { IntegrationDefinition } from '@oomol-lab/open-flow/integration-trigger'
 import type { PollDefinition } from '@oomol-lab/open-flow/poll-trigger'
 import type { ProviderTriggerDefinition } from '@oomol-lab/open-flow/provider-triggers'
+import type { ProjectedRunEvent } from '@oomol-lab/open-flow/run-events'
 import type { InvokeLlmTask, RuntimeCapabilityCall, RuntimeCapabilityResponse } from '@oomol-lab/open-flow/runtime-contract'
-import type { TaskInvocation } from '@oomol-lab/open-flow/scheduler'
+import type { FlowRunResult, TaskInvocation } from '@oomol-lab/open-flow/scheduler'
 import type { Logger } from 'pino'
 import type { ConnectorHost } from './connector.ts'
 import type { IntegrationOptions, IntegrationResponse, IntegrationRuntimeState, IntegrationTarget } from './integration-runtime.ts'
@@ -24,17 +25,18 @@ import {
   pollPageClaimId,
   providerEventId,
   PollConnectionError,
+  TransientPollError,
 } from '@oomol-lab/open-flow/poll-trigger'
 import { triggerDefinitions as providerTriggerDefinitions } from '@oomol-lab/open-flow/provider-triggers'
 import { createEventProjector } from '@oomol-lab/open-flow/run-events'
 import { currentEngineContract } from '@oomol-lab/open-flow/runtime-contract'
 import * as Cause from 'effect/Cause'
+import * as Clock from 'effect/Clock'
 import * as Deferred from 'effect/Deferred'
 import * as Effect from 'effect/Effect'
-import * as Exit from 'effect/Exit'
 import * as Fiber from 'effect/Fiber'
 import * as FiberMap from 'effect/FiberMap'
-import * as FiberSet from 'effect/FiberSet'
+import * as Option from 'effect/Option'
 import * as Queue from 'effect/Queue'
 import * as Scope from 'effect/Scope'
 import * as Semaphore from 'effect/Semaphore'
@@ -108,6 +110,7 @@ const pollBatchSize = 100
 const pollClaimRetentionMs = 30 * 24 * 60 * 60 * 1000
 const pollLeaseMs = 60_000
 const pollRetryMs = 1_000
+const pollTimeoutMs = 30_000
 const maxTimerDelayMs = 2_147_483_647
 const maintenanceBatchSize = 100
 const maintenanceIntervalMs = 60_000
@@ -115,6 +118,33 @@ const maintenanceRetryMs = 1_000
 const admissionRetryMs = 1_000
 const defaultMaxConcurrentRuns = 4
 const defaultRunTimeoutMs = 30 * 60 * 1_000
+
+function validatePositiveInteger(value: number | undefined, message: string): void {
+  if (value != null && (!Number.isSafeInteger(value) || value <= 0)) throw new TypeError(message)
+}
+
+function parseOrigin(value: string, label: string): URL {
+  const origin = new URL(value)
+  if (
+    (origin.protocol != 'https:' && !(origin.protocol == 'http:' && ['127.0.0.1', '::1', '[::1]', 'localhost'].includes(origin.hostname))) ||
+    origin.username != '' ||
+    origin.password != '' ||
+    origin.pathname != '/' ||
+    origin.search != '' ||
+    origin.hash != ''
+  ) {
+    throw new Error(`${label} must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.`)
+  }
+  return origin
+}
+
+function validateRuntime(runtime: ServerRuntime): void {
+  validatePositiveInteger(runtime.runEventRetentionMs, 'Run event retention must be a positive safe integer number of milliseconds.')
+  validatePositiveInteger(runtime.maxPendingRuns, 'Maximum pending Runs must be a positive safe integer.')
+  validatePositiveInteger(runtime.maxConcurrentRuns, 'Maximum concurrent Runs must be a positive safe integer.')
+  validatePositiveInteger(runtime.runTimeoutMs, 'Run timeout must be a positive safe integer number of milliseconds.')
+  if (runtime.integration != null) parseOrigin(runtime.integration.publicOrigin, 'Integration public origin')
+}
 
 function finishWaiters(waiters: readonly Deferred.Deferred<void>[]): Effect.Effect<void> {
   return Effect.forEach(waiters, (deferred) => Deferred.succeed(deferred, undefined), { discard: true })
@@ -134,60 +164,74 @@ class TaskHostError extends Error {
 
 export class ServerService {
   readonly control: ControlService
-  readonly #active = new Map<string, Deferred.Deferred<void>>()
   readonly #clock: () => number
+  readonly #clockService: Clock.Clock
   readonly #connector?: ConnectorHost
-  readonly #cronLock = Semaphore.makeUnsafe(1)
+  readonly #cronLock: Semaphore.Semaphore
   readonly #integration: IntegrationRuntime
-  readonly #isolatedVm = new IsolatedVmHost()
+  readonly #isolatedVm: IsolatedVmHost
   readonly #logger: Logger
   readonly #llm?: InvokeLlmTask
   readonly #maxConcurrentRuns: number
-  readonly #maintenanceLock = Semaphore.makeUnsafe(1)
+  readonly #maintenanceLock: Semaphore.Semaphore
   readonly #pollDefinitions: ReadonlyMap<string, PollDefinition>
-  readonly #pollLock = Semaphore.makeUnsafe(1)
-  readonly #scope = Scope.makeUnsafe('parallel')
+  readonly #pollLock: Semaphore.Semaphore
   readonly #flowCatalogSubscribers = new Set<(event: FlowCatalogEvent) => void>()
   readonly #flowSubscribers = new Map<string, Set<(event: FlowChangeEvent) => void>>()
   readonly #runningFlows = new Set<string>()
   readonly #runTimeoutMs: number
-  readonly #signals = Effect.runSync(Queue.unbounded<Deferred.Deferred<void> | undefined>())
+  readonly #signals: Queue.Queue<Deferred.Deferred<void> | undefined>
   readonly #store: Store
-  readonly #tasks = Effect.runSync(FiberMap.make<string, void, never>().pipe(Scope.provide(this.#scope)))
-  readonly #workers = Effect.runSync(FiberSet.make<void, never>().pipe(Scope.provide(this.#scope)))
+  readonly #tasks: FiberMap.FiberMap<string, void, never>
+  readonly #workers: FiberMap.FiberMap<string, void, never>
   #cronRetryAt?: number
   #failure?: unknown
   #maintenanceAt = 0
   #started = false
-  #supervisor?: Fiber.Fiber<void>
 
   private constructor(
-    store: Store,
+    resources: {
+      readonly clockService: Clock.Clock
+      readonly cronLock: Semaphore.Semaphore
+      readonly isolatedVm: IsolatedVmHost
+      readonly maintenanceLock: Semaphore.Semaphore
+      readonly pollLock: Semaphore.Semaphore
+      readonly signals: Queue.Queue<Deferred.Deferred<void> | undefined>
+      readonly store: Store
+      readonly tasks: FiberMap.FiberMap<string, void, never>
+      readonly workers: FiberMap.FiberMap<string, void, never>
+    },
     connector: ConnectorHost | undefined,
-    clock: () => number,
+    clock: Clock.Clock | (() => number),
     runtime: ServerRuntime,
     connectorConsoleOrigin: URL | undefined,
     logger: Logger,
     triggerDefinitions: readonly ProviderTriggerDefinition[],
   ) {
-    this.#clock = clock
+    const { clockService, cronLock, isolatedVm, maintenanceLock, pollLock, signals, store, tasks, workers } = resources
+    this.#clock = typeof clock == 'function' ? clock : () => clock.currentTimeMillisUnsafe()
+    this.#clockService = clockService
     this.#connector = connector
+    this.#cronLock = cronLock
+    this.#isolatedVm = isolatedVm
     this.#logger = logger.child({ component: 'runtime' })
     this.#llm = runtime.llm
+    this.#maintenanceLock = maintenanceLock
     this.#maxConcurrentRuns = runtime.maxConcurrentRuns ?? defaultMaxConcurrentRuns
+    this.#pollLock = pollLock
     this.#runTimeoutMs = runtime.runTimeoutMs ?? defaultRunTimeoutMs
+    this.#signals = signals
+    this.#store = store
+    this.#tasks = tasks
+    this.#workers = workers
     const pollDefinitions = triggerDefinitions.filter((definition): definition is PollDefinition => definition.snapshot.type == 'poll')
     const integrationDefinitions = triggerDefinitions.filter((definition): definition is IntegrationDefinition => definition.snapshot.type == 'integration')
     this.#pollDefinitions = new Map(pollDefinitions.map((definition) => [definition.snapshot.key, definition]))
-    this.#store = store
     const snapshots = triggerDefinitions.map((definition) => definition.snapshot).toSorted((left, right) => left.key.localeCompare(right.key))
     this.control = new ControlService(
       store,
-      clock,
-      (runId) => {
-        const active = this.#active.get(runId)
-        if (active != null) Effect.runSync(Deferred.succeed(active, undefined))
-      },
+      this.#clock,
+      (runId) => this.#interrupt(runId),
       () => this.#signal(),
       (input) => this.publishFlow(input),
       () => {
@@ -204,7 +248,7 @@ export class ServerService {
     this.#integration = new IntegrationRuntime(
       store,
       connector,
-      clock,
+      this.#clock,
       runtime.integration,
       integrationDefinitions,
       validatedFlow,
@@ -217,63 +261,54 @@ export class ServerService {
   static open(
     databaseFile: string,
     connector?: ConnectorHost,
-    clock: () => number = Date.now,
+    clock?: Clock.Clock | (() => number),
     runtime: ServerRuntime = {},
     connectorConsoleOrigin?: string,
     logger: Logger = silentLogger,
     triggerDefinitions: readonly ProviderTriggerDefinition[] = providerTriggerDefinitions,
-  ): ServerService {
-    if (runtime.runEventRetentionMs != null && (!Number.isSafeInteger(runtime.runEventRetentionMs) || runtime.runEventRetentionMs <= 0)) {
-      throw new TypeError('Run event retention must be a positive safe integer number of milliseconds.')
-    }
-    if (runtime.maxPendingRuns != null && (!Number.isSafeInteger(runtime.maxPendingRuns) || runtime.maxPendingRuns <= 0)) {
-      throw new TypeError('Maximum pending Runs must be a positive safe integer.')
-    }
-    if (runtime.maxConcurrentRuns != null && (!Number.isSafeInteger(runtime.maxConcurrentRuns) || runtime.maxConcurrentRuns <= 0)) {
-      throw new TypeError('Maximum concurrent Runs must be a positive safe integer.')
-    }
-    if (runtime.runTimeoutMs != null && (!Number.isSafeInteger(runtime.runTimeoutMs) || runtime.runTimeoutMs <= 0)) {
-      throw new TypeError('Run timeout must be a positive safe integer number of milliseconds.')
-    }
-    if (runtime.integration != null) {
-      const publicOrigin = new URL(runtime.integration.publicOrigin)
-      if (
-        (publicOrigin.protocol != 'https:' &&
-          !(publicOrigin.protocol == 'http:' && ['127.0.0.1', '::1', '[::1]', 'localhost'].includes(publicOrigin.hostname))) ||
-        publicOrigin.username != '' ||
-        publicOrigin.password != '' ||
-        publicOrigin.pathname != '/' ||
-        publicOrigin.search != '' ||
-        publicOrigin.hash != ''
-      ) {
-        throw new Error('Integration public origin must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.')
-      }
-    }
-    let consoleOrigin: URL | undefined
-    if (connectorConsoleOrigin != null) {
-      consoleOrigin = new URL(connectorConsoleOrigin)
-      if (
-        (consoleOrigin.protocol != 'https:' &&
-          !(consoleOrigin.protocol == 'http:' && ['127.0.0.1', '::1', '[::1]', 'localhost'].includes(consoleOrigin.hostname))) ||
-        consoleOrigin.username != '' ||
-        consoleOrigin.password != '' ||
-        consoleOrigin.pathname != '/' ||
-        consoleOrigin.search != '' ||
-        consoleOrigin.hash != ''
-      ) {
-        throw new Error('Connector Console origin must be an HTTPS origin without credentials, a path, query, or fragment, except on loopback.')
-      }
-    }
-    migrateDatabase(databaseFile)
-    return new ServerService(
-      new Store(databaseFile, clock, runtime.runEventRetentionMs, runtime.maxPendingRuns),
-      connector,
-      clock,
-      runtime,
-      consoleOrigin,
-      logger,
-      triggerDefinitions,
-    )
+  ): Effect.Effect<ServerService, Error, Scope.Scope> {
+    return Effect.gen(function* () {
+      const clockService = typeof clock == 'object' ? clock : yield* Clock.Clock
+      const serviceClock = clock ?? clockService
+      const now = typeof serviceClock == 'function' ? serviceClock : () => serviceClock.currentTimeMillisUnsafe()
+      const consoleOrigin = yield* Effect.try({
+        try: () => {
+          validateRuntime(runtime)
+          return connectorConsoleOrigin == null ? undefined : parseOrigin(connectorConsoleOrigin, 'Connector Console origin')
+        },
+        catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+      })
+      const store = yield* Effect.acquireRelease(
+        Effect.try({
+          try: () => {
+            migrateDatabase(databaseFile)
+            return new Store(databaseFile, now, runtime.runEventRetentionMs, runtime.maxPendingRuns)
+          },
+          catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+        }),
+        (opened) => Effect.sync(() => opened.close()),
+      )
+      const isolatedVm = yield* Effect.acquireRelease(
+        Effect.sync(() => new IsolatedVmHost()),
+        (opened) => Effect.promise(() => opened.close()),
+      )
+      const cronLock = yield* Semaphore.make(1)
+      const maintenanceLock = yield* Semaphore.make(1)
+      const pollLock = yield* Semaphore.make(1)
+      const signals = yield* Queue.unbounded<Deferred.Deferred<void> | undefined>()
+      const tasks = yield* FiberMap.make<string, void, never>()
+      const workers = yield* FiberMap.make<string, void, never>()
+      const service = new ServerService(
+        { clockService, cronLock, isolatedVm, maintenanceLock, pollLock, signals, store, tasks, workers },
+        connector,
+        serviceClock,
+        runtime,
+        consoleOrigin,
+        logger,
+        triggerDefinitions,
+      )
+      return service
+    })
   }
 
   async #testPollTrigger(
@@ -309,17 +344,34 @@ export class ServerService {
       }
       const connector = this.#connector
       if (connector == null) throw new ControlError(controlErrorCode.connectorUnavailable, 'The Connector request could not be completed.')
-      const signal = AbortSignal.timeout(30_000)
-      const result = await definition.poll({
-        checkpoint: target.checkpoint,
-        config: trigger.config,
-        connector: {
-          execute: async (request, requestSignal) =>
-            await connector.proxy(definition.snapshot.provider, target.connectionId, target.bindingId, request, requestSignal ?? signal),
-        },
-        now: new Date(this.#clock()),
-        signal,
-      })
+      const result = await Effect.runPromise(
+        Effect.tryPromise({
+          try: (signal) =>
+            definition.poll({
+              checkpoint: target.checkpoint,
+              config: trigger.config,
+              connector: {
+                execute: (request, requestSignal) =>
+                  connector.proxy(
+                    definition.snapshot.provider,
+                    target.connectionId,
+                    target.bindingId,
+                    request,
+                    requestSignal == null ? signal : AbortSignal.any([signal, requestSignal]),
+                  ),
+              },
+              now: new Date(this.#clock()),
+              signal,
+            }),
+          catch: (error) => error,
+        }).pipe(
+          Effect.timeoutOrElse({
+            duration: pollTimeoutMs,
+            orElse: () => Effect.fail(new TransientPollError('Poll Provider exceeded its execution deadline.')),
+          }),
+          Effect.provideService(Clock.Clock, this.#clockService),
+        ),
+      )
       if (result.events.length > maximumPollEventsPerPage) {
         throw new PermanentPollError(`Poll page exceeds ${maximumPollEventsPerPage} events.`)
       }
@@ -484,24 +536,10 @@ export class ServerService {
   cancel(runId: string): boolean {
     const committed = this.#store.cancel(runId)
     if (committed) {
-      const active = this.#active.get(runId)
-      if (active != null) Effect.runSync(Deferred.succeed(active, undefined))
+      this.#interrupt(runId)
       this.#logger.info({ category: 'run.canceled', runId }, 'Run canceled.')
     }
     return committed
-  }
-
-  async close(): Promise<void> {
-    this.#started = false
-    this.#signal()
-    try {
-      if (this.#supervisor != null) await Effect.runPromise(Fiber.join(this.#supervisor))
-      await this.waitForIdle()
-    } finally {
-      await Effect.runPromise(Scope.close(this.#scope, Exit.void))
-      await this.#isolatedVm.close()
-      this.#store.close()
-    }
   }
 
   subscribeFlow(flowId: string, listener: (event: FlowChangeEvent) => void): () => void {
@@ -535,27 +573,30 @@ export class ServerService {
     return this.#store.run(runId)
   }
 
-  start(): void {
-    this.#started = true
-    this.#maintenanceAt = this.#clock()
-    this.#supervisor = Effect.runFork(this.#supervise())
-    this.#signal()
+  start(): Effect.Effect<void, never, Scope.Scope> {
+    return Effect.gen({ self: this }, function* () {
+      this.#started = true
+      yield* Effect.addFinalizer(() => Effect.sync(() => (this.#started = false)))
+      this.#maintenanceAt = this.#clock()
+      yield* this.#supervise().pipe(Effect.provideService(Clock.Clock, this.#clockService), Effect.forkScoped)
+      this.#signal()
+    })
   }
 
   tickCron(at = new Date(this.#clock()).toISOString()): Promise<void> {
-    return Effect.runPromise(this.#cron(at))
+    return Effect.runPromise(this.#cron(at).pipe(Effect.provideService(Clock.Clock, this.#clockService)))
   }
 
   tickPoll(at = new Date(this.#clock()).toISOString()): Promise<void> {
-    return Effect.runPromise(this.#pollDue(at))
+    return Effect.runPromise(this.#pollDue(at).pipe(Effect.provideService(Clock.Clock, this.#clockService)))
   }
 
   tickIntegration(at = new Date(this.#clock()).toISOString()): Promise<void> {
-    return Effect.runPromise(this.#integration.tick(at))
+    return Effect.runPromise(this.#integration.tick(at).pipe(Effect.provideService(Clock.Clock, this.#clockService)))
   }
 
   tickMaintenance(at = new Date(this.#clock()).toISOString()): Promise<void> {
-    return Effect.runPromise(this.#maintenance(at))
+    return Effect.runPromise(this.#maintenance(at).pipe(Effect.provideService(Clock.Clock, this.#clockService)))
   }
 
   pollState(flowId: string, triggerNodeId: string): PollState | undefined {
@@ -564,15 +605,17 @@ export class ServerService {
 
   processPollOccurrence(input: PollOccurrenceInput): Promise<void> {
     return Effect.runPromise(
-      this.#pollLock.withPermit(
-        Effect.gen({ self: this }, function* () {
-          const now = Date.parse(input.occurredAt)
-          if (!Number.isFinite(now)) return yield* Effect.fail(new TypeError('Poll occurrence time must be an ISO timestamp.'))
-          const target = this.#store.triggers.pollTarget(input.bindingId, input.runtimeVersion)
-          if (target != null) yield* this.#poll(target, input.occurrenceId, now)
-          this.#signal()
-        }),
-      ),
+      this.#pollLock
+        .withPermit(
+          Effect.gen({ self: this }, function* () {
+            const now = Date.parse(input.occurredAt)
+            if (!Number.isFinite(now)) return yield* Effect.fail(new TypeError('Poll occurrence time must be an ISO timestamp.'))
+            const target = this.#store.triggers.pollTarget(input.bindingId, input.runtimeVersion)
+            if (target != null) yield* this.#poll(target, input.occurrenceId, now)
+            this.#signal()
+          }),
+        )
+        .pipe(Effect.provideService(Clock.Clock, this.#clockService)),
     )
   }
 
@@ -610,46 +653,79 @@ export class ServerService {
   async waitForIdle(): Promise<void> {
     if (this.#failure != null) throw this.#failure
     if (this.#started) {
-      const settled = Deferred.makeUnsafe<void>()
-      Queue.offerUnsafe(this.#signals, settled)
-      await Effect.runPromise(Deferred.await(settled))
+      await Effect.runPromise(
+        Effect.gen({ self: this }, function* () {
+          const settled = yield* Deferred.make<void>()
+          yield* Queue.offer(this.#signals, settled)
+          yield* Deferred.await(settled)
+        }),
+      )
     } else {
       await Effect.runPromise(FiberMap.awaitEmpty(this.#tasks))
-      await Effect.runPromise(FiberSet.awaitEmpty(this.#workers))
+      await Effect.runPromise(FiberMap.awaitEmpty(this.#workers))
     }
     if (this.#failure != null) throw this.#failure
   }
 
   #dispatch(run: StoredRun): Effect.Effect<void> {
     return Effect.gen({ self: this }, function* () {
-      const start = yield* Effect.gen({ self: this }, function* () {
-        if (run.engineDigest != isolatedVmEngineDigest) {
-          return yield* Effect.fail(new Error('Fixed Run Engine implementation is not available.'))
-        }
-        const revisionDigest = yield* Effect.tryPromise({
-          try: () => digestBytes(encoder.encode(run.content)),
-          catch: (error) => error,
-        })
-        if (revisionDigest != run.revisionDigest) {
-          return yield* Effect.fail(new Error('Fixed Flow Revision digest does not match stored content.'))
-        }
-        const revision = JSON.parse(run.content) as RevisionContent
-        const prepared = yield* Effect.tryPromise({
-          try: () => prepareFlow(revision, run.engineContract),
-          catch: (error) => error,
-        })
-        if (prepared.kind != 'prepared') {
-          return yield* Effect.fail(new Error(`Fixed Flow Revision can no longer be prepared: ${prepared.kind}.`))
-        }
-        const bindingValues = this.#store.resolveVariables(variableBindings(revision, prepared.validation.closure.dependencies.inputBindings))
-        if (bindingValues == null) return { kind: 'binding-unresolved' as const }
-        const projectEvent = createEventProjector(run.runId, nodeFailureCodes)
-        const started = yield* Effect.tryPromise({
-          try: () => projectEvent({ flowId: run.flowId, runId: run.runId, type: 'run.started' }),
-          catch: (error) => error,
-        })
-        return { bindingValues, flow: prepared.flow, kind: 'prepared' as const, projectEvent, started }
-      }).pipe(
+      const prepared = yield* this.#prepareRun(run)
+      if (prepared == null) return
+      yield* this.#executeRun(run, prepared.flow, prepared.bindingValues, prepared.projectEvent)
+    })
+  }
+
+  #loadRun(run: StoredRun): Effect.Effect<
+    | { readonly kind: 'binding-unresolved' }
+    | {
+        readonly bindingValues: Readonly<Record<string, string>>
+        readonly flow: PreparedFlow
+        readonly kind: 'prepared'
+        readonly projectEvent: ReturnType<typeof createEventProjector>
+        readonly started: ProjectedRunEvent | undefined
+      },
+    unknown
+  > {
+    return Effect.gen({ self: this }, function* () {
+      if (run.engineDigest != isolatedVmEngineDigest) {
+        return yield* Effect.fail(new Error('Fixed Run Engine implementation is not available.'))
+      }
+      const revisionDigest = yield* Effect.tryPromise({
+        try: () => digestBytes(encoder.encode(run.content)),
+        catch: (error) => error,
+      })
+      if (revisionDigest != run.revisionDigest) {
+        return yield* Effect.fail(new Error('Fixed Flow Revision digest does not match stored content.'))
+      }
+      const revision = JSON.parse(run.content) as RevisionContent
+      const prepared = yield* Effect.tryPromise({
+        try: () => prepareFlow(revision, run.engineContract),
+        catch: (error) => error,
+      })
+      if (prepared.kind != 'prepared') {
+        return yield* Effect.fail(new Error(`Fixed Flow Revision can no longer be prepared: ${prepared.kind}.`))
+      }
+      const bindingValues = this.#store.resolveVariables(variableBindings(revision, prepared.validation.closure.dependencies.inputBindings))
+      if (bindingValues == null) return { kind: 'binding-unresolved' as const }
+      const projectEvent = createEventProjector(run.runId, nodeFailureCodes)
+      const started = yield* Effect.tryPromise({
+        try: () => projectEvent({ flowId: run.flowId, runId: run.runId, type: 'run.started' }),
+        catch: (error) => error,
+      })
+      return { bindingValues, flow: prepared.flow, kind: 'prepared' as const, projectEvent, started }
+    })
+  }
+
+  #prepareRun(run: StoredRun): Effect.Effect<
+    | {
+        readonly bindingValues: Readonly<Record<string, string>>
+        readonly flow: PreparedFlow
+        readonly projectEvent: ReturnType<typeof createEventProjector>
+      }
+    | undefined
+  > {
+    return Effect.gen({ self: this }, function* () {
+      const start = yield* this.#loadRun(run).pipe(
         Effect.matchEffect({
           onFailure: (error) =>
             Effect.sync(() => {
@@ -671,27 +747,36 @@ export class ServerService {
         return
       }
       if (start == null || start.started == null || !this.#store.start(run.runId, start.started)) return
+      return { bindingValues: start.bindingValues, flow: start.flow, projectEvent: start.projectEvent }
+    })
+  }
+
+  #executeRun(
+    run: StoredRun,
+    flow: PreparedFlow,
+    bindingValues: Readonly<Record<string, string>>,
+    projectEvent: ReturnType<typeof createEventProjector>,
+  ): Effect.Effect<void> {
+    return Effect.gen({ self: this }, function* () {
       const startedAt = performance.now()
       this.#logger.info({ category: 'run.started', flowId: run.flowId, runId: run.runId }, 'Run started.')
 
-      const cancellation = yield* Deferred.make<void>()
       const timeoutReason = new Error('Run exceeded its execution deadline.')
       let timedOut = false
-      this.#active.set(run.runId, cancellation)
-      yield* Effect.raceFirst(
-        this.#isolatedVm.run(start.flow, {
-          bindingValues: start.bindingValues,
+      yield* this.#isolatedVm
+        .run(flow, {
+          bindingValues,
           capability: (capabilities, call) => this.#invokeCapability(capabilities, call),
           emit: async (event) => {
             if (event.type == 'run.started' && event.runId == run.runId) return
-            const projected = await start.projectEvent(event)
+            const projected = await projectEvent(event)
             if (projected != null) this.#store.append(run.runId, projected)
           },
           flowId: run.flowId,
           inputs: run.inputs,
           invokeTask: (invocation) => {
             if (!('taskId' in invocation)) throw new Error('Runtime Executor returned a Code Task to the Host.')
-            return this.#invokeTask(start.flow, invocation)
+            return this.#invokeTask(flow, invocation)
           },
           projectFailure: (error) => {
             if (error instanceof ConnectorTaskError) return { code: error.code, message: error.message }
@@ -700,52 +785,46 @@ export class ServerService {
           },
           runId: run.runId,
           ...(run.trigger == null ? {} : { trigger: run.trigger }),
-        }),
-        Deferred.await(cancellation).pipe(Effect.andThen(Effect.fail(new Error('Run canceled.')))),
-      ).pipe(
-        Effect.timeoutOrElse({
-          duration: this.#runTimeoutMs,
-          orElse: () =>
-            Effect.sync(() => {
-              timedOut = true
-            }).pipe(Effect.andThen(Effect.fail(timeoutReason))),
-        }),
-        Effect.matchEffect({
-          onFailure: (error) =>
-            Effect.sync(() => {
-              const result = timedOut
-                ? { error: { code: 'run.timeout', message: 'The Run exceeded its execution deadline.' } }
-                : { error: { code: 'run.failed', message: 'The Flow could not be completed.' } }
-              if (this.#store.commit(run.runId, 'failed', result)) {
-                this.#logger.error(
-                  {
-                    category: timedOut ? 'run.timed_out' : 'run.failed',
-                    durationMs: Math.round(performance.now() - startedAt),
-                    flowId: run.flowId,
-                    runId: run.runId,
-                    ...errorKind(error),
-                  },
-                  'Run failed.',
-                )
-              }
-            }),
-          onSuccess: (output) =>
-            Effect.sync(() => {
-              if (this.#store.commit(run.runId, 'completed', output)) {
-                this.#logger.info(
-                  { category: 'run.completed', durationMs: Math.round(performance.now() - startedAt), flowId: run.flowId, runId: run.runId },
-                  'Run completed.',
-                )
-              }
-            }),
-        }),
-        Effect.ensuring(
-          Effect.sync(() => {
-            this.#active.delete(run.runId)
+        })
+        .pipe(
+          Effect.timeoutOrElse({
+            duration: this.#runTimeoutMs,
+            orElse: () =>
+              Effect.sync(() => {
+                timedOut = true
+              }).pipe(Effect.andThen(Effect.fail(timeoutReason))),
           }),
-        ),
-      )
+          Effect.matchEffect({
+            onFailure: (error) => Effect.sync(() => this.#failRun(run, startedAt, timedOut, error)),
+            onSuccess: (output) => Effect.sync(() => this.#completeRun(run, startedAt, output)),
+          }),
+        )
     })
+  }
+
+  #failRun(run: StoredRun, startedAt: number, timedOut: boolean, error: unknown): void {
+    const result = timedOut
+      ? { error: { code: 'run.timeout', message: 'The Run exceeded its execution deadline.' } }
+      : { error: { code: 'run.failed', message: 'The Flow could not be completed.' } }
+    if (!this.#store.commit(run.runId, 'failed', result)) return
+    this.#logger.error(
+      {
+        category: timedOut ? 'run.timed_out' : 'run.failed',
+        durationMs: Math.round(performance.now() - startedAt),
+        flowId: run.flowId,
+        runId: run.runId,
+        ...errorKind(error),
+      },
+      'Run failed.',
+    )
+  }
+
+  #completeRun(run: StoredRun, startedAt: number, output: FlowRunResult): void {
+    if (!this.#store.commit(run.runId, 'completed', output)) return
+    this.#logger.info(
+      { category: 'run.completed', durationMs: Math.round(performance.now() - startedAt), flowId: run.flowId, runId: run.runId },
+      'Run completed.',
+    )
   }
 
   #admitCron(target: StoredCronTarget, now: number): Effect.Effect<'admitted' | 'overloaded', unknown> {
@@ -845,21 +924,27 @@ export class ServerService {
         if (connector == null) {
           return yield* Effect.fail(new ConnectorTaskError('connector.unavailable', 'The Connector request could not be completed.'))
         }
-        const signal = AbortSignal.timeout(30_000)
         const result = yield* Effect.tryPromise({
-          try: () =>
+          try: (signal) =>
             definition.poll({
               checkpoint: target.checkpoint,
               config: trigger.config,
               connector: {
-                execute: (request, requestSignal) =>
-                  connector.proxy(definition.snapshot.provider, target.connectionId, target.bindingId, request, requestSignal ?? signal),
+                execute: (request, requestSignal) => {
+                  const connectorSignal = requestSignal == null ? signal : AbortSignal.any([signal, requestSignal])
+                  return connector.proxy(definition.snapshot.provider, target.connectionId, target.bindingId, request, connectorSignal)
+                },
               },
               now: new Date(now),
               signal,
             }),
           catch: (error) => error,
-        })
+        }).pipe(
+          Effect.timeoutOrElse({
+            duration: pollTimeoutMs,
+            orElse: () => Effect.fail(new TransientPollError('Poll Provider exceeded its execution deadline.')),
+          }),
+        )
         if (result.events.length > maximumPollEventsPerPage) {
           return yield* Effect.fail(new PermanentPollError(`Poll page exceeds ${maximumPollEventsPerPage} events.`))
         }
@@ -1109,10 +1194,7 @@ export class ServerService {
     }
 
     const canceled = this.#store.cancelFlowRuns(flowId, maintenanceBatchSize)
-    for (const runId of canceled) {
-      const active = this.#active.get(runId)
-      if (active != null) Effect.runSync(Deferred.succeed(active, undefined))
-    }
+    for (const runId of canceled) this.#interrupt(runId)
     if (canceled.length > 0) return 0
     if (this.#runningFlows.has(flowId)) return maintenanceRetryMs
     if (this.#store.flowHasIntegrationState(flowId)) return nextDelay
@@ -1129,31 +1211,36 @@ export class ServerService {
     Queue.offerUnsafe(this.#signals, undefined)
   }
 
+  #interrupt(runId: string): void {
+    const worker = Option.getOrUndefined(FiberMap.getUnsafe(this.#workers, runId))
+    if (worker != null) Effect.runFork(Fiber.interrupt(worker))
+  }
+
   #supervise(): Effect.Effect<void> {
     const waiters: Deferred.Deferred<void>[] = []
     const program = Effect.gen({ self: this }, function* () {
-      while (this.#started && this.#failure == null) {
+      while (this.#failure == null) {
         for (const signal of yield* Queue.clear(this.#signals)) if (signal != null) waiters.push(signal)
         yield* this.#startDue(this.#clock())
         const runQueueEmpty = yield* this.#launchWorkers()
         const tasks = yield* FiberMap.size(this.#tasks)
-        const workers = yield* FiberSet.size(this.#workers)
+        const workers = yield* FiberMap.size(this.#workers)
         if (waiters.length > 0 && runQueueEmpty && tasks == 0 && workers == 0) {
           yield* finishWaiters(waiters.splice(0))
         }
-        if (!this.#started || this.#failure != null) break
+        if (this.#failure != null) break
         const signal = yield* Effect.race(Queue.take(this.#signals), Effect.sleep(this.#nextDelay(this.#clock())).pipe(Effect.as(undefined)))
         if (signal != null) waiters.push(signal)
       }
       yield* FiberMap.awaitEmpty(this.#tasks)
-      yield* FiberSet.awaitEmpty(this.#workers)
+      yield* FiberMap.awaitEmpty(this.#workers)
       for (const signal of yield* Queue.clear(this.#signals)) if (signal != null) waiters.push(signal)
       yield* finishWaiters(waiters.splice(0))
     })
     return program.pipe(
       Effect.catchCause((cause) =>
         Effect.gen({ self: this }, function* () {
-          this.#fail('runtime.supervisor.failed', Cause.squash(cause))
+          if (!Cause.hasInterruptsOnly(cause)) this.#fail('runtime.supervisor.failed', Cause.squash(cause))
           for (const signal of yield* Queue.clear(this.#signals)) if (signal != null) waiters.push(signal)
           yield* finishWaiters(waiters.splice(0))
         }),
@@ -1182,21 +1269,26 @@ export class ServerService {
   }
 
   #startTask(key: string, category: string, task: Effect.Effect<void, unknown>): Effect.Effect<void> {
-    return FiberMap.run(this.#tasks, key, task.pipe(Effect.catchCause((cause) => Effect.sync(() => this.#fail(category, Cause.squash(cause)))))).pipe(
-      Effect.asVoid,
-    )
+    return FiberMap.run(
+      this.#tasks,
+      key,
+      task.pipe(Effect.catchCause((cause) => (Cause.hasInterruptsOnly(cause) ? Effect.void : Effect.sync(() => this.#fail(category, Cause.squash(cause)))))),
+    ).pipe(Effect.asVoid)
   }
 
   #launchWorkers(): Effect.Effect<boolean> {
     return Effect.gen({ self: this }, function* () {
-      while (this.#started && this.#failure == null && (yield* FiberSet.size(this.#workers)) < this.#maxConcurrentRuns) {
+      while (this.#failure == null && (yield* FiberMap.size(this.#workers)) < this.#maxConcurrentRuns) {
         const run = this.#store.claim([...this.#runningFlows])
         if (run == null) return true
         this.#runningFlows.add(run.flowId)
-        yield* FiberSet.run(
+        yield* FiberMap.run(
           this.#workers,
+          run.runId,
           this.#dispatch(run).pipe(
-            Effect.catchCause((cause) => Effect.sync(() => this.#fail('runtime.worker.failed', Cause.squash(cause)))),
+            Effect.catchCause((cause) =>
+              Cause.hasInterruptsOnly(cause) ? Effect.void : Effect.sync(() => this.#fail('runtime.worker.failed', Cause.squash(cause))),
+            ),
             Effect.ensuring(
               Effect.sync(() => {
                 this.#runningFlows.delete(run.flowId)
