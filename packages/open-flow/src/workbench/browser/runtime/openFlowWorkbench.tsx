@@ -185,6 +185,7 @@ export interface OpenFlowWorkbenchProps {
   readonly preferences: WorkbenchPreferences
   readonly sessionKey: string
   readonly theme: WorkbenchTheme
+  readonly variables?: boolean
 }
 
 type SessionProps = Omit<OpenFlowWorkbenchProps, 'sessionKey'>
@@ -201,6 +202,7 @@ function Session({
   onNavigate,
   preferences,
   theme,
+  variables = true,
 }: SessionProps): ReactElement {
   const navigate = useRef(onNavigate)
   navigate.current = onNavigate
@@ -216,6 +218,7 @@ function Session({
       () => crypto.randomUUID(),
       workbenchI18n,
       host,
+      variables,
     )
     return {
       i18n: workbenchI18n,

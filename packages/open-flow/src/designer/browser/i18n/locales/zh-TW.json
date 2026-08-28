@@ -249,6 +249,8 @@
     "selectVariable": "選擇 Variable",
     "variableMissing": "{{name}}（已遺失）",
     "variableMissingHelp": "目前 deployment 中已不存在 Variable {{name}}。",
+    "variableUnavailable": "{{name}}（暫時無法使用）",
+    "variableUnavailableHelp": "目前 deployment 暫不支援 Variable。",
     "variablesLoading": "正在載入 Variable…",
     "unknown": "未知"
   },

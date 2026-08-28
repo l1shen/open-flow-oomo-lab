@@ -118,6 +118,7 @@ export const InputSection: React.FC<InputSectionProps> = /* @__PURE__ */ memo(({
                 loading: variableNamesLoading,
                 names: variableNames,
                 name: variable.name,
+                enabled: variable.enabled !== false,
                 onChange: (name) => designerStore.onChangeInputVariable?.(nodeStore.nodeId, handle.name, name),
                 onOpen: () => designerStore.onOpenVariables?.(),
               }

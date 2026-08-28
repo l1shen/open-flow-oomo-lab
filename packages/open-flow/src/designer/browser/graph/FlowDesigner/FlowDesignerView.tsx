@@ -65,6 +65,7 @@ export interface FlowDesignerViewInput {
   readonly value?: unknown
   readonly variable?: string
   readonly variableCompatible?: boolean
+  readonly variableEnabled?: boolean
 }
 
 export interface FlowDesignerViewOutput {
@@ -408,15 +409,18 @@ interface ViewCallbacks {
   readonly onOpenVariables: FlowDesignerViewProps['onOpenVariables']
 }
 
-function variableInputs(nodes: readonly FlowDesignerViewNode[]): ReadonlyMap<string, { readonly compatible: boolean; readonly name?: string }> {
-  const inputs = new Map<string, { readonly compatible: boolean; readonly name?: string }>()
+function variableInputs(
+  nodes: readonly FlowDesignerViewNode[],
+): ReadonlyMap<string, { readonly compatible: boolean; readonly enabled?: false; readonly name?: string }> {
+  const inputs = new Map<string, { readonly compatible: boolean; readonly enabled?: false; readonly name?: string }>()
   for (const node of nodes) {
     if (node.kind == 'comment') continue
     for (const input of node.inputs) {
       if (!('handle' in input)) continue
-      if (input.variableCompatible || input.variable != null) {
+      if ((input.variableEnabled !== false && input.variableCompatible) || input.variable != null) {
         inputs.set(`${node.id}\0${input.handle}`, {
           compatible: input.variableCompatible ?? false,
+          ...(input.variableEnabled === false ? { enabled: false as const } : {}),
           ...(input.variable == null ? {} : { name: input.variable }),
         })
       }
@@ -438,7 +442,7 @@ class FlowDesignerViewAdapter {
   #pendingDisconnects = new Map<string, FlowDesignerViewEdge>()
   #runStatus: Val<FlowRunStatus>
   #selectedNodeIds = new Set<string>()
-  #variableInputs: Val<ReadonlyMap<string, { readonly compatible: boolean; readonly name?: string }>>
+  #variableInputs: Val<ReadonlyMap<string, { readonly compatible: boolean; readonly enabled?: false; readonly name?: string }>>
   #variableNames: Val<readonly string[]>
   #variableNamesLoaded: Val<boolean>
   #variableNamesLoading: Val<boolean>
