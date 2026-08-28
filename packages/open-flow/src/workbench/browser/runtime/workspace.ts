@@ -80,6 +80,7 @@ interface NodeProjectionContext {
   readonly runNodes: ReadonlyMap<string, FlowDesignerViewNodeRun>
   readonly t: TFunction | undefined
   readonly target: DesignerTarget
+  readonly variables: boolean
 }
 
 export function connectionCatalog(connections: readonly ConnectorConnection[]): ConnectionCatalog {
@@ -481,7 +482,7 @@ function layoutNodes(
   return { depth, ordered }
 }
 
-function designerInputs(nodeId: string, node: GraphNode, ports: NodePorts, revision: RevisionView): readonly FlowDesignerViewInput[] {
+function designerInputs(nodeId: string, node: GraphNode, ports: NodePorts, revision: RevisionView, variables: boolean): readonly FlowDesignerViewInput[] {
   if (!('inputs' in node)) return []
   const inputs: FlowDesignerViewInput[] = []
   for (const [handle, definition] of ports.inputs) {
@@ -508,6 +509,7 @@ function designerInputs(nodeId: string, node: GraphNode, ports: NodePorts, revis
       ...(sources.length > 0 ? { sources } : {}),
       ...(binding?.kind == 'variable' ? { variable: binding.target } : {}),
       variableCompatible: variableInputCompatible(definition.jsonSchema as JsonValue),
+      variableEnabled: variables,
     })
   }
   return inputs
@@ -666,7 +668,7 @@ function triggerDesignerNode(triggerId: string, trigger: TriggerNode, position: 
 
 function semanticDesignerNode(nodeId: string, resolved: ResolvedNode, ports: NodePorts, position: Point, context: NodeProjectionContext): DesignerNode {
   const node = resolved.node
-  const inputs = groupedInputs(resolved, designerInputs(nodeId, node, ports, context.revision))
+  const inputs = groupedInputs(resolved, designerInputs(nodeId, node, ports, context.revision, context.variables))
   const outputs = groupedOutputs(resolved, designerOutputs(ports))
   const task = resolved.kind == 'task' ? resolved.definition : undefined
   const connector = task != null && 'executor' in task && task.executor.kind == 'connector' ? task.executor : undefined
@@ -737,6 +739,7 @@ export function designerGraph(
   variableNames: readonly string[] = [],
   variableNamesLoaded = false,
   variableNamesLoading = false,
+  variables = true,
 ): DesignerGraph {
   const revision = draft == null ? undefined : revisionView(draft)
   const graph = revision == null || target == null ? undefined : revision.graph(target)
@@ -757,6 +760,7 @@ export function designerGraph(
     runNodes: projectedRun.nodes,
     t,
     target,
+    variables,
   }
   const rows = new Map<number, number>()
   const nodes: DesignerNode[] = []

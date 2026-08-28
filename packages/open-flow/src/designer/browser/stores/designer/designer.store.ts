@@ -185,7 +185,7 @@ export interface DesignerStore$ extends ToReadonly$Group<DesignerStore$$> {
   readonly runStatus: ReadonlyVal<FlowRunStatus>
 
   readonly nodeMiniMapPhase: ReadonlyVal<NodeMiniMapPhase>
-  readonly variableInputs: ReadonlyVal<ReadonlyMap<string, { readonly compatible: boolean; readonly name?: string }>>
+  readonly variableInputs: ReadonlyVal<ReadonlyMap<string, { readonly compatible: boolean; readonly enabled?: false; readonly name?: string }>>
   readonly variableNames: ReadonlyVal<readonly string[]>
   readonly variableNamesLoaded: ReadonlyVal<boolean>
   readonly variableNamesLoading: ReadonlyVal<boolean>
@@ -208,7 +208,7 @@ export interface DesignerStoreProps {
   readonly runStatus: ReadonlyVal<FlowRunStatus>
   readonly designerUIStore: DesignerUIStore
   readonly focused$?: ReadonlyVal<boolean>
-  readonly variableInputs?: ReadonlyVal<ReadonlyMap<string, { readonly compatible: boolean; readonly name?: string }>>
+  readonly variableInputs?: ReadonlyVal<ReadonlyMap<string, { readonly compatible: boolean; readonly enabled?: false; readonly name?: string }>>
   readonly variableNames?: ReadonlyVal<readonly string[]>
   readonly variableNamesLoaded?: ReadonlyVal<boolean>
   readonly variableNamesLoading?: ReadonlyVal<boolean>

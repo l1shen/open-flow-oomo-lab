@@ -249,6 +249,8 @@
     "selectVariable": "Choose Variable",
     "variableMissing": "{{name}} (missing)",
     "variableMissingHelp": "Deployment Variable {{name}} no longer exists.",
+    "variableUnavailable": "{{name}} (unavailable)",
+    "variableUnavailableHelp": "Deployment Variables are currently unavailable.",
     "variablesLoading": "Loading Variables…",
     "unknown": "Unknown"
   },

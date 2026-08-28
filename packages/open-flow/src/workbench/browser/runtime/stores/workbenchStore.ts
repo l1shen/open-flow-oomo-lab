@@ -73,6 +73,7 @@ export class WorkbenchStore {
   readonly #externalRuns = new Latest()
   readonly #i18n: I18n
   readonly #notice: Val<Notice | undefined> = val()
+  readonly #variables: boolean
   readonly #variableNames = val<readonly string[]>([])
   readonly #variableNamesLoaded = val(false)
   readonly #variableNamesLoading = val(false)
@@ -93,9 +94,11 @@ export class WorkbenchStore {
     identity: () => string = () => crypto.randomUUID(),
     i18n: I18n = createI18n(),
     host: Pick<WorkbenchHost, 'openExternalPage'> = blockedExternalPages,
+    variables = true,
   ) {
     this.#client = client
     this.#i18n = i18n
+    this.#variables = variables
     const setNotice = (notice: Notice | undefined): void => {
       if (!this.#disposed) this.#notice.set(notice)
     }
@@ -154,6 +157,7 @@ export class WorkbenchStore {
         variableNames,
         variableNamesLoaded,
         variableNamesLoading,
+        this.#variables,
       )
       designerCache.set(key, { graph, inputs })
       return graph
@@ -220,7 +224,7 @@ export class WorkbenchStore {
   }
 
   public async refreshVariableNames(): Promise<void> {
-    if (this.#disposed) return
+    if (this.#disposed || !this.#variables) return
     const current = this.#variableRefresh.begin()
     this.#variableNamesLoading.set(true)
     try {

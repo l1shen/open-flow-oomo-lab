@@ -91,6 +91,7 @@ export interface HandleEditorProps {
   onDragStart?: (ev: React.DragEvent<HTMLElement>) => void
   onDragOver?: (ev: React.DragEvent<HTMLElement>) => void
   readonly variable?: {
+    readonly enabled: boolean
     readonly loaded: boolean
     readonly loading: boolean
     readonly name?: string
@@ -321,7 +322,12 @@ function RootField(props: RootFieldProps) {
     }
     previousVariableName.current = name
   }, [props.variable?.name])
-  const variableOption: IBasicOption = { icon: 'i-carbon:value-variable', label: t('preset.deploymentVariable'), value: deploymentVariableType }
+  const variableOption: IBasicOption = {
+    icon: 'i-carbon:value-variable',
+    isDisabled: props.variable?.enabled === false,
+    label: t('preset.deploymentVariable'),
+    value: deploymentVariableType,
+  }
   const literalOption = optionOf(t, props.type)
   const typeOptions: readonly (WidgetSelectOption | IBasicOption)[] =
     props.variable == null ? options : props.store.context.canEditSchema ? [...options, variableOption] : [literalOption, variableOption]
@@ -404,6 +410,7 @@ function RootField(props: RootFieldProps) {
 
 function VariableBinding({
   disabled,
+  enabled,
   loaded,
   loading,
   name,
@@ -412,17 +419,22 @@ function VariableBinding({
   onOpen,
 }: NonNullable<HandleEditorProps['variable']> & { readonly disabled: boolean }) {
   const t = useTranslate()
-  const missing = loaded && name != null && !names.includes(name)
+  const unavailable = !enabled
+  const missing = !unavailable && loaded && name != null && !names.includes(name)
   const options: IBasicOption[] = [
+    ...(unavailable && name != null ? [{ label: t('handleEditor.variableUnavailable', { name }), value: name }] : []),
     ...(missing ? [{ label: t('handleEditor.variableMissing', { name }), value: name }] : []),
     ...names.map((value) => ({ label: value, value })),
   ]
   const value = name == null ? null : (options.find((option) => option.value == name) ?? null)
   return (
-    <DesignerTooltip placement="top" title={missing ? t('handleEditor.variableMissingHelp', { name }) : undefined}>
+    <DesignerTooltip
+      placement="top"
+      title={unavailable ? t('handleEditor.variableUnavailableHelp') : missing ? t('handleEditor.variableMissingHelp', { name }) : undefined}
+    >
       <div className={styles.inlineValue}>
         <Select<IBasicOption>
-          disabled={disabled}
+          disabled={disabled || unavailable}
           isClearable
           isSuffix
           onChange={(option) => onChange(option?.value)}
@@ -430,7 +442,7 @@ function VariableBinding({
           options={options}
           placeholder={loading ? t('handleEditor.variablesLoading') : t('handleEditor.selectVariable')}
           value={value}
-          variant={missing ? 'danger' : 'default'}
+          variant={missing || unavailable ? 'danger' : 'default'}
         />
       </div>
     </DesignerTooltip>

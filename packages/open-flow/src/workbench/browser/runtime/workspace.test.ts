@@ -51,6 +51,14 @@ describe('Designer port projection', () => {
       { collapsed: true, group: 'Other' },
       expect.objectContaining({ handle: 'result-a' }),
     ])
+
+    const disabled = designerGraph(draft, { kind: 'flow' }, {}, [], {}, {}, undefined, undefined, [], [], false, false, false).nodes[0]
+    if (disabled == null || disabled.kind == 'comment') throw new Error('Expected a Task node.')
+    expect(disabled.inputs).toEqual([
+      { group: 'Request' },
+      expect.objectContaining({ handle: 'second', variableEnabled: false }),
+      expect.objectContaining({ handle: 'first', variableEnabled: false }),
+    ])
   })
 })
 

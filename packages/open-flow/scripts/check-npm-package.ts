@@ -377,7 +377,7 @@ async function verifyConsumer(versions: { readonly react: string; readonly react
         '  request: async () => Response.json({}), subscribeFlow: () => () => undefined, subscribeFlowCatalog: () => () => undefined,',
         '}',
         "const workbench = createElement(OpenFlowWorkbench, { host, hrefFor: () => '/teams/team-a', language: 'en', location, onNavigate: () => undefined,",
-        "  preferences: { getItem: () => null, setItem: () => undefined }, sessionKey: 'team-a', theme: 'light' })",
+        "  preferences: { getItem: () => null, setItem: () => undefined }, sessionKey: 'team-a', theme: 'light', variables: false })",
         "const sessionGate = createElement(OpenFlowSessionGate, { action: 'Sign in', description: 'Use the operator token.', onSubmit: () => undefined, title: 'Open Flow', token: '', tokenLabel: 'Operator token' })",
         'const task: Task<{ value: string }, { value: string }> = async (inputs) => inputs',
         'void connector',

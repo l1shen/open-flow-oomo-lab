@@ -253,6 +253,20 @@ describe('FlowDesignerView model synchronization', () => {
     store.dispose()
   })
 
+  it('hides disabled Variable inputs while preserving existing bindings for clearing', () => {
+    const unbound = model([task([{ handle: 'value', jsonSchema: { type: 'string' }, variableCompatible: true, variableEnabled: false }])])
+    const bound = model([task([{ handle: 'value', jsonSchema: { type: 'string' }, variable: 'API_TOKEN', variableCompatible: true, variableEnabled: false }])])
+    const view = FlowDesignerView(props(unbound)) as React.ReactElement<FlowDesignerProps>
+    const store = view.props.flowDesignerStore
+
+    expect(store.$.variableInputs.value.size).toBe(0)
+
+    FlowDesignerView(props(bound))
+
+    expect(store.$.variableInputs.value.get('target\0value')).toEqual({ compatible: true, enabled: false, name: 'API_TOKEN' })
+    store.dispose()
+  })
+
   it('treats a valid Variable binding as an input source', () => {
     const validate = captureIdleValidation()
     const value: FlowDesignerViewModel = {
