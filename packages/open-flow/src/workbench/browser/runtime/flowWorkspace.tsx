@@ -396,10 +396,10 @@ export default function FlowWorkspace({
   }
   const runDraft = async (): Promise<void> => {
     navigation.open('design')
-    if ((await store.requestDraftRun()) == 'started') revealRun(false)
+    if ((await store.requestDraftRun()) == 'started') revealRun()
   }
   const runLive = async (): Promise<void> => {
-    if ((await store.requestLiveRun()) == 'started') revealRun(false)
+    if ((await store.requestLiveRun()) == 'started') revealRun()
   }
   const locateRunEvent = (sequence: number): void => {
     if (store.locateRunEvent(sequence)) revealRun()

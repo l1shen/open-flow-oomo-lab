@@ -181,7 +181,8 @@ export function applyNodeChanges<TRFNode extends RFNode = RFNode>(
         break
       }
       case 'dimensions': {
-        const update = { ...nodeStore.$.rfNode.value }
+        const current = nodeStore.$.rfNode.value
+        const update = { ...current }
         if (isSize(change.dimensions)) {
           update.measured = change.dimensions
           if (change.setAttributes) {
@@ -194,7 +195,15 @@ export function applyNodeChanges<TRFNode extends RFNode = RFNode>(
           update.resizing = change.resizing
         }
 
-        nodeStore.$$.rfNode.set(update)
+        if (
+          current.measured?.width != update.measured?.width ||
+          current.measured?.height != update.measured?.height ||
+          current.width != update.width ||
+          current.height != update.height ||
+          current.resizing != update.resizing
+        ) {
+          nodeStore.$$.rfNode.set(update)
+        }
         break
       }
       case 'replace': {

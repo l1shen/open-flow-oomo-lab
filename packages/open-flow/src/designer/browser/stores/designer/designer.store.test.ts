@@ -150,6 +150,21 @@ describe('DesignerStore graph projection', () => {
     expect(next.nodes).toEqual([node.$.rfNode.value])
     setup.dispose()
   })
+
+  it('does not republish nodes for an unchanged measurement', async () => {
+    const setup = createTestSetup()
+    const node = setup.createNode('node' as NodeId)
+    setup.nodes.set(node.nodeId, node)
+    const change = { dimensions: { height: 120, width: 240 }, id: node.rfNodeId, type: 'dimensions' as const }
+
+    await setup.store.handleNodesChange([change])
+    const measured = setup.store.$.renderedRFGraph.value
+    expect(measured.nodes[0]?.measured).toEqual(change.dimensions)
+    await setup.store.handleNodesChange([change])
+
+    expect(setup.store.$.renderedRFGraph.value).toBe(measured)
+    setup.dispose()
+  })
 })
 
 describe('DesignerStore display mode', () => {

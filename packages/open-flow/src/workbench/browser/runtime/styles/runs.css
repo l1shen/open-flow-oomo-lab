@@ -228,6 +228,11 @@
     color: var(--ui-muted-foreground);
   }
 
+  .run-log-locate {
+    flex: none;
+    margin-left: 3px;
+  }
+
   .run-log-chevron {
     flex: none;
     color: var(--ui-muted-foreground);
@@ -325,7 +330,7 @@
     overflow: hidden;
   }
 
-  .run-tab-panel > .event-list,
+  .run-tab-panel > .run-log,
   .run-tab-panel > .run-empty,
   .run-tab-panel > .run-output-scroll {
     min-height: 0;
@@ -368,108 +373,14 @@
     padding: 0 11px;
   }
 
-  .event-filters {
+  .run-toolbar-actions {
     display: flex;
     min-width: 0;
-    align-items: center;
-    gap: 2px;
-    padding: 4px 12px 4px 8px;
-    overflow: hidden;
-  }
-
-  .event-filter span {
-    min-width: 12px;
-    color: inherit;
-    font-variant-numeric: tabular-nums;
-    opacity: 0.72;
-    text-align: right;
-  }
-
-  .event-list {
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .event-table {
-    min-width: 0;
-  }
-
-  .event-row {
-    display: grid;
-    min-height: 36px;
-    grid-template-columns: minmax(160px, 1.4fr) minmax(150px, 1fr) minmax(120px, 0.8fr) 96px;
-    align-items: center;
-    gap: 16px;
-    padding: 0 18px;
-    border-bottom: 1px solid var(--ui-border);
-    font-size: 11px;
-  }
-
-  .event-heading {
-    position: sticky;
-    z-index: 1;
-    top: 0;
-    min-height: 32px;
-    background: var(--ui-card);
-    color: var(--ui-muted-foreground);
-    font-weight: 500;
-  }
-
-  .event-observation {
-    background: var(--warning-surface);
-    color: var(--warning-foreground);
-  }
-
-  .event-observation > span {
-    display: flex;
-    grid-column: 1 / -1;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .event-subject {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 8px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .event-locate {
-    width: 100%;
-    overflow: hidden;
-    text-align: left;
-  }
-
-  .event-locate > span {
-    overflow: hidden;
     flex: 1;
-    text-overflow: ellipsis;
-  }
-
-  .event-locate > svg:last-child {
-    flex: 0 0 auto;
-    opacity: 0.6;
-  }
-
-  .event-row code,
-  .event-row time {
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 8px;
     overflow: hidden;
-    color: var(--ui-muted-foreground);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 10px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .event-row time {
-    font-variant-numeric: tabular-nums;
-  }
-
-  .event-summary {
-    color: var(--ui-muted-foreground);
   }
 
   .event-detail {

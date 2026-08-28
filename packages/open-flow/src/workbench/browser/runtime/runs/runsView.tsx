@@ -6,12 +6,14 @@ import type { WorkbenchStore } from '../stores/workbenchStore.ts'
 import { useEffect, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { useLang, useTranslate } from 'val-i18n-react'
+import { OverlayScrollbar } from '../../../../designer/browser/components/overlayScrollbar.tsx'
 import { Badge } from '../../../../ui/browser/badge.tsx'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../../../../ui/browser/empty.tsx'
 import { Tabs, TabsList, TabsTrigger } from '../../../../ui/browser/tabs.tsx'
 import { Icon } from '../icons.tsx'
-import { duration, RunDetails, RunEventFilters, RunLogButton, runLabel, statusClass } from './runDrawer.tsx'
+import { duration, initialRunLogFilters, RunLog, RunLogButton, RunLogFilters, runLabel, statusClass } from './runDrawer.tsx'
+import { RunResultView } from './runOutput.tsx'
 import { canCancelRun } from './runStore.ts'
 
 function sourceLabel(run: Run, t: TFunction): string {
@@ -53,6 +55,7 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
   const [narrow, setNarrow] = useState(false)
   const [narrowDetailOpen, setNarrowDetailOpen] = useState(false)
   const [tab, setTab] = useState<'output' | 'timeline'>('timeline')
+  const [filters, setFilters] = useState(() => initialRunLogFilters(eventFilter))
   const triggerRun = run?.source == 'trigger' && 'triggerNodeId' in run ? (run as TriggerRun) : undefined
   const triggerName =
     triggerRun != null && revision?.revision.revisionId == triggerRun.revisionId ? revision.trigger(triggerRun.triggerNodeId)?.name : undefined
@@ -202,24 +205,55 @@ export function RunsView({ onLocateEvent, store }: { readonly onLocateEvent: (se
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
-                {tab == 'timeline' && <RunEventFilters events={events} filter={eventFilter} onChange={(filter) => store.runs.setEventFilter(filter)} />}
+                {tab == 'timeline' && (
+                  <div className="run-toolbar-actions">
+                    <RunLogFilters
+                      container={root.current}
+                      events={events}
+                      filters={filters}
+                      onChange={(next) => {
+                        setFilters(next)
+                        store.runs.setEventFilter(next.length == 1 ? next[0]! : 'all')
+                      }}
+                    />
+                  </div>
+                )}
               </div>
-              <RunDetails
-                events={events}
-                eventsExpiresAt={eventsExpiresAt}
-                eventFilter={eventFilter}
-                eventNodes={eventNodes}
-                historyComplete={historyComplete}
-                observationFailed={observationFailed}
-                onLocateEvent={onLocateEvent}
-                onRetryObservation={() => store.runs.retryObservation()}
-                panelId={`run-history-${tab}-panel`}
-                result={result}
-                run={run}
-                submitting={false}
-                tab={tab}
-                tabId={`run-history-${tab}-tab`}
-              />
+              {tab == 'timeline' ? (
+                <div aria-labelledby="run-history-timeline-tab" className="run-tab-panel" id="run-history-timeline-panel" role="tabpanel" tabIndex={0}>
+                  <RunLog
+                    events={events}
+                    eventsExpiresAt={eventsExpiresAt}
+                    eventNodes={eventNodes}
+                    filters={filters}
+                    historyComplete={historyComplete}
+                    observationFailed={observationFailed}
+                    onLocateEvent={onLocateEvent}
+                    onRetryObservation={() => store.runs.retryObservation()}
+                    result={result}
+                    run={run}
+                    submitting={false}
+                  />
+                </div>
+              ) : (
+                <div aria-labelledby="run-history-output-tab" className="run-tab-panel" id="run-history-output-panel" role="tabpanel" tabIndex={0}>
+                  {observationFailed && (
+                    <div className="run-observation-error" role="alert">
+                      <span>{t('run.observationFailed')}</span>
+                      <Button onClick={() => store.runs.retryObservation()} size="sm" type="button" variant="secondary">
+                        {t('empty.retry')}
+                      </Button>
+                    </div>
+                  )}
+                  {result == null ? (
+                    <div className="run-empty">{t('run.outputPending')}</div>
+                  ) : (
+                    <OverlayScrollbar className="run-output-scroll run-content-scroll" defer={false} tabIndex={-1}>
+                      <RunResultView result={result} />
+                    </OverlayScrollbar>
+                  )}
+                </div>
+              )}
             </div>
           </>
         )}

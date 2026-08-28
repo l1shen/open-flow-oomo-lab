@@ -6,14 +6,13 @@ import type { JsonValue, Run, RunEvent, RunResult } from '../api.ts'
 import type { IconName } from '../icons.tsx'
 import type { RunEventFilter } from './runStore.ts'
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLang, useTranslate } from 'val-i18n-react'
 import { OverlayScrollbar } from '../../../../designer/browser/components/overlayScrollbar.tsx'
 import { collapseAllNested, CompactValue, JSONViewer } from '../../../../designer/browser/jsonViewer/index.ts'
 import { Badge } from '../../../../ui/browser/badge.tsx'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuTrigger } from '../../../../ui/browser/dropdown-menu.tsx'
-import { ToggleGroup, ToggleGroupItem } from '../../../../ui/browser/toggle-group.tsx'
 import { Icon } from '../icons.tsx'
 import { eventSubject } from '../workspace.ts'
 import { downloadRunLog } from './runLogExport.ts'
@@ -95,7 +94,6 @@ interface Props {
 type EventObservation = 'expired' | 'truncated'
 type EventCategory = Exclude<RunEventFilter, 'all'>
 
-const eventFilters: readonly RunEventFilter[] = ['all', 'lifecycle', 'progress', 'log', 'output', 'artifact']
 const eventCategories: readonly EventCategory[] = ['lifecycle', 'progress', 'log', 'output', 'artifact']
 
 function eventObservation(events: readonly RunEvent[], historyComplete: boolean): EventObservation | undefined {
@@ -128,12 +126,12 @@ function eventCategory(event: RunEvent): EventCategory {
   }
 }
 
-function filterEvents(events: readonly RunEvent[], filter: RunEventFilter): readonly RunEvent[] {
-  return filter == 'all' ? events : events.filter((event) => eventCategory(event) == filter)
-}
-
 function filterEventsBy(events: readonly RunEvent[], filters: readonly RunEventFilter[]): readonly RunEvent[] {
   return events.filter((event) => filters.includes(eventCategory(event)))
+}
+
+export function initialRunLogFilters(filter: RunEventFilter): readonly RunEventFilter[] {
+  return filter == 'all' ? eventCategories.filter((candidate) => candidate != 'progress') : [filter]
 }
 
 interface TimelineEvent {
@@ -160,47 +158,7 @@ function timelineEvents(events: readonly RunEvent[]): readonly TimelineEvent[] {
   return result
 }
 
-export function RunEventFilters({
-  events,
-  filter,
-  onChange,
-}: {
-  readonly events: readonly RunEvent[]
-  readonly filter: RunEventFilter
-  readonly onChange: (filter: RunEventFilter) => void
-}): ReactElement | null {
-  const t = useTranslate()
-  if (events.length == 0) return null
-  const groupedEvents = timelineEvents(events)
-  const counts = new Map<EventCategory, number>()
-  for (const { event } of groupedEvents) {
-    const category = eventCategory(event)
-    counts.set(category, (counts.get(category) ?? 0) + 1)
-  }
-  return (
-    <ToggleGroup
-      aria-label={t('run.filterEvents')}
-      className="event-filters"
-      onValueChange={(next) => {
-        if (next[0] != null) onChange(next[0] as RunEventFilter)
-      }}
-      size="sm"
-      value={[filter]}
-    >
-      {eventFilters.map((candidate) => {
-        const count = candidate == 'all' ? groupedEvents.length : (counts.get(candidate) ?? 0)
-        return (
-          <ToggleGroupItem className="event-filter" key={candidate} value={candidate}>
-            {t(`run.filter.${candidate}`)}
-            <span>{count}</span>
-          </ToggleGroupItem>
-        )
-      })}
-    </ToggleGroup>
-  )
-}
-
-function RunLogFilters({
+export function RunLogFilters({
   container,
   events,
   filters,
@@ -357,26 +315,22 @@ function nodeTitleIndex(events: readonly RunEvent[]): ReadonlyMap<string, string
   return titles
 }
 
-export function RunDetails({
+export function RunLog({
   events,
   eventsExpiresAt,
-  eventFilter,
   eventNodes,
+  filters,
   historyComplete,
   observationFailed,
   onLocateEvent,
   onRetryObservation,
-  panelId,
   result,
   run,
   submitting,
-  tab,
-  tabId,
 }: Pick<
   Props,
   | 'events'
   | 'eventsExpiresAt'
-  | 'eventFilter'
   | 'eventNodes'
   | 'historyComplete'
   | 'observationFailed'
@@ -386,154 +340,6 @@ export function RunDetails({
   | 'run'
   | 'submitting'
 > & {
-  readonly panelId: string
-  readonly tab: 'output' | 'timeline'
-  readonly tabId: string
-}): ReactElement {
-  const language = useLang()
-  const t = useTranslate()
-  const eventList = useRef<OverlayScrollbarRef>(null)
-  const followedRun = useRef<string>()
-  const followEvents = useRef(true)
-  const nodeTitles = useMemo(() => nodeTitleIndex(events), [events])
-  const observation = eventObservation(events, historyComplete)
-  const visibleEvents = timelineEvents(filterEvents(events, eventFilter))
-  const lastEventSequence = events.at(-1)?.sequence
-
-  const eventScrollbarEvents = useMemo<EventListeners>(
-    () => ({
-      initialized(instance) {
-        const list = instance.elements().scrollOffsetElement
-        list.scrollTop = list.scrollHeight
-      },
-      scroll(instance) {
-        const list = instance.elements().scrollOffsetElement
-        followEvents.current = list.scrollHeight - list.scrollTop - list.clientHeight <= eventFollowThreshold
-      },
-    }),
-    [],
-  )
-
-  useEffect(() => {
-    if (followedRun.current != run?.runId) {
-      followedRun.current = run?.runId
-      followEvents.current = true
-    }
-    const instance = eventList.current?.osInstance()
-    if (tab == 'timeline' && followEvents.current && instance != null) {
-      instance.update()
-      const list = instance.elements().scrollOffsetElement
-      list.scrollTop = list.scrollHeight
-    }
-  }, [eventFilter, historyComplete, lastEventSequence, run?.runId, tab])
-
-  let content: ReactElement
-  if (submitting)
-    content = (
-      <div aria-live="polite" className="run-empty">
-        {t('run.submitting')}
-      </div>
-    )
-  else if (tab == 'output')
-    content =
-      result == null ? (
-        <div className="run-empty">{t('run.outputPending')}</div>
-      ) : (
-        <OverlayScrollbar className="run-output-scroll run-content-scroll" defer={false} tabIndex={-1}>
-          <RunResultView result={result} />
-        </OverlayScrollbar>
-      )
-  else if (run == null) content = <div className="run-empty">{t('run.timelineEmpty')}</div>
-  else
-    content = (
-      <OverlayScrollbar className="event-list run-content-scroll" defer={false} events={eventScrollbarEvents} ref={eventList} tabIndex={-1}>
-        <div className="event-table" role="table">
-          <div className="event-row event-heading" role="row">
-            <span>{t('run.step')}</span>
-            <span>{t('run.event')}</span>
-            <span>{t('run.eventDetails')}</span>
-            <span>{t('run.time')}</span>
-          </div>
-          {observation != null && (
-            <div aria-live="polite" className="event-row event-observation" role="row">
-              <span role="cell">
-                <Icon name="alert" size={14} />
-                {observation == 'expired'
-                  ? t('run.historyExpired')
-                  : eventsExpiresAt == null
-                    ? t('run.eventsTruncatedNotice')
-                    : t('run.eventsTruncatedUntil', { date: new Date(eventsExpiresAt).toLocaleString(language) })}
-              </span>
-            </div>
-          )}
-          {visibleEvents.map(({ event, events: groupedEvents }) => {
-            const subject = eventSubject(event, t, nodeTitles)
-            const nodeId = eventNodes.get(event.sequence)
-            return (
-              <Fragment key={event.sequence}>
-                <div className="event-row" role="row">
-                  {nodeId == null ? (
-                    <span className="event-subject">
-                      <Icon data-icon="inline-start" name={eventIcon(event)} />
-                      {subject}
-                    </span>
-                  ) : (
-                    <Button
-                      aria-label={t('run.locateNode', { name: subject })}
-                      className="event-subject event-locate"
-                      onClick={() => onLocateEvent(event.sequence)}
-                      size="xs"
-                      title={t('run.locateNode', { name: subject })}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Icon name={eventIcon(event)} />
-                      <span>{subject}</span>
-                      <Icon data-icon="inline-end" name="fit" />
-                    </Button>
-                  )}
-                  <code>{event.kind}</code>
-                  <span className="event-summary">{eventSummary(event, t)}</span>
-                  <time dateTime={event.createdAt}>{eventTime(event.createdAt, language)}</time>
-                </div>
-                <RunEventDetails events={groupedEvents} />
-              </Fragment>
-            )
-          })}
-          {events.length == 0 ? (
-            <div className="run-empty">{t('run.waiting')}</div>
-          ) : (
-            visibleEvents.length == 0 && <div className="run-empty">{t('run.noFilteredEvents')}</div>
-          )}
-        </div>
-      </OverlayScrollbar>
-    )
-  return (
-    <div aria-labelledby={tabId} className="run-tab-panel" id={panelId} role="tabpanel" tabIndex={0}>
-      {observationFailed && (
-        <div className="run-observation-error" role="alert">
-          <span>{t('run.observationFailed')}</span>
-          <Button onClick={onRetryObservation} size="sm" type="button" variant="secondary">
-            {t('empty.retry')}
-          </Button>
-        </div>
-      )}
-      {content}
-    </div>
-  )
-}
-
-function RunLog({
-  events,
-  eventsExpiresAt,
-  filters,
-  historyComplete,
-  observationFailed,
-  onRetryObservation,
-  result,
-  run,
-  submitting,
-}: Pick<Props, 'events' | 'eventsExpiresAt' | 'historyComplete' | 'observationFailed' | 'onRetryObservation' | 'result' | 'run' | 'submitting'> & {
   readonly filters: readonly RunEventFilter[]
 }): ReactElement {
   const language = useLang()
@@ -599,6 +405,7 @@ function RunLog({
           )}
           {visibleEvents.map(({ event, events: groupedEvents }) => {
             const subject = eventSubject(event, t, nodeTitles)
+            const nodeId = eventNodes.get(event.sequence)
             return (
               <li className={`run-log-event ${eventTone(event)}`} key={event.sequence}>
                 <span className="run-log-icon" title={event.kind}>
@@ -612,6 +419,19 @@ function RunLog({
                     <strong>{subject}</strong>
                     <Icon className="run-log-chevron" name="chevron-left" size={11} />
                     <span>{eventSummary(event, t)}</span>
+                    {nodeId != null && (
+                      <Button
+                        aria-label={t('run.locateNode', { name: subject })}
+                        className="run-log-locate"
+                        onClick={() => onLocateEvent(event.sequence)}
+                        size="icon-xs"
+                        title={t('run.locateNode', { name: subject })}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Icon name="fit" />
+                      </Button>
+                    )}
                   </div>
                   <RunEventDetails events={groupedEvents} />
                 </div>
@@ -672,10 +492,12 @@ export function RunDrawer({
   events,
   eventsExpiresAt,
   eventFilter,
+  eventNodes,
   historyComplete,
   onCancel,
   onClose,
   onEventFilterChange,
+  onLocateEvent,
   onRetryObservation,
   onToggle,
   observationFailed,
@@ -689,9 +511,7 @@ export function RunDrawer({
   const drawer = useRef<HTMLElement>(null)
   const resize = useRef<{ height: number; pointerId: number; y: number }>()
   const [resized, setResized] = useState<{ height: number; runId: string | undefined }>()
-  const [filters, setFilters] = useState<readonly RunEventFilter[]>(() =>
-    eventFilter == 'all' ? eventCategories.filter((filter) => filter != 'progress') : [eventFilter],
-  )
+  const [filters, setFilters] = useState<readonly RunEventFilter[]>(() => initialRunLogFilters(eventFilter))
   const groupedTimelineEvents = timelineEvents(events)
   const summaryOutputs = terminalOutputs(result) ?? latestOutputs(events)
   const timelineHeight = Math.max(
@@ -809,9 +629,11 @@ export function RunDrawer({
           <RunLog
             events={events}
             eventsExpiresAt={eventsExpiresAt}
+            eventNodes={eventNodes}
             filters={filters}
             historyComplete={historyComplete}
             observationFailed={observationFailed}
+            onLocateEvent={onLocateEvent}
             onRetryObservation={onRetryObservation}
             result={result}
             run={run}
