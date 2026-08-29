@@ -612,6 +612,29 @@ describe('Server application service', () => {
     })
   })
 
+  it('ignores unreferenced LLM Tasks when the deployment has no LLM host', async () => {
+    const unavailable = await openService(await databaseFile())
+    const content = variableFlow()
+    const unused = llmFlow().document.tasks.llm
+    if (unused == null) throw new Error('LLM Task fixture is missing.')
+    const stored = await storeRevision(
+      unavailable,
+      {
+        ...content,
+        document: {
+          ...content.document,
+          tasks: { unused },
+        },
+      },
+      'llm-check-unreferenced',
+    )
+
+    expect(await unavailable.control.checkFlow(stored.flowId, stored.revisionId, 'open-flow-engine/v1')).toMatchObject({
+      diagnostics: [],
+      valid: true,
+    })
+  })
+
   it('propagates Run cancellation into the active LLM Task host', async () => {
     let started!: () => void
     const invoked = new Promise<void>((resolve) => {

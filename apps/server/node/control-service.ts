@@ -646,16 +646,21 @@ export class ControlService {
     const checked = await validateFlow(content, engine)
     const llmDiagnostics = this.llmAvailable
       ? []
-      : Object.entries(content.document.tasks)
-          .filter(([, task]) => task.executor.kind == 'llm')
-          .map(([taskId]) => ({
-            code: 'llm.unconfigured',
-            column: 0,
-            line: 0,
-            message: 'LLM is not configured for this deployment. Configure OPEN_FLOW_LLM_ORIGIN and OPEN_FLOW_LLM_TOKEN.',
-            path: `/document/tasks/${taskId}/executor`,
-            values: {},
-          }))
+      : [...checked.closure.dependencies.tasks].toSorted().flatMap((taskId) => {
+          const task = content.document.tasks[taskId]
+          return task?.executor.kind == 'llm'
+            ? [
+                {
+                  code: 'llm.unconfigured',
+                  column: 0,
+                  line: 0,
+                  message: 'LLM is not configured for this deployment. Configure OPEN_FLOW_LLM_ORIGIN and OPEN_FLOW_LLM_TOKEN.',
+                  path: `/document/tasks/${taskId}/executor`,
+                  values: {},
+                },
+              ]
+            : []
+        })
     return {
       closureDigest: checked.closure.digest,
       diagnostics: [...checked.diagnostics, ...llmDiagnostics],
