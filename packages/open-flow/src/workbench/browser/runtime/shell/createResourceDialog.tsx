@@ -7,9 +7,13 @@ import { Button } from '../../../../ui/browser/button.tsx'
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../../../../ui/browser/dialog.tsx'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '../../../../ui/browser/field.tsx'
 import { Input } from '../../../../ui/browser/input.tsx'
+import { Spinner } from '../../../../ui/browser/spinner.tsx'
 import { Icon } from '../icons.tsx'
+import { WorkbenchSelect } from './workbenchSelect.tsx'
 
 export default function CreateResourceDialog({
+  disabled,
+  field,
   id,
   issue,
   label,
@@ -20,6 +24,32 @@ export default function CreateResourceDialog({
   pending,
   title,
 }: {
+  readonly disabled?: boolean | undefined
+  readonly field?:
+    | {
+        readonly ariaLabel: string
+        readonly description: string
+        readonly label: string
+        readonly onValueChange: (value: string) => void
+        readonly options: readonly { readonly disabled?: boolean; readonly label: string; readonly value: string }[]
+        readonly state: 'ready'
+        readonly value: string
+      }
+    | {
+        readonly description: string
+        readonly label: string
+        readonly state: 'loading'
+        readonly status: string
+      }
+    | {
+        readonly description: string
+        readonly label: string
+        readonly onRetry: () => void
+        readonly retry: string
+        readonly state: 'error'
+        readonly status: string
+      }
+    | undefined
   readonly id: string
   readonly issue: ReturnType<typeof resourceNameIssue>
   readonly label: string
@@ -37,6 +67,7 @@ export default function CreateResourceDialog({
   const showIssue = name.length > 0 && issue != null
   const message = showIssue ? t(`resource.nameIssue.${issue}`, { max: resourceNameMaxLength }) : t('resource.nameHint', { max: resourceNameMaxLength })
   const messageId = `${id}-message`
+  const fieldId = `${id}-option`
   useEffect(() => setOpen(true), [])
   return (
     <>
@@ -56,7 +87,7 @@ export default function CreateResourceDialog({
                 <Icon name="close" />
               </DialogClose>
             </DialogHeader>
-            <FieldGroup>
+            <FieldGroup className="gap-4">
               <Field data-invalid={showIssue}>
                 <FieldLabel htmlFor={id}>{label}</FieldLabel>
                 <Input
@@ -72,12 +103,42 @@ export default function CreateResourceDialog({
                 />
                 {showIssue ? <FieldError id={messageId}>{message}</FieldError> : <FieldDescription id={messageId}>{message}</FieldDescription>}
               </Field>
+              {field != null && (
+                <Field>
+                  <FieldLabel htmlFor={field.state == 'ready' ? fieldId : undefined}>{field.label}</FieldLabel>
+                  {field.state == 'ready' ? (
+                    <WorkbenchSelect
+                      ariaLabel={field.ariaLabel}
+                      className="w-full"
+                      id={fieldId}
+                      onValueChange={field.onValueChange}
+                      options={field.options}
+                      portalRoot={portal.current}
+                      value={field.value}
+                    />
+                  ) : (
+                    <div
+                      className="flex min-h-9 items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
+                      role={field.state == 'error' ? 'alert' : 'status'}
+                    >
+                      {field.state == 'loading' && <Spinner aria-hidden="true" />}
+                      <span>{field.status}</span>
+                      {field.state == 'error' && (
+                        <Button className="ml-auto bg-background" onClick={field.onRetry} size="sm" type="button" variant="outline">
+                          {field.retry}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  <FieldDescription>{field.description}</FieldDescription>
+                </Field>
+              )}
             </FieldGroup>
-            <DialogFooter>
+            <DialogFooter className="mx-0 mb-0 border-0 bg-transparent p-0 pt-1">
               <DialogClose render={<Button variant="outline" />} type="button">
                 {t('common.cancel')}
               </DialogClose>
-              <Button disabled={pending || issue != null} type="submit">
+              <Button disabled={disabled || pending || issue != null} type="submit">
                 {t(pending ? 'common.creating' : 'common.create')}
               </Button>
             </DialogFooter>

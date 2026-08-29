@@ -224,7 +224,7 @@ export class ConnectorStore {
     if (this.#disposed) return
     const flowId = this.#workspace.$.flowId.value
     if (flowId == null) return
-    const providers = this.#providers ?? (await this.#client.listConnectorProviders(signal))
+    const providers = this.#providers ?? (await this.#client.listConnectorProviders(signal, flowId))
     if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
     this.#providers = providers
     return providers.toSorted((left, right) => left.serviceName.localeCompare(right.serviceName)).map((provider) => providerOption(provider, this.#i18n.t))
@@ -236,7 +236,7 @@ export class ConnectorStore {
     const provider = this.#providers?.find((candidate) => `connector-provider:${candidate.serviceId}` == optionId)
     if (flowId == null || provider == null) return
     const loaded = this.#providerActions.get(provider.serviceId)
-    const actions = loaded ?? (await this.#client.listConnectorActions(provider.serviceId, signal))
+    const actions = loaded ?? (await this.#client.listConnectorActions(provider.serviceId, signal, flowId))
     if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
     const resolved = actions.map((action) =>
       Object.assign({}, action, action.icon == null && provider.icon != null ? { icon: provider.icon } : {}, { serviceName: provider.serviceName }),
@@ -251,7 +251,7 @@ export class ConnectorStore {
     const flowId = this.#workspace.$.flowId.value
     if (flowId == null) return
     const query = searchTerm.trim()
-    const actions = query.length == 0 ? Object.values(this.#state.value.actions) : await this.#client.searchConnectorActions(query, signal)
+    const actions = query.length == 0 ? Object.values(this.#state.value.actions) : await this.#client.searchConnectorActions(query, signal, flowId)
     if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
     const next = { ...this.#state.value.actions }
     for (const action of actions) next[action.actionId] = action
@@ -297,7 +297,7 @@ export class ConnectorStore {
     if (flowId == null) return
     const catalog = this.#state.value.catalogs[serviceId]
     try {
-      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(serviceId))
+      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(serviceId, flowId))
       if (!opened) {
         this.#setNotice({ kind: 'error', message: this.#i18n.t('notice.connectionPopupBlocked') })
         return
@@ -326,7 +326,7 @@ export class ConnectorStore {
   async #loadAction(actionId: string, force: boolean): Promise<ConnectorAction> {
     const action = this.#state.value.actions[actionId]
     if (!force && action != null) return action
-    return await this.#client.getConnectorAction(actionId)
+    return await this.#client.getConnectorAction(actionId, undefined, this.#workspace.$.flowId.value)
   }
 
   async #refreshConnections(flowId: string, target: ConnectorTarget, serviceId: string, force: boolean, current: Current): Promise<void> {
@@ -345,7 +345,7 @@ export class ConnectorStore {
     if (!force && cached != null) return cached
     let connections: readonly ConnectorConnection[]
     try {
-      connections = await this.#client.listConnectorConnections(serviceId)
+      connections = await this.#client.listConnectorConnections(serviceId, undefined, flowId)
     } catch (error) {
       if (this.#isCurrent(current, flowId)) this.#set({ connectionError: { message: errorNotice(error, this.#i18n.t).message, serviceId } })
       return
@@ -392,7 +392,7 @@ export class ConnectorStore {
     if (missing.length == 0) return
     for (const actionId of missing) this.#loadingActions.add(actionId)
     try {
-      const actions = await Promise.all(missing.map((actionId) => this.#client.getConnectorAction(actionId)))
+      const actions = await Promise.all(missing.map((actionId) => this.#client.getConnectorAction(actionId, undefined, flowId)))
       if (!this.#isCurrent(current, flowId)) return
       const next = { ...this.#state.value.actions }
       for (const action of actions) next[action.actionId] = action

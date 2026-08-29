@@ -129,6 +129,7 @@ const publicationColumns = `
   publications.source_publication_id AS sourcePublicationId`
 
 export interface StoredRun {
+  readonly connectorTeamId?: string
   readonly content: string
   readonly engineContract: string
   readonly engineDigest: string
@@ -174,6 +175,7 @@ export class Store {
 
   createFlow(input: {
     readonly actorId: string
+    readonly connectorTeamId?: string
     readonly content: string
     readonly createdAt: number
     readonly digest: string
@@ -205,6 +207,7 @@ export class Store {
         )
         .run(input.flowId, input.name, input.revisionId, input.idempotencyKey, input.requestDigest, input.createdAt, input.createdAt)
       this.#database.prepare("INSERT INTO flow_presentations (flow_id, revision, value, updated_at) VALUES (?, 1, '{}', ?)").run(input.flowId, input.createdAt)
+      this.#database.prepare('INSERT INTO flow_connector_teams (flow_id, team_id) VALUES (?, ?)').run(input.flowId, input.connectorTeamId ?? null)
       return { created: true, flow: this.#flow(input.flowId)! }
     })
   }
@@ -414,6 +417,7 @@ export class Store {
       this.#database.prepare('DELETE FROM flow_live WHERE flow_id = ?').run(flowId)
       this.#database.prepare('DELETE FROM publications WHERE flow_id = ?').run(flowId)
       this.#database.prepare('DELETE FROM flow_presentations WHERE flow_id = ?').run(flowId)
+      this.#database.prepare('DELETE FROM flow_connector_teams WHERE flow_id = ?').run(flowId)
       this.#database.prepare('DELETE FROM flow_revisions WHERE flow_id = ?').run(flowId)
       return this.#database.prepare("DELETE FROM flows WHERE flow_id = ? AND status = 'retiring'").run(flowId).changes == 1
     })
@@ -1087,13 +1091,14 @@ export class Store {
       const row = this.#database
         .prepare(
           `SELECT revisions.content, runs.engine_contract AS engineContract, runs.engine_digest AS engineDigest,
-                  runs.flow_id AS flowId, runs.inputs,
+                  runs.connector_team_id AS connectorTeamId, runs.flow_id AS flowId, runs.inputs,
                   runs.revision_digest AS revisionDigest, runs.run_id AS runId,
                   trigger_occurrences.payload AS triggerPayload, trigger_occurrences.trigger_node_id AS triggerNodeId
            FROM runs JOIN revisions USING (revision_id) LEFT JOIN trigger_occurrences USING (run_id)
            WHERE runs.run_id = ? AND runs.status = 'starting'`,
         )
         .get(claimed.runId) as {
+        readonly connectorTeamId: string | null
         readonly content: string
         readonly engineContract: string
         readonly engineDigest: string
@@ -1106,6 +1111,7 @@ export class Store {
       }
       return {
         ...row,
+        connectorTeamId: row.connectorTeamId ?? undefined,
         inputs: JSON.parse(row.inputs) as RunInputs,
         ...(row.triggerNodeId == null || row.triggerPayload == null
           ? {}
@@ -1116,6 +1122,28 @@ export class Store {
 
   close(): void {
     this.#database.close()
+  }
+
+  connectorTeam(flowId: string): string | undefined {
+    const row = this.#database.prepare('SELECT team_id AS teamId FROM flow_connector_teams WHERE flow_id = ?').get(flowId) as
+      | { readonly teamId: string | null }
+      | undefined
+    return row?.teamId ?? undefined
+  }
+
+  connectorTeamBindings(): readonly { readonly flowId: string; readonly teamId: string }[] {
+    return this.#database
+      .prepare('SELECT flow_id AS flowId, team_id AS teamId FROM flow_connector_teams WHERE team_id IS NOT NULL ORDER BY flow_id')
+      .all() as unknown as readonly { readonly flowId: string; readonly teamId: string }[]
+  }
+
+  bindConnectorTeam(flowId: string, teamId: string): string | undefined {
+    this.#database.prepare('UPDATE flow_connector_teams SET team_id = ? WHERE flow_id = ? AND team_id IS NULL').run(teamId, flowId)
+    return this.connectorTeam(flowId)
+  }
+
+  bindUnassignedConnectorTeams(teamId: string): void {
+    this.#database.prepare('UPDATE flow_connector_teams SET team_id = ? WHERE team_id IS NULL').run(teamId)
   }
 
   commit(runId: string, status: RunTerminalStatus, result: unknown): boolean {
@@ -1188,7 +1216,7 @@ export class Store {
     const conditions = ['runs.flow_id = ?']
     const parameters: (number | string)[] = [flowId]
     if (options.after != null) {
-      conditions.push('(runs.created_at > ? OR (runs.created_at = ? AND runs.run_id > ?))')
+      conditions.push('(runs.created_at < ? OR (runs.created_at = ? AND runs.run_id < ?))')
       parameters.push(options.after.createdAt, options.after.createdAt, options.after.runId)
     }
     if (options.status != null) {
@@ -1196,7 +1224,7 @@ export class Store {
       parameters.push(options.status)
     }
     parameters.push(limit)
-    return this.#controlRuns(conditions.join(' AND '), parameters, 'ORDER BY runs.created_at, runs.run_id LIMIT ?')
+    return this.#controlRuns(conditions.join(' AND '), parameters, 'ORDER BY runs.created_at DESC, runs.run_id DESC LIMIT ?')
   }
 
   controlEvents(runId: string, after: number, limit: number): readonly StoredControlEvent[] {
@@ -1408,13 +1436,14 @@ export class Store {
     readonly source: 'draft' | 'live' | 'trigger'
   }): string {
     const runId = randomUUID()
+    const connectorTeamId = this.connectorTeam(input.flowId)
     this.#database
       .prepare(
         `INSERT INTO runs (
            run_id, idempotency_key, request_digest, revision_id, revision_digest, flow_id,
            engine_contract, engine_digest, inputs, status, source, closure_digest,
-           model_version, created_at, publication_id
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`,
+           model_version, created_at, publication_id, connector_team_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         runId,
@@ -1431,6 +1460,7 @@ export class Store {
         input.modelVersion,
         this.#clock(),
         input.publicationId ?? null,
+        connectorTeamId ?? null,
       )
     this.#database.prepare('INSERT INTO work (run_id) VALUES (?)').run(runId)
     const payload = {}

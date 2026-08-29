@@ -1,4 +1,4 @@
-import type { FormEvent, ReactElement } from 'react'
+import type { ComponentProps, FormEvent, ReactElement } from 'react'
 import type { Flow } from '../api.ts'
 import type { WorkbenchLanguage } from '../contract.ts'
 import type { WorkbenchStore } from '../stores/workbenchStore.ts'
@@ -9,6 +9,7 @@ import { useVal } from 'use-value-enhancer'
 import { useLang, useTranslate } from 'val-i18n-react'
 import { resourceNameIssue, resourceNameMaxLength } from '../../../../flow/common/change.ts'
 import { uiLanguageNames, uiLanguages } from '../../../../localization/common/languages.ts'
+import { Badge } from '../../../../ui/browser/badge.tsx'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../../../../ui/browser/empty.tsx'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../../../../ui/browser/input-group.tsx'
@@ -49,6 +50,7 @@ export function LanguageSelect({ language, onLanguageChange }: LanguageSelectPro
 }
 
 interface FlowItemProps {
+  readonly badge?: string | undefined
   readonly busy: WorkspaceBusy | undefined
   readonly flow: Flow
   readonly href: string
@@ -56,7 +58,7 @@ interface FlowItemProps {
   readonly store: WorkbenchStore
 }
 
-function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactElement {
+function FlowItem({ badge, busy, flow, href, onSelect, store }: FlowItemProps): ReactElement {
   const locale = useLang()
   const t = useTranslate()
   const [mode, setMode] = useState<'actions' | 'delete' | 'idle' | 'rename'>('idle')
@@ -95,7 +97,14 @@ function FlowItem({ busy, flow, href, onSelect, store }: FlowItemProps): ReactEl
             <Icon name="flow" />
           </span>
           <span>
-            <strong>{flow.name}</strong>
+            <span className="flex min-w-0 items-center gap-2">
+              <strong className="min-w-0 truncate">{flow.name}</strong>
+              {badge != null && (
+                <Badge className="min-w-0 shrink" title={badge} variant="secondary">
+                  <span className="truncate">{badge}</span>
+                </Badge>
+              )}
+            </span>
             <code translate="no">{flow.flowId}</code>
           </span>
         </span>
@@ -199,6 +208,9 @@ function FlowSkeleton(): ReactElement {
 }
 
 interface FlowBrowserProps extends LanguageSelectProps {
+  readonly createFlowDisabled?: boolean | undefined
+  readonly createFlowField?: ComponentProps<typeof CreateResourceDialog>['field']
+  readonly flowBadges?: Readonly<Record<string, string>> | undefined
   readonly hrefForFlow: (flow: Flow) => string
   readonly hostAction?: string | undefined
   readonly hostTitle?: string | undefined
@@ -209,6 +221,9 @@ interface FlowBrowserProps extends LanguageSelectProps {
 }
 
 export function FlowBrowser({
+  createFlowDisabled,
+  createFlowField,
+  flowBadges,
   hrefForFlow,
   hostAction,
   hostTitle,
@@ -332,7 +347,17 @@ export function FlowBrowser({
                 )}
               </Empty>
             ) : (
-              visible.map((flow) => <FlowItem busy={busy} flow={flow} href={hrefForFlow(flow)} key={flow.flowId} onSelect={onSelectFlow} store={store} />)
+              visible.map((flow) => (
+                <FlowItem
+                  badge={flowBadges?.[flow.flowId]}
+                  busy={busy}
+                  flow={flow}
+                  href={hrefForFlow(flow)}
+                  key={flow.flowId}
+                  onSelect={onSelectFlow}
+                  store={store}
+                />
+              ))
             )}
           </div>
           {nextCursor != null && (
@@ -346,6 +371,8 @@ export function FlowBrowser({
         {creating && (
           <Suspense fallback={null}>
             <CreateResourceDialog
+              disabled={createFlowDisabled}
+              field={createFlowField}
               id="flow-name"
               issue={resourceNameIssue(name)}
               label={t('resource.flowName')}

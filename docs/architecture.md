@@ -120,6 +120,12 @@ Connector service 拥有 Provider 授权、credential、Connection lifecycle 和
 不能把 credential、token 或 Connector 数据库复制进 Revision、Browser 或 RunEvent。Connector catalog 和 Connection 是 deployment scope 资源，
 不从属于单个 Flow。
 
+Server 使用 OOMOL-hosted Connector 时，Operator 创建 Flow 必须选择一个具体 OOMOL Team，并由 Server 在同一个创建 operation boundary 内保存为
+不可变的 Flow metadata；选择默认 Team 也必须固定其具体 identity，不能保存为随账户默认值漂移的动态选择。Node 不拥有或覆盖 Team，既有 Flow 也不能
+原地切换 Team；需要另一个 Team 时创建新的 Flow。Connector catalog 与 Connection 查询按 Flow 解析 Team，Run admission 将 Team 固定为 Run snapshot，
+Poll 与 Integration 使用所属 Flow 的 Team；运行时 Connector 请求必须显式携带该固定作用域，不能读取部署级可变 Team。产品中立 Workbench 不拥有这项
+外部身份配置，由部署宿主扩展创建 Flow 的交互和 operation。自建或自定义 Connector 不显示 OOMOL Team 入口，也不能隐式请求 OOMOL membership 服务。
+
 Server 可以显式配置独立的 LLM origin 和 token；未显式配置时，OOMOL-hosted Connector runtime 和对应 token 可以推导同一环境与授权的 OOMOL
 LLM host。自建或自定义 Connector origin 不隐含模型能力，未配置的 Connector 或 LLM capability 必须分别 fail closed；Workbench 不能把外部服务
 暂时不可用误报为部署尚未配置。

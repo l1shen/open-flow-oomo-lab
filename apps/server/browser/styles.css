@@ -202,11 +202,21 @@ body {
   font-weight: 600;
 }
 
+.server-nav-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
 .server-sign-out {
   height: 30px;
-  margin-left: auto;
   padding: 0 10px;
   font-size: 12px;
+}
+
+.server-sign-out {
   color: var(--ui-destructive);
 }
 

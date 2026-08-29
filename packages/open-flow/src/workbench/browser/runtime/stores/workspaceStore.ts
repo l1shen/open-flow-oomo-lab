@@ -287,12 +287,15 @@ export class WorkspaceStore {
     return true
   }
 
-  public async createFlow(name: string): Promise<Flow | undefined> {
+  public async createFlow(name: string, create?: (name: string) => Promise<string>): Promise<Flow | undefined> {
     if (!this.#allowModuleNavigation()) return
     this.#set({ busy: 'flow' })
     this.#setNotice(undefined)
     try {
-      return await this.#flows.create(name)
+      if (create == null) return await this.#flows.create(name)
+      const flow = await this.#client.getFlow(await create(name))
+      this.#flows.include(flow)
+      return flow
     } catch (error) {
       if (!this.#disposed) this.#setNotice(errorNotice(error, this.#i18n.t))
     } finally {

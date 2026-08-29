@@ -231,6 +231,7 @@ export class ControlService {
   private readonly flowCatalogChanged: () => void
   private readonly flowChanged: (event: FlowChangeEvent) => void
   private readonly publish: (input: PublishInput) => Promise<PublicationAcceptance>
+  private readonly resolveConnectorTeam?: (teamId?: string) => Promise<string>
   private readonly store: Store
   private readonly testPollTrigger: (flowId: string, triggerNodeId: string) => Promise<PollTriggerTestResult>
   private readonly triggerDefinitions: readonly TriggerKeySnapshot[]
@@ -250,6 +251,7 @@ export class ControlService {
     flowChanged: (event: FlowChangeEvent) => void,
     connector?: ConnectorHost,
     connectorConsoleOrigin?: URL,
+    resolveConnectorTeam?: (teamId?: string) => Promise<string>,
   ) {
     this.store = store
     this.clock = clock
@@ -263,6 +265,7 @@ export class ControlService {
     this.flowChanged = flowChanged
     this.connector = connector
     this.connectorConsoleOrigin = connectorConsoleOrigin
+    this.resolveConnectorTeam = resolveConnectorTeam
   }
 
   listTriggerKeys(): readonly TriggerKeySummary[] {
@@ -301,54 +304,70 @@ export class ControlService {
     return definition
   }
 
-  async listConnectorProviders(): Promise<readonly ConnectorProvider[]> {
-    return await this.#connectorRequest((connector) => connector.listProviders())
+  async listConnectorProviders(flowId?: string): Promise<readonly ConnectorProvider[]> {
+    return await this.#connectorRequest(flowId, (connector, teamId) => connector.listProviders(undefined, teamId))
   }
 
-  async listConnectorActions(serviceId?: string): Promise<readonly ConnectorAction[]> {
-    return await this.#connectorRequest((connector) => connector.listActions(serviceId))
+  async listConnectorActions(serviceId?: string, flowId?: string): Promise<readonly ConnectorAction[]> {
+    return await this.#connectorRequest(flowId, (connector, teamId) => connector.listActions(serviceId, undefined, teamId))
   }
 
-  async searchConnectorActions(query: string): Promise<readonly ConnectorAction[]> {
-    return await this.#connectorRequest((connector) => connector.searchActions(query))
+  async searchConnectorActions(query: string, flowId?: string): Promise<readonly ConnectorAction[]> {
+    return await this.#connectorRequest(flowId, (connector, teamId) => connector.searchActions(query, undefined, teamId))
   }
 
-  async getConnectorAction(actionId: string): Promise<ConnectorAction> {
-    return await this.#connectorRequest((connector) => connector.getAction(actionId))
+  async getConnectorAction(actionId: string, flowId?: string): Promise<ConnectorAction> {
+    return await this.#connectorRequest(flowId, (connector, teamId) => connector.getAction(actionId, undefined, teamId))
   }
 
-  async listConnectorConnections(serviceId: string): Promise<readonly ConnectorConnection[]> {
-    return await this.#connectorRequest((connector) => connector.listConnections(serviceId))
+  async listConnectorConnections(serviceId: string, flowId?: string): Promise<readonly ConnectorConnection[]> {
+    return await this.#connectorRequest(flowId, (connector, teamId) => connector.listConnections(serviceId, undefined, teamId))
   }
 
-  connectorConnectionPage(serviceId: string): string {
+  connectorConnectionPage(serviceId: string, flowId?: string): string {
+    if (flowId != null) this.getFlow(flowId)
     if (this.connectorConsoleOrigin == null) throw new ControlError(controlErrorCode.connectorUnavailable, 'The Connector request could not be completed.')
     return new URL(`providers/${encodeURIComponent(serviceId)}`, this.connectorConsoleOrigin).href
   }
 
-  async #connectorRequest<Value>(request: (connector: ConnectorHost) => Promise<Value>): Promise<Value> {
+  async #connectorRequest<Value>(flowId: string | undefined, request: (connector: ConnectorHost, teamId?: string) => Promise<Value>): Promise<Value> {
     if (this.connector == null) throw new ControlError(controlErrorCode.connectorUnconfigured, 'Connector is not configured for this deployment.')
+    if (flowId != null) this.getFlow(flowId)
+    let teamId = flowId == null ? undefined : this.store.connectorTeam(flowId)
+    if (flowId != null && teamId == null && this.resolveConnectorTeam != null) {
+      teamId = this.store.bindConnectorTeam(flowId, await this.resolveConnectorTeam())
+    }
     try {
-      return await request(this.connector)
+      return await request(this.connector, teamId)
     } catch (error) {
       if (!(error instanceof ConnectorTaskError)) throw error
       throw new ControlError(error.code, error.message)
     }
   }
 
-  async createFlow(actorId: string, name: string, idempotencyKey: string): Promise<{ readonly created: boolean; readonly flow: Flow }> {
+  async createFlow(
+    actorId: string,
+    name: string,
+    idempotencyKey: string,
+    connectorTeamId?: string,
+  ): Promise<{ readonly created: boolean; readonly flow: Flow }> {
+    if (connectorTeamId != null && this.resolveConnectorTeam == null) {
+      throw new ControlError(controlErrorCode.flowInvalid, 'Connector Team is not available for this deployment.')
+    }
+    const selectedConnectorTeamId = this.resolveConnectorTeam == null ? undefined : await this.resolveConnectorTeam(connectorTeamId)
     const content = emptyRevision()
     const bytes = encodeRevision(content)
     const createdAt = this.clock()
     const stored = this.store.createFlow({
       actorId,
+      connectorTeamId: selectedConnectorTeamId,
       content: new TextDecoder().decode(bytes),
       createdAt,
       digest: await digestBytes(bytes),
       idempotencyKey,
       name,
       flowId: identity('flow'),
-      requestDigest: await digestBytes(canonicalJsonBytes({ name })),
+      requestDigest: await digestBytes(canonicalJsonBytes({ connectorTeamId: connectorTeamId ?? null, name })),
       revisionId: identity('revision'),
     })
     if ('kind' in stored) throw new ControlError(controlErrorCode.flowConflict, 'The idempotency key refers to another Flow request.')

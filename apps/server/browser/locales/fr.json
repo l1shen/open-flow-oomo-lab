@@ -16,6 +16,17 @@
     "notifications": "Notifications",
     "variables": "Variables"
   },
+  "team": {
+    "createFailed": "Impossible de créer le Flow pour cette équipe du Connector.",
+    "defaultNamed": "{{name}} (par défaut)",
+    "fixedHint": "Après sa création, le Flow utilisera toujours cette équipe.",
+    "flowBadge": "Équipe : {{name}}",
+    "label": "Équipe OOMOL",
+    "loadFailed": "Impossible de charger les équipes.",
+    "loading": "Chargement des équipes…",
+    "retry": "Réessayer",
+    "selectForCreation": "Sélectionner l’équipe du Connector pour le nouveau Flow"
+  },
   "variables": {
     "all": "Toutes les Variables",
     "cancel": "Annuler",

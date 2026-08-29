@@ -2,12 +2,15 @@ import { currentEngineContract } from '@oomol-lab/open-flow/runtime-contract'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { ConnectorClient } from '../node/connector.ts'
 import { createServerApp } from '../node/http.ts'
 import { OperatorSession } from '../node/operator.ts'
 import { closeService, openService } from './serviceFixture.ts'
 
 const token = 'open-flow-server-operator-token-00000001'
+
+afterEach(() => vi.unstubAllGlobals())
 
 it('uses a signed operator session, expires it on time or token rotation, and clears its cookie on logout', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-operator-'))
@@ -130,6 +133,99 @@ it('reports missing operator configuration without disabling callbacks or health
     expect((await app.request('/v1/runs/missing')).status).toBe(401)
     expect((await app.request('/healthz')).status).toBe(200)
     expect((await app.request('/v1/webhooks/not-an-endpoint')).status).toBe(404)
+  } finally {
+    await closeService(service)
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
+it('fixes one OOMOL Team when each Flow is created', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-team-'))
+  const file = path.join(directory, 'open-flow.sqlite')
+  const requests: { readonly teamId: string | null; readonly url: string }[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      requests.push({ teamId: new Headers(init?.headers).get('x-oo-team-id'), url })
+      return url.startsWith('https://relation-control.oomol.com/')
+        ? Response.json({
+            teams: [
+              { id: 'team-1', name: 'Engineering', system_created: true },
+              { id: 'team-2', name: 'Operations', system_created: false },
+            ],
+          })
+        : Response.json({ data: [], success: true })
+    }),
+  )
+  const connector = new ConnectorClient('https://connector.oomol.com', 'runtime-token')
+  const service = await openService(file, connector)
+  let flowId = ''
+  try {
+    expect((await createServerApp(service).request('/connector/teams')).status).toBe(401)
+    const app = createServerApp(service, { resolveControlActor: () => 'operator' })
+    expect(await (await app.request('/connector/teams')).json()).toEqual({
+      bindings: [],
+      enabled: true,
+      teams: [
+        { id: 'team-1', name: 'Engineering', systemCreated: true },
+        { id: 'team-2', name: 'Operations', systemCreated: false },
+      ],
+      version: 1,
+    })
+    expect(
+      (
+        await app.request('/connector/flows', {
+          body: JSON.stringify({ name: 'Missing Team', teamId: 'missing', version: 1 }),
+          headers: { 'content-type': 'application/json', 'idempotency-key': 'missing-team-flow' },
+          method: 'POST',
+        })
+      ).status,
+    ).toBe(400)
+    const createdResponse = await app.request('/connector/flows', {
+      body: JSON.stringify({ name: 'Team Flow', teamId: 'team-2', version: 1 }),
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'create-team-flow' },
+      method: 'POST',
+    })
+    expect(createdResponse.status).toBe(201)
+    flowId = ((await createdResponse.json()) as { readonly flowId: string }).flowId
+    await service.control.listConnectorProviders(flowId)
+    expect(requests.at(-1)).toEqual({ teamId: 'team-2', url: 'https://connector.oomol.com/v1/providers' })
+    const other = await service.control.createFlow('operator', 'Default Team Flow', 'create-default-team-flow')
+    const teamStatus = (await (await app.request('/connector/teams')).json()) as {
+      readonly bindings: readonly { readonly flowId: string; readonly teamId: string }[]
+    }
+    expect(teamStatus.bindings).toEqual(
+      expect.arrayContaining([
+        { flowId, teamId: 'team-2' },
+        { flowId: other.flow.flowId, teamId: 'team-1' },
+      ]),
+    )
+    await service.control.listConnectorProviders(other.flow.flowId)
+    expect(requests.at(-1)).toEqual({ teamId: 'team-1', url: 'https://connector.oomol.com/v1/providers' })
+    await service.control.listConnectorProviders(flowId)
+    expect(requests.at(-1)).toEqual({ teamId: 'team-2', url: 'https://connector.oomol.com/v1/providers' })
+    expect((await app.request(`/connector/flows/${flowId}/team`, { method: 'PUT' })).status).toBe(404)
+  } finally {
+    await closeService(service)
+  }
+
+  const reopened = await openService(file, new ConnectorClient('https://connector.oomol.com', 'runtime-token'))
+  try {
+    await reopened.control.listConnectorProviders(flowId)
+    expect(requests.at(-1)).toEqual({ teamId: 'team-2', url: 'https://connector.oomol.com/v1/providers' })
+  } finally {
+    await closeService(reopened)
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
+it('hides OOMOL Team selection for a custom Connector', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'open-flow-custom-team-'))
+  const service = await openService(path.join(directory, 'open-flow.sqlite'), new ConnectorClient('https://connector.example.com', 'runtime-token'))
+  try {
+    const app = createServerApp(service, { resolveControlActor: () => 'operator' })
+    expect(await (await app.request('/connector/teams')).json()).toEqual({ bindings: [], enabled: false, teams: [], version: 1 })
   } finally {
     await closeService(service)
     await rm(directory, { force: true, recursive: true })

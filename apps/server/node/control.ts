@@ -133,27 +133,56 @@ export function createControlApp(service: ControlService, resolveActor?: Resolve
   })
   app.get('/flows/:flowId/revisions/:revisionId', (context) => response(200, service.getRevision(context.req.param('flowId'), context.req.param('revisionId'))))
 
-  app.get('/connector/providers', async () => response(200, { providers: await service.listConnectorProviders(), version: 1 }))
+  app.get('/connector/providers', async (context) => {
+    const flowId = query(context.req.raw, ['flowId'], controlErrorCode.flowInvalid).get('flowId')
+    return response(200, {
+      providers: await service.listConnectorProviders(flowId == null ? undefined : text(flowId, controlErrorCode.flowInvalid)),
+      version: 1,
+    })
+  })
   app.get('/connector/actions', async (context) => {
-    const parameters = query(context.req.raw, ['q', 'service'], controlErrorCode.flowInvalid)
+    const parameters = query(context.req.raw, ['flowId', 'q', 'service'], controlErrorCode.flowInvalid)
+    const flowId = parameters.get('flowId')
     const queryValue = parameters.get('q')?.trim()
     const serviceId = parameters.get('service')?.trim()
     if (queryValue != null && serviceId != null) invalid(controlErrorCode.flowInvalid, 'Connector Action query is invalid.')
     if (queryValue != null && (queryValue.length == 0 || queryValue.length > 256)) invalid(controlErrorCode.flowInvalid, 'Connector Action query is invalid.')
     if (serviceId != null && (serviceId.length == 0 || serviceId.length > 256)) invalid(controlErrorCode.flowInvalid, 'Connector service is invalid.')
-    const actions = queryValue == null ? await service.listConnectorActions(serviceId) : await service.searchConnectorActions(queryValue)
+    const scope = flowId == null ? undefined : text(flowId, controlErrorCode.flowInvalid)
+    const actions = queryValue == null ? await service.listConnectorActions(serviceId, scope) : await service.searchConnectorActions(queryValue, scope)
     return response(200, { actions, version: 1 })
   })
-  app.get('/connector/actions/:actionId', async (context) =>
-    response(200, { action: await service.getConnectorAction(text(context.req.param('actionId'), controlErrorCode.flowInvalid)), version: 1 }),
-  )
+  app.get('/connector/actions/:actionId', async (context) => {
+    const flowId = query(context.req.raw, ['flowId'], controlErrorCode.flowInvalid).get('flowId')
+    return response(200, {
+      action: await service.getConnectorAction(
+        text(context.req.param('actionId'), controlErrorCode.flowInvalid),
+        flowId == null ? undefined : text(flowId, controlErrorCode.flowInvalid),
+      ),
+      version: 1,
+    })
+  })
   app.get('/connector/connections/:serviceId', async (context) => {
+    const flowId = query(context.req.raw, ['flowId'], controlErrorCode.flowInvalid).get('flowId')
     const serviceId = connectorService(context.req.param('serviceId'))
-    return response(200, { connections: await service.listConnectorConnections(serviceId), serviceId, version: 1 })
+    return response(200, {
+      connections: await service.listConnectorConnections(serviceId, flowId == null ? undefined : text(flowId, controlErrorCode.flowInvalid)),
+      serviceId,
+      version: 1,
+    })
   })
   app.post('/connector/connections/:serviceId/page', async (context) => {
-    await versionOnly(context.req.raw, controlErrorCode.flowInvalid)
-    return response(200, { url: service.connectorConnectionPage(connectorService(context.req.param('serviceId'))), version: 1 })
+    const flowId = query(context.req.raw, ['flowId'], controlErrorCode.flowInvalid).get('flowId')
+    const body = await requestObject(context.req.raw, controlErrorCode.flowInvalid)
+    exact(body, ['version'], controlErrorCode.flowInvalid)
+    version(body.version, controlErrorCode.flowInvalid)
+    return response(200, {
+      url: service.connectorConnectionPage(
+        connectorService(context.req.param('serviceId')),
+        flowId == null ? undefined : text(flowId, controlErrorCode.flowInvalid),
+      ),
+      version: 1,
+    })
   })
 
   app.get('/flows/:flowId/live', async (context) => response(200, await service.getLive(context.req.param('flowId'))))

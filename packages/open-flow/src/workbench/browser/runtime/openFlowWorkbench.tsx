@@ -108,6 +108,10 @@ function NotificationBridge({ host, store }: { readonly host: WorkbenchHost; rea
 }
 
 interface WorkbenchProps {
+  readonly createFlow?: ((name: string) => Promise<string>) | undefined
+  readonly createFlowDisabled?: boolean | undefined
+  readonly createFlowField?: OpenFlowWorkbenchProps['createFlowField']
+  readonly flowBadges?: Readonly<Record<string, string>> | undefined
   readonly hrefFor: (location: WorkbenchLocation) => string
   readonly hostAction?: string | undefined
   readonly hostTitle?: string | undefined
@@ -119,17 +123,34 @@ interface WorkbenchProps {
   readonly theme: WorkbenchTheme
 }
 
-function Workbench({ hrefFor, hostAction, hostTitle, language, navigation, onHostAction, onLanguageChange, store, theme }: WorkbenchProps): ReactElement {
+function Workbench({
+  createFlow,
+  createFlowDisabled,
+  createFlowField,
+  flowBadges,
+  hrefFor,
+  hostAction,
+  hostTitle,
+  language,
+  navigation,
+  onHostAction,
+  onLanguageChange,
+  store,
+  theme,
+}: WorkbenchProps): ReactElement {
   const flowId = useVal(store.workspace.$.flowId)
   return (
     <div className="app-shell">
       {flowId == null ? (
         <FlowBrowser
+          createFlowDisabled={createFlowDisabled}
+          createFlowField={createFlowField}
+          flowBadges={flowBadges}
           hrefForFlow={(flow) => hrefFor({ flowId: flow.flowId, view: 'design' })}
           hostAction={hostAction}
           hostTitle={hostTitle}
           language={language}
-          onCreateFlow={(name) => navigation.createFlow(name)}
+          onCreateFlow={(name) => navigation.createFlow(name, createFlow)}
           onHostAction={onHostAction}
           onLanguageChange={onLanguageChange}
           onSelectFlow={(flow) => void navigation.selectFlow(flow)}
@@ -173,6 +194,34 @@ export {
 } from '../../../localization/common/languages.ts'
 
 export interface OpenFlowWorkbenchProps {
+  readonly createFlow?: ((name: string) => Promise<string>) | undefined
+  readonly createFlowDisabled?: boolean | undefined
+  readonly createFlowField?:
+    | {
+        readonly ariaLabel: string
+        readonly description: string
+        readonly label: string
+        readonly onValueChange: (value: string) => void
+        readonly options: readonly { readonly disabled?: boolean; readonly label: string; readonly value: string }[]
+        readonly state: 'ready'
+        readonly value: string
+      }
+    | {
+        readonly description: string
+        readonly label: string
+        readonly state: 'loading'
+        readonly status: string
+      }
+    | {
+        readonly description: string
+        readonly label: string
+        readonly onRetry: () => void
+        readonly retry: string
+        readonly state: 'error'
+        readonly status: string
+      }
+    | undefined
+  readonly flowBadges?: Readonly<Record<string, string>> | undefined
   readonly host: WorkbenchHost
   readonly hrefFor: (location: WorkbenchLocation) => string
   readonly hostAction?: string | undefined
@@ -191,6 +240,10 @@ export interface OpenFlowWorkbenchProps {
 type SessionProps = Omit<OpenFlowWorkbenchProps, 'sessionKey'>
 
 function Session({
+  createFlow,
+  createFlowDisabled,
+  createFlowField,
+  flowBadges,
   host,
   hostAction,
   hostTitle,
@@ -250,6 +303,10 @@ function Session({
       <div className="open-flow-theme open-flow-workbench" data-theme={theme}>
         <NotificationBridge host={host} store={store} />
         <Workbench
+          createFlow={createFlow}
+          createFlowDisabled={createFlowDisabled}
+          createFlowField={createFlowField}
+          flowBadges={flowBadges}
           hostAction={hostAction}
           hostTitle={hostTitle}
           hrefFor={hrefFor}

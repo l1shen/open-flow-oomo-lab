@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ConnectorTaskError } from '../node/connector.ts'
+import { ConnectorClient, ConnectorTaskError } from '../node/connector.ts'
 import { ServerService } from '../node/service.ts'
 import { createConnectorHost } from './connectorHost.ts'
 import { acceptRun } from './runFixture.ts'
@@ -16,6 +16,7 @@ const services: ServerService[] = []
 const port = { jsonSchema: {}, nullable: false } as const
 
 afterEach(async () => {
+  vi.unstubAllGlobals()
   await Promise.allSettled(services.splice(0).map(closeService))
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
 })
@@ -154,11 +155,47 @@ describe('Server Connector host', () => {
     const service = await open(createConnectorHost({ execute }))
     const runId = await run(service, connectorFlow())
 
-    expect(execute).toHaveBeenCalledWith('example.echo', 'connection-work', { message: 'hello' }, expect.any(String), expect.any(AbortSignal))
+    expect(execute).toHaveBeenCalledWith('example.echo', 'connection-work', { message: 'hello' }, expect.any(String), expect.any(AbortSignal), undefined)
     expect(service.run(runId)).toMatchObject({
       result: { kind: 'node-results', nodes: [{ jobs: [{ outputs: { message: 'hello' } }], nodeId: 'connector' }] },
       status: 'completed',
     })
+  })
+
+  it('uses the Flow Team fixed when a Run is admitted', async () => {
+    const requests: { readonly teamId: string | null; readonly url: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input)
+        requests.push({ teamId: new Headers(init?.headers).get('x-oo-team-id'), url })
+        if (url.startsWith('https://relation-control.oomol.dev/')) {
+          return Response.json({ teams: [{ id: 'team-a', name: 'Team A', system_created: false }] })
+        }
+        if (url.endsWith('/v1/apps')) {
+          return Response.json({
+            data: [{ alias: 'work', displayName: 'Work', id: 'connection-work', isDefault: true, service: 'example', status: 'active' }],
+            success: true,
+          })
+        }
+        return Response.json({ data: { message: 'hello' }, success: true })
+      }),
+    )
+    const service = await open(new ConnectorClient('https://connector.oomol.dev', 'runtime-token'))
+    const created = await service.control.createFlow('test', 'Team Run', 'create-team-run', 'team-a')
+    const revision = connectorFlow()
+    const changed = await service.control.changeDraft('test', created.flow.flowId, created.flow.draftRevisionId, [
+      { kind: 'task.create', task: revision.document.tasks.connector!, taskId: 'connector' },
+      { kind: 'graph.node.create', node: revision.document.graph.nodes.connector!, nodeId: 'connector', target: { kind: 'flow' } },
+    ])
+    const accepted = await service.control.createDraftRun(created.flow.flowId, changed.revision.revisionId, 'open-flow-engine/v1', {}, 'team-run')
+    await service.waitForIdle()
+
+    expect(service.run(accepted.run.runId)?.status).toBe('completed')
+    expect(requests.filter((request) => request.url.startsWith('https://connector.oomol.dev/'))).toEqual([
+      { teamId: 'team-a', url: 'https://connector.oomol.dev/v1/apps' },
+      { teamId: 'team-a', url: 'https://connector.oomol.dev/v1/actions/example.echo' },
+    ])
   })
 
   it('omits an unset optional Connector input that does not accept null', async () => {
@@ -166,7 +203,7 @@ describe('Server Connector host', () => {
     const service = await open(createConnectorHost({ execute }))
     const runId = await run(service, connectorFlow(undefined, true))
 
-    expect(execute).toHaveBeenCalledWith('example.echo', 'connection-work', { message: 'hello' }, expect.any(String), expect.any(AbortSignal))
+    expect(execute).toHaveBeenCalledWith('example.echo', 'connection-work', { message: 'hello' }, expect.any(String), expect.any(AbortSignal), undefined)
     expect(service.run(runId)?.status).toBe('completed')
   })
 

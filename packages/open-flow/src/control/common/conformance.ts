@@ -305,13 +305,20 @@ export const controlApiConformanceCases: readonly ControlApiConformanceCase[] = 
         202,
         'Create second Draft Run',
       )
+      const secondRunId = requiredString(secondRun.runId, 'Second Draft Run')
       const page = await json(await request(harness, `/v1/flows/${flowId}/runs?limit=1`), 200, 'List Runs')
       equal(
         list(page.runs, 'Runs').map((value) => record(value, 'Run').runId),
-        [runId],
+        [secondRunId],
         'Listed Runs',
       )
-      requiredString(page.nextCursor, 'Run cursor')
+      const cursor = requiredString(page.nextCursor, 'Run cursor')
+      const nextPage = await json(await request(harness, `/v1/flows/${flowId}/runs?limit=1&cursor=${encodeURIComponent(cursor)}`), 200, 'List next Runs')
+      equal(
+        list(nextPage.runs, 'Next Runs').map((value) => record(value, 'Run').runId),
+        [runId],
+        'Listed next Runs',
+      )
       const canceled = await json(
         await request(harness, `/v1/runs/${runId}/cancel`, { body: JSON.stringify({ version: 1 }), method: 'POST' }),
         200,
@@ -323,7 +330,7 @@ export const controlApiConformanceCases: readonly ControlApiConformanceCase[] = 
       equal(
         (
           await json(
-            await request(harness, `/v1/runs/${requiredString(secondRun.runId, 'Second Draft Run')}/cancel`, {
+            await request(harness, `/v1/runs/${secondRunId}/cancel`, {
               body: JSON.stringify({ version: 1 }),
               method: 'POST',
             }),

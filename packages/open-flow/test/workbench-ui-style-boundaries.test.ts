@@ -137,7 +137,6 @@ test('keeps Resource Browser primitives on shared visual ownership', async () =>
   assert.match(createDialog, /Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle/)
   assert.match(createDialog, /Field, FieldDescription, FieldError, FieldGroup, FieldLabel/)
   assert.match(createDialog, /<DialogContent container=\{portal\.current\}/)
-  assert.match(createDialog, /<FieldGroup>/)
   assert.match(createDialog, /<Field data-invalid=\{showIssue\}>/)
   assert.doesNotMatch(createDialog, /DialogOverlay|DialogPortal|resource-dialog-/)
   assert.match(hostMenu, /from '\.\.\/\.\.\/\.\.\/\.\.\/ui\/browser\/button\.tsx'/)

@@ -59,6 +59,20 @@ describe('ControlClient Flow API', () => {
       expect.objectContaining({ body: JSON.stringify({ expectedRevisionId: 'revision-1', operations, version: 1 }), method: 'POST' }),
     )
   })
+
+  it('scopes Connector resources to an encoded Flow identity', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path == '/v1/connector/providers?flowId=flow%2F1') {
+        return Response.json({ providers: [{ serviceId: 'mail', serviceName: 'Mail' }], version: 1 })
+      }
+      if (path == '/v1/connector/connections/mail/page?flowId=flow%2F1') return Response.json({ url: 'https://connector.example/providers/mail', version: 1 })
+      throw new Error(path)
+    })
+    const client = new ControlClient(request)
+
+    await expect(client.listConnectorProviders(undefined, flow.flowId)).resolves.toEqual([{ serviceId: 'mail', serviceName: 'Mail' }])
+    await expect(client.createConnectorConnectionPage('mail', flow.flowId)).resolves.toBe('https://connector.example/providers/mail')
+  })
 })
 
 describe('ControlClient Variable API', () => {

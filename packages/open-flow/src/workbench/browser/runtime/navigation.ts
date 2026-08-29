@@ -49,11 +49,11 @@ export class NavigationStore {
     this.#write(view, false)
   }
 
-  public async createFlow(name: string): Promise<boolean> {
+  public async createFlow(name: string, create?: (name: string) => Promise<string>): Promise<boolean> {
     const change = ++this.#change
     this.#syncing = true
     try {
-      const created = await this.#store.createFlow(name)
+      const created = await this.#store.createFlow(name, create)
       if (created && change == this.#change) this.#write('design', false)
       return created
     } finally {

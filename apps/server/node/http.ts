@@ -5,6 +5,7 @@ import type { OperatorSession } from './operator.ts'
 
 import { serveStatic } from '@hono/node-server/serve-static'
 import { controlErrorCode } from '@oomol-lab/open-flow/control-api'
+import { resourceNameIssue } from '@oomol-lab/open-flow/flow-change'
 import { integrationEndpointId } from '@oomol-lab/open-flow/integration-trigger'
 import { maximumWebhookBodyBytes, webhookEndpointId, webhookOccurrenceId } from '@oomol-lab/open-flow/webhook-trigger'
 import { Hono } from 'hono'
@@ -36,6 +37,7 @@ const forbiddenWebhookResponseHeaders = new Set([
 const reservedPaths = ['/assets', ...serverPaths] as const
 const encoder = new TextEncoder()
 const defaultCallbackRequestsPerMinute = 120
+const maximumHostRequestBytes = 4 * 1024
 
 interface CallbackWindow {
   count: number
@@ -98,21 +100,35 @@ export function createServerApp(service: ServerService, options: ServerAppOption
   app.all('/v1/integrations/*', (context) => integration(service, context.req.raw, logger, context.get('requestId'), admitCallback))
   app.all('/v1/webhooks', (context) => webhook(service, context.req.raw, logger, context.get('requestId'), admitCallback))
   app.all('/v1/webhooks/*', (context) => webhook(service, context.req.raw, logger, context.get('requestId'), admitCallback))
-  const authenticateNotifications = async (request: Request): Promise<void> => {
+  const authenticate = async (request: Request): Promise<string> => {
     const actor = await resolveActor?.(request)
     if (actor == null || actor.length == 0) throw new ControlError(controlErrorCode.authenticationRequired, 'Authentication is required.')
+    return actor
   }
   app.get('/v1/flows/notifications', async (context) => {
-    await authenticateNotifications(context.req.raw)
+    await authenticate(context.req.raw)
     return notificationResponse(notifications((listener) => service.subscribeFlowCatalog(listener), [context.req.raw.signal, options.shutdownSignal]))
   })
   app.get('/v1/flows/:flowId/notifications', async (context) => {
-    await authenticateNotifications(context.req.raw)
+    await authenticate(context.req.raw)
     return notificationResponse(
       notifications((listener) => service.subscribeFlow(context.req.param('flowId'), listener), [context.req.raw.signal, options.shutdownSignal]),
     )
   })
   app.route('/v1', createControlApp(service.control, resolveActor))
+  app.get('/connector/teams', async (context) => {
+    await authenticate(context.req.raw)
+    return json(200, await service.connectorTeams(context.req.raw.signal))
+  })
+  app.post('/connector/flows', async (context) => {
+    const actorId = await authenticate(context.req.raw)
+    const input = await connectorFlowRequest(context.req.raw)
+    if (input === false) throw new ControlError(serverErrorCode.requestInvalid, 'Connector Flow request is invalid.')
+    const key = context.req.header('idempotency-key')
+    if (key == null || key.length == 0 || key.length > 256) throw new ControlError(serverErrorCode.requestInvalid, 'Idempotency-Key is invalid.')
+    const created = await service.control.createFlow(actorId, input.name, key, input.teamId)
+    return json(created.created ? 201 : 200, created.flow)
+  })
 
   app.get('/healthz', () => json(200, { status: 'ok' }))
   app.get('/readyz', async () => {
@@ -357,6 +373,29 @@ async function readWebhookPayload(request: Request): Promise<JsonValue> {
   } catch {
     throw new WebhookRequestInvalid()
   }
+}
+
+async function connectorFlowRequest(request: Request): Promise<{ readonly name: string; readonly teamId: string } | false> {
+  let value: unknown
+  try {
+    value = JSON.parse(new TextDecoder().decode(await readBody(request, maximumHostRequestBytes, () => new Error('Host request is too large.')))) as unknown
+  } catch {
+    return false
+  }
+  if (value == null || typeof value != 'object' || Array.isArray(value)) return false
+  const body = value as Record<string, unknown>
+  if (
+    Object.keys(body).length != 3 ||
+    body.version !== 1 ||
+    typeof body.name != 'string' ||
+    body.name != body.name.trim() ||
+    resourceNameIssue(body.name) != null ||
+    typeof body.teamId != 'string' ||
+    body.teamId.length == 0
+  ) {
+    return false
+  }
+  return { name: body.name, teamId: body.teamId }
 }
 
 function text(status: number, body: string | null, headers: Headers): Response {

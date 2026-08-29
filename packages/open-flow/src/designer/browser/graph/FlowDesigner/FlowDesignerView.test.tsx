@@ -269,6 +269,33 @@ describe('FlowDesignerView model synchronization', () => {
     store.dispose()
   })
 
+  it('does not replace a connection when nullable initializes its input value', async () => {
+    const onChangeInput = vi.fn()
+    const onChangeTaskPorts = vi.fn()
+    const connected = {
+      ...task([{ handle: 'value', jsonSchema: {}, nullable: false, sources: [{ nodeId: 'source', output: 'result' }] }]),
+      editablePorts: true,
+    }
+    const view = FlowDesignerView(props(model([source, connected]), { onChangeInput, onChangeTaskPorts })) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()].find((candidate) => candidate.nodeId == 'target')
+    const section = node?.findSection<InputSectionStore>(InputSectionStore.TYPE)
+    const row = section?.$.handles.value.find(HandleRowStore.is)
+    if (row?.value$ == null) throw new Error('Expected a connected input Handle.')
+
+    row.nullable$.set(true)
+    row.value$.set(null)
+    await Promise.resolve()
+
+    expect(onChangeTaskPorts).toHaveBeenLastCalledWith(
+      'target',
+      [expect.objectContaining({ handle: 'value', nullable: true })],
+      [expect.objectContaining({ handle: 'result' })],
+    )
+    expect(onChangeInput).not.toHaveBeenCalled()
+    expect(view.props.flowDesignerStore.$.renderedRFEdges.value).toHaveLength(1)
+    view.props.flowDesignerStore.dispose()
+  })
+
   it('keeps handle definition values stable when only an input value changes', () => {
     const initial = task([{ handle: 'value', jsonSchema: {} }])
     const changed = task([{ handle: 'value', jsonSchema: {}, value: 'message' }])

@@ -252,8 +252,8 @@ export class WorkbenchStore {
     return true
   }
 
-  public async createFlow(name: string): Promise<boolean> {
-    const flow = await this.workspace.createFlow(name)
+  public async createFlow(name: string, create?: (name: string) => Promise<string>): Promise<boolean> {
+    const flow = await this.workspace.createFlow(name, create)
     if (this.#disposed || flow == null) return false
     await this.selectFlow(flow.flowId)
     if (!this.#disposed) this.#notice.set({ kind: 'success', message: this.#i18n.t('notice.created', { name: flow.name }) })

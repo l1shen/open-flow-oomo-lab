@@ -520,8 +520,12 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
             continue
           }
 
+          const reference$ = boundHandles
+            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
+            : derive(connectedHandles$, (set) => set.has(handle))
+
           const { schema$, defaultValue$, description$, displayDescription$, kind$, nullable$, showSettings$, schemaOverrides$, value$ } =
-            this.deriveHandleRowVals$(props, props.inputHandleDefs, handle, props.role)
+            this.deriveHandleRowVals$(props, props.inputHandleDefs, handle, props.role, reference$)
 
           const collapsed$ = attachSetter(
             derive(collapsed, (c) => c?.[handle], equalConfig),
@@ -532,10 +536,6 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
             derive(height, (h) => h?.[handle], equalConfig),
             setPartial(height, handle),
           )
-
-          const reference$ = boundHandles
-            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
-            : derive(connectedHandles$, (set) => set.has(handle))
 
           const context = new WidgetContext(
             {
@@ -599,8 +599,12 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
           }
 
           const role = props.role === 'user' ? 'author' : props.role
+          const reference$ = boundHandles
+            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
+            : derive(connectedHandles$, (set) => set.has(handle))
+
           const { schema$, defaultValue$, description$, displayDescription$, kind$, nullable$, showSettings$, schemaOverrides$, value$ } =
-            this.deriveHandleRowVals$(props, props.additionalInputDefs, handle, role)
+            this.deriveHandleRowVals$(props, props.additionalInputDefs, handle, role, reference$)
 
           const collapsed$ = attachSetter(
             derive(collapsed, (c) => c?.[handle], equalConfig),
@@ -611,10 +615,6 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
             derive(height, (h) => h?.[handle], equalConfig),
             setPartial(height, handle),
           )
-
-          const reference$ = boundHandles
-            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
-            : derive(connectedHandles$, (set) => set.has(handle))
 
           const context = new WidgetContext(
             {
@@ -667,6 +667,7 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
     inputDefs$: Val<GroupedInputHandleDef[] | undefined> | ReadonlyVal<GroupedInputHandleDef[] | undefined>,
     handle: HandleName,
     role: Role,
+    reference$: ReadonlyVal<boolean>,
   ) {
     const def$ = attachSetter(
       derive(inputDefs$, (defs) => defs?.find((e) => e.handle === handle) as InputHandleDef | undefined),
@@ -752,7 +753,7 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
       value$ = attachSetter(
         derive(handleInputsFrom, (f) => f?.find((e) => e.handle === handle)?.value, equalConfig),
         (value) => {
-          if (!def$.value) return
+          if (!def$.value || reference$.value) return
           const current = handleInputsFrom.value
           if (current) {
             const result = current.findIndex((e) => e.handle === handle)

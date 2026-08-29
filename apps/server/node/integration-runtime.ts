@@ -203,7 +203,7 @@ export class IntegrationRuntime {
     const callbackSecret = await integrationCallbackSecret(this.#callbackKey, target.stored.endpointId)
     const now = new Date(this.#clock())
     const admit = target.current && target.stored.health == 'healthy'
-    const connector = this.#connectorProxy(target.definition, target.stored.bindingId, target.connectionId)
+    const connector = this.#connectorProxy(target.definition, target.stored.bindingId, target.connectionId, target.stored.flowId)
     for (let page = 0; page < maximumIntegrationDeliveryPages; page += 1) {
       const received = await target.definition.receive({
         admit,
@@ -272,13 +272,14 @@ export class IntegrationRuntime {
     definition: IntegrationDefinition,
     bindingId: string,
     connectionId: string,
+    flowId: string,
     context: Omit<IntegrationReconcileContext, 'connector' | 'signal'>,
   ): Effect.Effect<IntegrationReconcileResult, unknown> {
     return Effect.tryPromise({
       try: (signal) =>
         definition.reconcile({
           ...context,
-          connector: this.#connectorProxy(definition, bindingId, connectionId, signal),
+          connector: this.#connectorProxy(definition, bindingId, connectionId, flowId, signal),
           signal,
         }),
       catch: (error) => error,
@@ -302,7 +303,7 @@ export class IntegrationRuntime {
       if (state != null && state.runtimeVersion != binding.runtimeVersion) {
         const previousState = state
         const previous = this.#trigger(previousState.triggerJson)
-        const outcome = yield* this.#invokeReconcile(previous.definition, binding.bindingId, previousState.connectionId, {
+        const outcome = yield* this.#invokeReconcile(previous.definition, binding.bindingId, previousState.connectionId, binding.flowId, {
           active: false,
           callbackSecret,
           config: previous.trigger.config,
@@ -323,7 +324,7 @@ export class IntegrationRuntime {
       const resolved = this.#trigger(binding.triggerJson)
       if (!active) {
         if (!retiredPrevious && (state != null || resolved.definition.initialState == null)) {
-          const outcome = yield* this.#invokeReconcile(resolved.definition, binding.bindingId, binding.connectionId, {
+          const outcome = yield* this.#invokeReconcile(resolved.definition, binding.bindingId, binding.connectionId, binding.flowId, {
             active: false,
             callbackSecret,
             config: resolved.trigger.config,
@@ -349,7 +350,7 @@ export class IntegrationRuntime {
           return yield* Effect.fail(new TransientIntegrationError('Integration runtime state changed.'))
         }
       }
-      const outcome = yield* this.#invokeReconcile(resolved.definition, binding.bindingId, binding.connectionId, {
+      const outcome = yield* this.#invokeReconcile(resolved.definition, binding.bindingId, binding.connectionId, binding.flowId, {
         active: true,
         callbackSecret,
         config: resolved.trigger.config,
@@ -408,7 +409,7 @@ export class IntegrationRuntime {
     )
   }
 
-  #connectorProxy(definition: IntegrationDefinition, bindingId: string, connectionId: string, parentSignal?: AbortSignal): ConnectorProxy {
+  #connectorProxy(definition: IntegrationDefinition, bindingId: string, connectionId: string, flowId: string, parentSignal?: AbortSignal): ConnectorProxy {
     return {
       execute: async (request, signal) => {
         try {
@@ -416,7 +417,7 @@ export class IntegrationRuntime {
           let connectorSignal = signal ?? parentSignal
           if (signal != null && parentSignal != null) connectorSignal = AbortSignal.any([parentSignal, signal])
           connectorSignal ??= AbortSignal.timeout(30_000)
-          return await this.#connector.proxy(definition.snapshot.provider, connectionId, bindingId, request, connectorSignal)
+          return await this.#connector.proxy(definition.snapshot.provider, connectionId, bindingId, request, connectorSignal, this.#store.connectorTeam(flowId))
         } catch (cause) {
           if (cause instanceof ConnectorTaskError && cause.code == 'connector.connection-required') {
             throw new IntegrationConnectionError('Integration Connection requires reauthorization.', { cause })
