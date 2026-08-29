@@ -181,13 +181,15 @@ export function HandleEditor({
             <ValueReconciler type="any" store={widget} nullable={nullable} presentation="form" showError={toTrue(showFormError)} />
           </div>
         ) : hasSubpanel ? (
-          <Subpanel isLast type={widgetType} store={widget} nullable={nullable} presentation="form" />
+          <Subpanel isLast type={widgetType} store={widget} nullable={nullable} presentation="form" showError={toTrue(showFormError)} />
         ) : (
           <div className={styles.formValue}>
             <ValueReconciler type={widgetType} store={widget} nullable={nullable} presentation="form" showError={toTrue(showFormError)} />
           </div>
         )}
-        {schemaType === 'any' && hasSubpanel && !collapsed && <Subpanel isLast type={widgetType} store={widget} nullable={nullable} presentation="form" />}
+        {schemaType === 'any' && hasSubpanel && !collapsed && (
+          <Subpanel isLast type={widgetType} store={widget} nullable={nullable} presentation="form" showError={toTrue(showFormError)} />
+        )}
         {errorMessage != null && (
           <div className={styles.formError} role="alert">
             <i aria-hidden="true" className="i-codicon:error" />
@@ -499,6 +501,7 @@ interface SubpanelProps {
   readonly isLast?: boolean
   readonly nullable?: boolean
   readonly presentation?: 'form'
+  readonly showError?: true
   readonly type: WidgetType
   readonly store: WidgetStore
   onDragOver?: (ev: React.DragEvent<HTMLElement>) => void
@@ -551,7 +554,17 @@ function SubpanelAnyOf(props: SubpanelProps & { readonly store: AnyOfWidgetStore
     return null
   }
 
-  return <Subpanel isLast level={props.level} type={schemaType} store={widget} nullable={props.nullable} presentation={props.presentation} />
+  return (
+    <Subpanel
+      isLast
+      level={props.level}
+      type={schemaType}
+      store={widget}
+      nullable={props.nullable}
+      presentation={props.presentation}
+      showError={props.showError}
+    />
+  )
 }
 
 const TEXTAREA_MAX_HEIGHT = 300
@@ -588,8 +601,6 @@ interface ValueProps extends SubpanelProps {
   readonly isSuffix?: boolean
   // The validation error for the current value.
   readonly error?: string
-  // Whether to display the validation error.
-  readonly showError?: true
   // Text and object values render differently inside a recursive anyOf branch.
   readonly isInsideAnyOf?: boolean
   readonly onRequestType?: () => void
@@ -1067,6 +1078,7 @@ function SubpanelObject(props: SubpanelProps & { readonly store: ObjectWidgetSto
             objectStore={props.store}
             onDragOver={props.onDragOver}
             presentation={props.presentation}
+            showError={props.showError}
           />
         )
       })}
@@ -1083,6 +1095,7 @@ function SubpanelObject(props: SubpanelProps & { readonly store: ObjectWidgetSto
             objectStore={props.store}
             onDragOver={props.onDragOver}
             presentation={props.presentation}
+            showError={props.showError}
           />
         )
       })}
@@ -1099,6 +1112,7 @@ function SubpanelObject(props: SubpanelProps & { readonly store: ObjectWidgetSto
             objectStore={props.store}
             onDragOver={props.onDragOver}
             presentation={props.presentation}
+            showError={props.showError}
           />
         )
       })}
@@ -1117,6 +1131,7 @@ interface SubpanelObjectFieldProps {
   readonly store: ObjectFieldStore
   readonly objectStore: ObjectWidgetStore
   readonly presentation?: 'form'
+  readonly showError?: true
   onDragOver?: (ev: React.DragEvent<HTMLElement>) => void
 }
 
@@ -1204,7 +1219,12 @@ function SubpanelObjectField(props: SubpanelObjectFieldProps) {
         }
         value={
           props.presentation === 'form' ? (
-            <ValueReconciler type={props.group === 'override' ? widgetType : schemaType} store={widget} />
+            <ValueReconciler
+              type={props.group === 'override' ? widgetType : schemaType}
+              store={widget}
+              presentation={props.presentation}
+              showError={props.showError}
+            />
           ) : (
             <ObjectField
               group={props.group}
@@ -1224,7 +1244,9 @@ function SubpanelObjectField(props: SubpanelObjectFieldProps) {
         }
         onDragOver={props.onDragOver}
       />
-      {hasSubpanel && !collapsed && <Subpanel isLast level={(props.level ?? '') + ' '} type={widgetType} store={widget} presentation={props.presentation} />}
+      {hasSubpanel && !collapsed && (
+        <Subpanel isLast level={(props.level ?? '') + ' '} type={widgetType} store={widget} presentation={props.presentation} showError={props.showError} />
+      )}
     </>
   )
 }
@@ -1363,6 +1385,7 @@ function SubpanelArray(props: SubpanelProps & { readonly store: ArrayWidgetStore
             arrayStore={props.store}
             onDragOver={props.onDragOver}
             presentation={props.presentation}
+            showError={props.showError}
           />
         )
       })}
@@ -1378,6 +1401,7 @@ interface SubpanelArrayItemProps {
   readonly store: ArrayItemStore
   readonly arrayStore: ArrayWidgetStore
   readonly presentation?: 'form'
+  readonly showError?: true
   onDragOver?: (ev: React.DragEvent<HTMLElement>) => void
 }
 
@@ -1422,11 +1446,13 @@ function SubpanelArrayItem(props: SubpanelArrayItemProps) {
             <span>{props.index}.</span>
           </span>
         }
-        value={<ValueReconciler type={props.type} store={widget} />}
+        value={<ValueReconciler type={props.type} store={widget} presentation={props.presentation} showError={props.showError} />}
         actions={[actionAdd, actionDelete]}
         onDragOver={props.onDragOver}
       />
-      {hasSubpanel && !collapsed && <Subpanel isLast level={(props.level ?? '') + ' '} type={widgetType} store={widget} presentation={props.presentation} />}
+      {hasSubpanel && !collapsed && (
+        <Subpanel isLast level={(props.level ?? '') + ' '} type={widgetType} store={widget} presentation={props.presentation} showError={props.showError} />
+      )}
     </>
   )
 }
@@ -1468,7 +1494,15 @@ function ValueAnyOf(props: ValueProps & { readonly store: AnyOfWidgetStore }) {
   return hasSubpanel ? (
     <div className={styles.value}>
       {selectCondition}
-      <ValueReconciler isSuffix type={widgetType} store={widget} nullable={props.nullable} isInsideAnyOf />
+      <ValueReconciler
+        isSuffix
+        type={widgetType}
+        store={widget}
+        nullable={props.nullable}
+        presentation={props.presentation}
+        showError={props.showError}
+        isInsideAnyOf
+      />
     </div>
   ) : (
     selectCondition

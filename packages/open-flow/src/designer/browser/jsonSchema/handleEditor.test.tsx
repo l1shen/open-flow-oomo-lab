@@ -56,14 +56,21 @@ describe('HandleEditor form presentation', () => {
       const editor = section.configEditor$.value
       if (editor == null) throw new Error('Expected a Trigger configuration editor.')
 
-      const markup = renderToStaticMarkup(
+      const hiddenMarkup = renderToStaticMarkup(
+        <I18nProvider i18n={createI18n('en')}>
+          <HandleEditor store={editor} panelWidth$={panelWidth} presentation="form" showFormError={false} showSchemaSettings={false} />
+        </I18nProvider>,
+      )
+      const visibleMarkup = renderToStaticMarkup(
         <I18nProvider i18n={createI18n('en')}>
           <HandleEditor store={editor} panelWidth$={panelWidth} presentation="form" showSchemaSettings={false} />
         </I18nProvider>,
       )
 
-      expect(markup).toContain('role="alert"')
-      expect(markup).toContain('Set the required fields: owner, repo, events.')
+      expect(hiddenMarkup).not.toContain('data-variant="destructive"')
+      expect(visibleMarkup).toContain('data-variant="destructive"')
+      expect(visibleMarkup).toContain('role="alert"')
+      expect(visibleMarkup).toContain('Set the required fields: owner, repo, events.')
     } finally {
       section.dispose()
       definition.dispose()
