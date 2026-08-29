@@ -144,6 +144,7 @@ export class ConnectorStore {
   readonly #providerActions = new Map<string, readonly ConnectorAction[]>()
   readonly #loadingActions = new Set<string>()
   readonly #refresh = new Latest()
+  readonly #flowReaction: () => void
   readonly #revisionReaction: () => void
   readonly #selected: ReadonlyVal<Selection>
   readonly #setNotice: SetNotice
@@ -198,12 +199,14 @@ export class ConnectorStore {
       selectedConnection: derive(this.#selected, (value) => value.connection),
       selectedConnectionError: derive(this.#selected, (value) => value.connectionError),
     }
+    this.#flowReaction = workspace.$.flowId.reaction(() => this.reset())
     this.#revisionReaction = workspace.$.revision.reaction(() => void this.#loadDraftActions())
   }
 
   public dispose(): void {
     this.#disposed = true
     this.#refresh.invalidate()
+    this.#flowReaction()
     this.#revisionReaction()
     for (const value of Object.values(this.$)) value.dispose()
     this.#selected.dispose()

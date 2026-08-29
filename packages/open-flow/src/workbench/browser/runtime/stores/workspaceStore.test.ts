@@ -53,6 +53,27 @@ describe('WorkspaceStore', () => {
     }
   })
 
+  it('increments the loaded catalog total once for a host-created Flow', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path == '/v1/flows?limit=50&includeTotal=true') return Response.json({ flows: [], total: 0, version: 1 })
+      if (path == `/v1/flows/${flow.flowId}`) return Response.json(flow)
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    const store = new WorkspaceStore(new WorkbenchClient(request), vi.fn())
+    const create = vi.fn(async () => flow.flowId)
+
+    try {
+      await store.start()
+      await store.createFlow(flow.name, create)
+      await store.createFlow(flow.name, create)
+
+      expect(store.$.flows.value).toEqual([flow])
+      expect(store.$.flowTotal.value).toBe(1)
+    } finally {
+      store.dispose()
+    }
+  })
+
   it('finishes loading the selected Flow while the catalog reloads', async () => {
     const draftResponse = Promise.withResolvers<Response>()
     const draftRequested = Promise.withResolvers<void>()

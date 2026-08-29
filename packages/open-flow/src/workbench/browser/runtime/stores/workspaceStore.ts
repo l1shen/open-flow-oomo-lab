@@ -294,7 +294,7 @@ export class WorkspaceStore {
     try {
       if (create == null) return await this.#flows.create(name)
       const flow = await this.#client.getFlow(await create(name))
-      this.#flows.include(flow)
+      this.#flows.insert(flow)
       return flow
     } catch (error) {
       if (!this.#disposed) this.#setNotice(errorNotice(error, this.#i18n.t))
