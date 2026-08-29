@@ -37,6 +37,7 @@ export const FlowDesigner: React.FC<FlowDesignerProps> = ({
 }) => {
   const editable = useVal(flowDesignerStore.$.editable)
   const nodeMiniMapPhase = useVal(flowDesignerStore.$.nodeMiniMapPhase)
+  const showSettings$ = flowDesignerStore.manifest$ == null ? undefined : flowDesignerStore.$$.showSettings
 
   useEffect(flowDesignerStore.setupForceDelete, [])
 
@@ -44,7 +45,7 @@ export const FlowDesigner: React.FC<FlowDesignerProps> = ({
     <DesignerStoreProvider value={flowDesignerStore}>
       <NodeMiniMapProvider value={nodeMiniMapPhase}>
         <ReactFlowContainer
-          showSettings$={flowDesignerStore.$$.showSettings}
+          showSettings$={showSettings$}
           focused$={flowDesignerStore.focused$}
           editable={editable}
           className={className}
@@ -85,7 +86,7 @@ export const FlowDesigner: React.FC<FlowDesignerProps> = ({
           onAddHandle={flowDesignerStore.onAddHandle}
           duplicateNodes={flowDesignerStore.duplicateNodes}
         >
-          <FlowSettingsContainer />
+          {showSettings$ != null && <FlowSettingsContainer />}
         </ReactFlowContainer>
       </NodeMiniMapProvider>
     </DesignerStoreProvider>

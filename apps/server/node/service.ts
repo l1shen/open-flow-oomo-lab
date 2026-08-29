@@ -267,6 +267,7 @@ export class ServerService {
       (flowId, triggerNodeId) => this.#testPollTrigger(flowId, triggerNodeId),
       () => this.#notifyFlowCatalog(),
       (event) => this.#notifyFlow(event),
+      this.#llm != null,
       connector,
       connectorConsoleOrigin,
       this.#resolveConnectorTeam,

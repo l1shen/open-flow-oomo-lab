@@ -170,7 +170,7 @@ function Editor({
     setContextPanelMode('inspector')
   }, [diagnosticFocus])
 
-  const authoringDisabled = draft == null || (busy != null && busy != 'designer')
+  const authoringDisabled = draft == null || (busy != null && busy != 'designer' && busy != 'run')
   const closeContextPanel = (focusTarget = opener.current): void => {
     setContextPanelMode(undefined)
     focusInspectorOnOpen.current = false

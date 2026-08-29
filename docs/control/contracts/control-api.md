@@ -132,7 +132,14 @@ interface Presentation {
 ```ts
 interface FlowCheck {
   closureDigest: string
-  diagnostics: readonly { code: string; column: number; line: number; message: string; path: string }[]
+  diagnostics: readonly {
+    code: string
+    column: number
+    line: number
+    message: string
+    path: string
+    values?: Readonly<Record<string, string | number>>
+  }[]
   engineContract: string
   flowId: string
   modelVersion: number
@@ -144,6 +151,8 @@ interface FlowCheck {
 ```
 
 Check body 是 `{ engineContract: 'open-flow-engine/v1', version: 1 }`，始终验证 path 中固定的 Flow Revision。
+`message` 是稳定的 canonical English fallback；Workbench 可以使用 `code`、可选 `values.variant` 和其余 `values` 显示本地化文案，未知 code 或 variant
+必须回退到 `message`。
 
 ```ts
 interface Publication {

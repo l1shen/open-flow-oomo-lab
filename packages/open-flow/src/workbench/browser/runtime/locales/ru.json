@@ -434,6 +434,72 @@
     "emptyTitle": "Проблем не найдено",
     "locate": "Открыть расположение",
     "locateIssue": "Открыть проблему: {{message}}",
+    "messages": {
+      "binding": {
+        "variable-invalid": "Привязка Variable «{{bindingId}}» указывает на недопустимую цель."
+      },
+      "condition": {
+        "input-missing": "Выражение условия ссылается на неизвестный вход «{{input}}».",
+        "output-duplicate": "Выход условия «{{output}}» объявлен несколько раз."
+      },
+      "graph": {
+        "binding-invalid": "Привязка «{{bindingId}}» должна быть Variable.",
+        "binding-missing": "Привязка «{{bindingId}}» не существует.",
+        "cycle": "Граф содержит цикл зависимостей между узлами: {{nodes}}.",
+        "input-missing": "Узел «{{nodeId}}» не предоставляет вход «{{handle}}».",
+        "node-output-incompatible": "Выход «{{output}}» вышестоящего узла «{{nodeId}}» несовместим с этим входом.",
+        "schema-unsupported": "Схемы Runtime Ref не поддерживаются.",
+        "source-missing": {
+          "flow-input": "Вход Flow «{{input}}» не существует в этом графе.",
+          "node": "Вышестоящий узел «{{nodeId}}» не существует.",
+          "output": "Вышестоящий узел «{{nodeId}}» не предоставляет выход «{{output}}»."
+        },
+        "target-missing": {
+          "subflow": "Subflow «{{subflowId}}» не существует.",
+          "task": "Task «{{taskId}}» не существует."
+        },
+        "trigger-not-allowed": "Узлы Trigger разрешены только во Flow.",
+        "variable-incompatible": "Привязка Variable «{{bindingId}}» несовместима с этим входом.",
+        "variable-source-mixed": "Variable должна быть единственным источником входа."
+      },
+      "llm": {
+        "unconfigured": "Для этого развертывания не настроена LLM. Настройте OPEN_FLOW_LLM_ORIGIN и OPEN_FLOW_LLM_TOKEN."
+      },
+      "module": {
+        "commonjs": "CodeModule «{{moduleId}}» не может использовать CommonJS require.",
+        "declared-import-missing": "CodeModule «{{moduleId}}» объявляет «{{importedModuleId}}» без соответствующего статического import.",
+        "dynamic-code": "CodeModule «{{moduleId}}» не может выполнять динамический код.",
+        "dynamic-import": "CodeModule «{{moduleId}}» не может использовать динамический import.",
+        "import-not-declared": "CodeModule «{{moduleId}}» не объявляет import «{{importedModuleId}}».",
+        "missing": "CodeModule «{{moduleId}}» не существует.",
+        "missing-export": {
+          "module": "CodeModule «{{moduleId}}» не экспортирует «{{name}}».",
+          "platform": "Platform Library не экспортирует «{{name}}»."
+        },
+        "syntax": "CodeModule «{{moduleId}}» содержит недопустимый синтаксис JavaScript.",
+        "unsupported-import": {
+          "import": "CodeModule «{{moduleId}}» не может импортировать «{{specifier}}».",
+          "reexport": "CodeModule «{{moduleId}}» должен импортировать значения перед их повторным экспортом."
+        }
+      },
+      "subflow": {
+        "cycle": "Цикл Subflow нельзя выполнить: {{subflows}}."
+      },
+      "task": {
+        "capability-incomplete": "Inline Task «{{nodeId}}» содержит незавершенную Connector Capability.",
+        "connector-connection-required": "Для Connector Task «{{taskId}}» требуется Connection.",
+        "connector-incomplete": "Для Connector Task «{{taskId}}» требуется action.",
+        "missing-entry": "CodeModule «{{moduleId}}», используемый Inline Task, должен экспортировать default function.",
+        "module-missing": "Inline Task «{{nodeId}}» ссылается на отсутствующий CodeModule «{{moduleId}}»."
+      },
+      "trigger": {
+        "config-incomplete": "Заполните обязательные поля конфигурации Trigger: {{fields}}.",
+        "config-invalid": "Конфигурация Trigger «{{triggerId}}» не соответствует его фиксированному определению.",
+        "connection-invalid": "Привязка Trigger «{{bindingId}}» должна быть Connection.",
+        "connection-missing": "Привязка Connection для Trigger «{{bindingId}}» не существует.",
+        "input-duplicate": "Вход Webhook Trigger «{{input}}» объявлен несколько раз."
+      }
+    },
     "notChecked": "Не проверено",
     "notCheckedDescription": "Проверьте текущий черновик, чтобы найти проблемы графа, задач, Connection и JavaScript.",
     "notCheckedTitle": "Проверить черновик",
@@ -452,8 +518,7 @@
   },
   "runInput": {
     "close": "Закрыть входные данные запуска",
-    "description": "Укажите значение для каждого неподключённого входа. Входы со связью на графе, статическим значением или значением по умолчанию не показываются.",
-    "groupInvalid": "Нужно корректное значение",
+    "description": "Укажите значение для каждого неподключённого входа. Входы со связью на графе, статическим значением или значением по умолчанию не показываются. Введённые здесь значения используются только для этого запуска и не сохраняются в Flow.",
     "invalid": "Перед запуском задайте всем перечисленным входам корректные значения JSON.",
     "title": "Входные данные запуска"
   },

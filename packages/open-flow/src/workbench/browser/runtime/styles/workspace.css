@@ -11,7 +11,7 @@
   }
 
   .workspace-header {
-    z-index: 3;
+    z-index: 6;
     display: grid;
     min-width: 0;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -175,19 +175,23 @@
   .run-input-content > p {
     max-width: 58ch;
     margin: 0 0 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius);
     color: var(--ui-muted-foreground);
+    background: color-mix(in srgb, var(--ui-muted) 45%, transparent);
     font-size: 11px;
     line-height: 17px;
   }
 
   .run-input-group {
-    padding: 16px 0;
-    border-top: 1px solid var(--ui-border);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius);
+    background: var(--ui-card);
   }
 
-  .run-input-group:first-of-type {
-    padding-top: 0;
-    border-top: 0;
+  .run-input-group + .run-input-group {
+    margin-top: 12px;
   }
 
   .run-input-group > header {
@@ -196,7 +200,11 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 14px;
+    margin: 0;
+    padding: 11px 13px;
+    border-bottom: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius) var(--ui-radius) 0 0;
+    background: color-mix(in srgb, var(--ui-muted) 38%, transparent);
   }
 
   .run-input-group > header > div {
@@ -222,10 +230,9 @@
     white-space: nowrap;
   }
 
-  .run-input-group > header > span {
-    flex: none;
-    color: var(--ui-destructive);
-    font-size: 10px;
+  .run-input-group > .oo-designer-root {
+    padding: 14px;
+    border-radius: 0 0 var(--ui-radius) var(--ui-radius);
   }
 
   .run-input-panel > form > footer {

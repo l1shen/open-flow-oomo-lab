@@ -434,6 +434,72 @@
     "emptyTitle": "발견된 문제 없음",
     "locate": "위치 열기",
     "locateIssue": "문제 열기: {{message}}",
+    "messages": {
+      "binding": {
+        "variable-invalid": "Variable 바인딩 ‘{{bindingId}}’의 대상이 올바르지 않습니다."
+      },
+      "condition": {
+        "input-missing": "조건식이 알 수 없는 입력 ‘{{input}}’을 참조합니다.",
+        "output-duplicate": "조건 출력 ‘{{output}}’이 두 번 이상 선언되었습니다."
+      },
+      "graph": {
+        "binding-invalid": "바인딩 ‘{{bindingId}}’은(는) Variable이어야 합니다.",
+        "binding-missing": "바인딩 ‘{{bindingId}}’이(가) 없습니다.",
+        "cycle": "노드 사이에 순환 종속성이 있습니다: {{nodes}}.",
+        "input-missing": "노드 ‘{{nodeId}}’에 입력 ‘{{handle}}’이(가) 없습니다.",
+        "node-output-incompatible": "상위 노드 ‘{{nodeId}}’의 출력 ‘{{output}}’이(가) 이 입력과 호환되지 않습니다.",
+        "schema-unsupported": "Runtime Ref 스키마는 지원되지 않습니다.",
+        "source-missing": {
+          "flow-input": "이 그래프에 Flow 입력 ‘{{input}}’이(가) 없습니다.",
+          "node": "상위 노드 ‘{{nodeId}}’이(가) 없습니다.",
+          "output": "상위 노드 ‘{{nodeId}}’에 출력 ‘{{output}}’이(가) 없습니다."
+        },
+        "target-missing": {
+          "subflow": "Subflow ‘{{subflowId}}’이(가) 없습니다.",
+          "task": "Task ‘{{taskId}}’이(가) 없습니다."
+        },
+        "trigger-not-allowed": "Trigger 노드는 Flow에서만 사용할 수 있습니다.",
+        "variable-incompatible": "Variable 바인딩 ‘{{bindingId}}’이(가) 이 입력과 호환되지 않습니다.",
+        "variable-source-mixed": "Variable은 입력의 유일한 소스여야 합니다."
+      },
+      "llm": {
+        "unconfigured": "이 배포에 LLM이 구성되지 않았습니다. OPEN_FLOW_LLM_ORIGIN과 OPEN_FLOW_LLM_TOKEN을 구성하세요."
+      },
+      "module": {
+        "commonjs": "CodeModule ‘{{moduleId}}’에서는 CommonJS require를 사용할 수 없습니다.",
+        "declared-import-missing": "CodeModule ‘{{moduleId}}’이(가) 일치하는 정적 import 없이 ‘{{importedModuleId}}’을(를) 선언합니다.",
+        "dynamic-code": "CodeModule ‘{{moduleId}}’에서는 동적 코드를 평가할 수 없습니다.",
+        "dynamic-import": "CodeModule ‘{{moduleId}}’에서는 동적 import를 사용할 수 없습니다.",
+        "import-not-declared": "CodeModule ‘{{moduleId}}’이(가) ‘{{importedModuleId}}’의 import를 선언하지 않았습니다.",
+        "missing": "CodeModule ‘{{moduleId}}’이(가) 없습니다.",
+        "missing-export": {
+          "module": "CodeModule ‘{{moduleId}}’이(가) ‘{{name}}’을(를) export하지 않습니다.",
+          "platform": "Platform Library가 ‘{{name}}’을(를) export하지 않습니다."
+        },
+        "syntax": "CodeModule ‘{{moduleId}}’에 잘못된 JavaScript 구문이 있습니다.",
+        "unsupported-import": {
+          "import": "CodeModule ‘{{moduleId}}’은(는) ‘{{specifier}}’을(를) import할 수 없습니다.",
+          "reexport": "CodeModule ‘{{moduleId}}’은(는) 값을 다시 export하기 전에 import해야 합니다."
+        }
+      },
+      "subflow": {
+        "cycle": "Subflow 순환은 실행할 수 없습니다: {{subflows}}."
+      },
+      "task": {
+        "capability-incomplete": "Inline Task ‘{{nodeId}}’의 Connector Capability 구성이 완료되지 않았습니다.",
+        "connector-connection-required": "Connector Task ‘{{taskId}}’에는 Connection이 필요합니다.",
+        "connector-incomplete": "Connector Task ‘{{taskId}}’에는 action이 필요합니다.",
+        "missing-entry": "Inline Task에서 사용하는 CodeModule ‘{{moduleId}}’은(는) default function을 export해야 합니다.",
+        "module-missing": "Inline Task ‘{{nodeId}}’이(가) 존재하지 않는 CodeModule ‘{{moduleId}}’을(를) 참조합니다."
+      },
+      "trigger": {
+        "config-incomplete": "필수 Trigger 구성 필드를 입력하세요: {{fields}}.",
+        "config-invalid": "Trigger ‘{{triggerId}}’의 구성이 고정 정의와 일치하지 않습니다.",
+        "connection-invalid": "Trigger 바인딩 ‘{{bindingId}}’은(는) Connection이어야 합니다.",
+        "connection-missing": "Trigger Connection 바인딩 ‘{{bindingId}}’이(가) 없습니다.",
+        "input-duplicate": "Webhook Trigger 입력 ‘{{input}}’이(가) 두 번 이상 선언되었습니다."
+      }
+    },
     "notChecked": "검사 안 됨",
     "notCheckedDescription": "현재 초안을 검사해 그래프, 태스크, Connection, JavaScript 문제를 찾아보세요.",
     "notCheckedTitle": "이 초안 검사",
@@ -452,8 +518,7 @@
   },
   "runInput": {
     "close": "실행 입력 닫기",
-    "description": "연결되지 않은 각 입력에 값을 지정하세요. 그래프 연결, 정적 값 또는 정의된 기본값이 있는 입력은 표시되지 않습니다.",
-    "groupInvalid": "유효한 값이 필요합니다",
+    "description": "연결되지 않은 각 입력에 값을 지정하세요. 그래프 연결, 정적 값 또는 정의된 기본값이 있는 입력은 표시되지 않습니다. 여기에 입력한 값은 이번 실행에만 사용되며 Flow에 저장되지 않습니다.",
     "invalid": "실행하기 전에 나열된 모든 입력에 유효한 JSON 값을 설정하세요.",
     "title": "실행 입력"
   },

@@ -56,10 +56,16 @@
 
 .suffix {
   position: absolute;
-  top: 1px;
+  top: 50%;
   right: 1px;
   display: flex;
   align-items: center;
+  transform: translateY(-50%);
+}
+
+.wrapper:has(.multiline) > .suffix {
+  top: 1px;
+  transform: none;
 }
 
 .oneSuffix .input {

@@ -86,6 +86,8 @@ Common 代码不能依赖 Browser 或 Node，Browser 代码不能依赖 Node。�
 
 权威 validation 的输入是固定 Flow Revision、model version 和 Engine Contract。它必须确定性检查 graph、Module、Task 和 closure，不读取
 credential value、Provider 当前状态、调用权限或部署资源。非确定性 eligibility 必须在 Run 或 Publish 的 operation boundary 重新检查。
+部署 Control check 可以在确定性 validation 之后追加静态 capability 配置缺失的 diagnostic，例如 Flow 使用 LLM Task 但 Server 没有 LLM host；
+这类 diagnostic 不进入 Revision 或 digest，也不能通过探测外部服务状态产生。
 
 Engine Contract、部署中立 Runtime invocation、Scheduler 图执行语义、RunEvent 投影和 conformance 属于 `packages/open-flow`。具体执行隔离、
 Engine digest、资源限制和恢复属于部署实现；`isolated-vm` RuntimeHost 只属于 Server。

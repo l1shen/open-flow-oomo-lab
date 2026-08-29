@@ -11,7 +11,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ServerService } from '../node/service.ts'
-import { acceptRun } from './runFixture.ts'
+import { acceptRun, storeRevision } from './runFixture.ts'
 import { closeService, openService, startService } from './serviceFixture.ts'
 
 const directories: string[] = []
@@ -584,6 +584,32 @@ describe('Server application service', () => {
     })
     expect(JSON.stringify(transport.events(rejected.runId))).not.toContain('provider-secret-detail')
     await closeService(transport)
+  })
+
+  it('reports LLM Tasks when the deployment has no LLM host', async () => {
+    const unavailable = await openService(await databaseFile())
+    const stored = await storeRevision(unavailable, llmFlow(), 'llm-check-unavailable')
+
+    expect(await unavailable.control.checkFlow(stored.flowId, stored.revisionId, 'open-flow-engine/v1')).toMatchObject({
+      diagnostics: [
+        {
+          code: 'llm.unconfigured',
+          message: 'LLM is not configured for this deployment. Configure OPEN_FLOW_LLM_ORIGIN and OPEN_FLOW_LLM_TOKEN.',
+          path: '/document/tasks/llm/executor',
+        },
+      ],
+      valid: false,
+    })
+
+    const configured = await openService(await databaseFile(), undefined, Date.now, {
+      llm: async () => ({ kind: 'completed', value: {}, version: 1 }),
+    })
+    const configuredStored = await storeRevision(configured, llmFlow(), 'llm-check-configured')
+
+    expect(await configured.control.checkFlow(configuredStored.flowId, configuredStored.revisionId, 'open-flow-engine/v1')).toMatchObject({
+      diagnostics: [],
+      valid: true,
+    })
   })
 
   it('propagates Run cancellation into the active LLM Task host', async () => {

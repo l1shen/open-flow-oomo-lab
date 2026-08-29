@@ -15,7 +15,15 @@ import { flowRunInputEditorState, FlowRunInputEditorStore } from './flowRunInput
 export { FlowRunInputEditorStore } from './flowRunInputEditorStore.ts'
 export type { FlowRunInputDefinition } from './flowRunInputEditorStore.ts'
 
-export function FlowRunInputEditor({ store, theme }: { readonly store: FlowRunInputEditorStore; readonly theme: WorkbenchTheme }): ReactElement {
+export function FlowRunInputEditor({
+  showErrors = false,
+  store,
+  theme,
+}: {
+  readonly showErrors?: boolean
+  readonly store: FlowRunInputEditorStore
+  readonly theme: WorkbenchTheme
+}): ReactElement {
   const state = flowRunInputEditorState(store)
   const handles = useVal(state.inputs.section.$.handles)
   const language = useVal(state.language)
@@ -47,7 +55,7 @@ export function FlowRunInputEditor({ store, theme }: { readonly store: FlowRunIn
                   </legend>
                   {definition.description != null && <p className={styles.description}>{definition.description}</p>}
                   <div className={styles.value}>
-                    <HandleEditor panelWidth$={state.panelWidth$} presentation="form" showSchemaSettings={false} store={handle} />
+                    <HandleEditor panelWidth$={state.panelWidth$} presentation="form" showFormError={showErrors} showSchemaSettings={false} store={handle} />
                   </div>
                 </fieldset>,
               ]

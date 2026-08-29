@@ -8,6 +8,7 @@ import { Badge } from '../../../../ui/browser/badge.tsx'
 import { Button } from '../../../../ui/browser/button.tsx'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../../../../ui/browser/empty.tsx'
 import { Skeleton } from '../../../../ui/browser/skeleton.tsx'
+import { diagnosticMessage } from '../designer/diagnostics.ts'
 import { Icon } from '../icons.tsx'
 
 interface Props {
@@ -83,6 +84,7 @@ export function DiagnosticsPanel({ checked, checking, items, onClose, onRefresh,
       ) : (
         <ol className="diagnostics-list">
           {items.map((item, index) => {
+            const message = diagnosticMessage(item.diagnostic, t)
             const content = (
               <>
                 <span className="diagnostic-row-heading">
@@ -90,7 +92,7 @@ export function DiagnosticsPanel({ checked, checking, items, onClose, onRefresh,
                   <code>{item.diagnostic.code}</code>
                   {item.scope == 'code' && <span>{t('diagnostics.sourceLocation', { column: item.diagnostic.column + 1, line: item.diagnostic.line })}</span>}
                 </span>
-                <strong>{item.diagnostic.message}</strong>
+                <strong>{message}</strong>
                 <code className="diagnostic-path">{item.diagnostic.path}</code>
                 <span className="diagnostic-row-action">{t(item.location == null ? 'diagnostics.pathOnly' : 'diagnostics.locate')}</span>
               </>
@@ -101,7 +103,7 @@ export function DiagnosticsPanel({ checked, checking, items, onClose, onRefresh,
                   <div className="diagnostic-row unavailable">{content}</div>
                 ) : (
                   <Button
-                    aria-label={t('diagnostics.locateIssue', { message: item.diagnostic.message })}
+                    aria-label={t('diagnostics.locateIssue', { message })}
                     className="diagnostic-row whitespace-normal"
                     onClick={() => onSelect(item)}
                     type="button"

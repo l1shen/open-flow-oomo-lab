@@ -85,7 +85,14 @@ interface Live {
 
 interface FlowCheck {
   readonly closureDigest: string
-  readonly diagnostics: readonly { readonly code: string; readonly column: number; readonly line: number; readonly message: string; readonly path: string }[]
+  readonly diagnostics: readonly {
+    readonly code: string
+    readonly column: number
+    readonly line: number
+    readonly message: string
+    readonly path: string
+    readonly values?: Readonly<Record<string, string | number>>
+  }[]
   readonly engineContract: string
   readonly flowId: string
   readonly modelVersion: number
@@ -230,6 +237,7 @@ export class ControlService {
   private readonly connectorConsoleOrigin?: URL
   private readonly flowCatalogChanged: () => void
   private readonly flowChanged: (event: FlowChangeEvent) => void
+  private readonly llmAvailable: boolean
   private readonly publish: (input: PublishInput) => Promise<PublicationAcceptance>
   private readonly resolveConnectorTeam?: (teamId?: string) => Promise<string>
   private readonly store: Store
@@ -249,6 +257,7 @@ export class ControlService {
     testPollTrigger: (flowId: string, triggerNodeId: string) => Promise<PollTriggerTestResult>,
     flowCatalogChanged: () => void,
     flowChanged: (event: FlowChangeEvent) => void,
+    llmAvailable: boolean,
     connector?: ConnectorHost,
     connectorConsoleOrigin?: URL,
     resolveConnectorTeam?: (teamId?: string) => Promise<string>,
@@ -263,6 +272,7 @@ export class ControlService {
     this.testPollTrigger = testPollTrigger
     this.flowCatalogChanged = flowCatalogChanged
     this.flowChanged = flowChanged
+    this.llmAvailable = llmAvailable
     this.connector = connector
     this.connectorConsoleOrigin = connectorConsoleOrigin
     this.resolveConnectorTeam = resolveConnectorTeam
@@ -634,15 +644,27 @@ export class ControlService {
     if (stored == null) notFound()
     const content = revisionContent(stored)
     const checked = await validateFlow(content, engine)
+    const llmDiagnostics = this.llmAvailable
+      ? []
+      : Object.entries(content.document.tasks)
+          .filter(([, task]) => task.executor.kind == 'llm')
+          .map(([taskId]) => ({
+            code: 'llm.unconfigured',
+            column: 0,
+            line: 0,
+            message: 'LLM is not configured for this deployment. Configure OPEN_FLOW_LLM_ORIGIN and OPEN_FLOW_LLM_TOKEN.',
+            path: `/document/tasks/${taskId}/executor`,
+            values: {},
+          }))
     return {
       closureDigest: checked.closure.digest,
-      diagnostics: checked.diagnostics,
+      diagnostics: [...checked.diagnostics, ...llmDiagnostics],
       engineContract,
       flowId,
       modelVersion: content.modelVersion,
       revisionDigest: stored.digest,
       revisionId,
-      valid: checked.valid,
+      valid: checked.valid && llmDiagnostics.length == 0,
       version: 1,
     }
   }

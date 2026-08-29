@@ -168,6 +168,7 @@ export interface Diagnostic {
   readonly line: number
   readonly message: string
   readonly path: string
+  readonly values?: Readonly<Record<string, string | number>>
 }
 
 export interface FlowCheck {
@@ -692,12 +693,23 @@ function publication(value: unknown): Publication {
 
 function diagnostic(value: unknown): Diagnostic {
   const source = record(value)
+  const values = source.values == null ? undefined : record(source.values)
   return {
     code: string(source.code),
     column: integer(source.column),
     line: integer(source.line),
     message: string(source.message),
     path: typeof source.path == 'string' ? source.path : invalidResponse(),
+    ...(values == null
+      ? {}
+      : {
+          values: Object.fromEntries(
+            Object.entries(values).map(([key, candidate]) => [
+              key,
+              typeof candidate == 'string' || typeof candidate == 'number' ? candidate : invalidResponse(),
+            ]),
+          ),
+        }),
   }
 }
 

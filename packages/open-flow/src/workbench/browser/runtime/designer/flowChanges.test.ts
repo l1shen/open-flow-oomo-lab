@@ -43,6 +43,14 @@ function draft(source: string): Draft {
 }
 
 describe('Code task port changes', () => {
+  it('does not emit a Draft change when the ports stay the same', () => {
+    const current = draft('export default (input) => ({ result: input.value })\n')
+    const task = current.content.document.graph.nodes.task
+    if (task?.kind != 'task' || task.task == null) throw new Error('Expected code Task fixture.')
+
+    expect(updateCodeTaskPorts(revisionView(current), { kind: 'flow' }, 'task', task.task)).toBeUndefined()
+  })
+
   it('uses the node ID for a new code module', () => {
     const current = draft('export default () => {}\n')
     const changes = addNode(revisionView(current), { kind: 'flow' }, 'new-code', { kind: 'code', name: 'New code' }, () => 'unused')
@@ -98,6 +106,12 @@ describe('Code task port changes', () => {
 })
 
 describe('Variable input changes', () => {
+  it('does not emit a Draft change when clearing an unbound Variable input', () => {
+    const current = draft('export default ({ value }) => ({ result: value })\n')
+
+    expect(setInputValue(revisionView(current), { kind: 'flow' }, 'task', 'value', undefined)).toBeUndefined()
+  })
+
   it('creates, replaces, copies on shared edit, and cleans Variable bindings', () => {
     const current = draft('export default ({ value }) => ({ result: value })\n')
     const created = setInputVariable(revisionView(current), { kind: 'flow' }, 'task', 'value', 'TOKEN', 'binding-a')

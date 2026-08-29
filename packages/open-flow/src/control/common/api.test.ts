@@ -73,6 +73,37 @@ describe('ControlClient Flow API', () => {
     await expect(client.listConnectorProviders(undefined, flow.flowId)).resolves.toEqual([{ serviceId: 'mail', serviceName: 'Mail' }])
     await expect(client.createConnectorConnectionPage('mail', flow.flowId)).resolves.toBe('https://connector.example/providers/mail')
   })
+
+  it('preserves structured Diagnostic values', async () => {
+    const checked = {
+      closureDigest: 'closure-1',
+      diagnostics: [
+        {
+          code: 'graph.target-missing',
+          column: 0,
+          line: 1,
+          message: 'Task "missing" does not exist.',
+          path: '/document/graph/nodes/task/taskId',
+          values: { taskId: 'missing', variant: 'task' },
+        },
+      ],
+      engineContract: 'open-flow-engine/v1',
+      flowId: flow.flowId,
+      modelVersion: 1,
+      revisionDigest: 'revision-digest-1',
+      revisionId: flow.draftRevisionId,
+      valid: false,
+      version: 1,
+    } as const
+    const client = new ControlClient(async () => Response.json(checked))
+
+    await expect(client.checkFlow(flow.flowId, flow.draftRevisionId)).resolves.toEqual(checked)
+
+    const invalid = new ControlClient(async () =>
+      Response.json({ ...checked, diagnostics: [{ ...checked.diagnostics[0], values: { taskId: true, variant: 'task' } }] }),
+    )
+    await expect(invalid.checkFlow(flow.flowId, flow.draftRevisionId)).rejects.toMatchObject({ code: 'response.invalid', status: 502 })
+  })
 })
 
 describe('ControlClient Variable API', () => {

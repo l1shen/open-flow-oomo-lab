@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../ui/browser
 import { Textarea } from '../../../../ui/browser/textarea.tsx'
 import { Icon } from '../icons.tsx'
 import { CodeEditor } from './codeEditor.tsx'
+import { diagnosticMessage } from './diagnostics.ts'
 import { codeTyping } from './flowChanges.ts'
 import { taskDiagnosticReady, taskInspectorSection } from './nodeInspectorBehavior.ts'
 
@@ -72,7 +73,7 @@ function Diagnostics({ diagnostics }: { readonly diagnostics: readonly Diagnosti
       <div className="diagnostic-list">
         {diagnostics.map((diagnostic, index) => (
           <div className="diagnostic-item" key={`${diagnostic.path}:${diagnostic.line}:${diagnostic.column}:${index}`}>
-            <strong>{diagnostic.message}</strong>
+            <strong>{diagnosticMessage(diagnostic, t)}</strong>
             <code>
               {diagnostic.code} · {diagnostic.line}:{diagnostic.column}
             </code>

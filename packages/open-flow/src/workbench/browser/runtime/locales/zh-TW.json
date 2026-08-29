@@ -434,6 +434,72 @@
     "emptyTitle": "沒有發現問題",
     "locate": "開啟位置",
     "locateIssue": "開啟問題：{{message}}",
+    "messages": {
+      "binding": {
+        "variable-invalid": "Variable 繫結「{{bindingId}}」的目標無效。"
+      },
+      "condition": {
+        "input-missing": "條件運算式參照了未知輸入「{{input}}」。",
+        "output-duplicate": "條件輸出「{{output}}」被重複宣告。"
+      },
+      "graph": {
+        "binding-invalid": "繫結「{{bindingId}}」必須是 Variable。",
+        "binding-missing": "繫結「{{bindingId}}」不存在。",
+        "cycle": "節點之間存在相依性循環：{{nodes}}。",
+        "input-missing": "節點「{{nodeId}}」沒有輸入「{{handle}}」。",
+        "node-output-incompatible": "上游節點「{{nodeId}}」的輸出「{{output}}」與此輸入不相容。",
+        "schema-unsupported": "不支援 Runtime Ref schema。",
+        "source-missing": {
+          "flow-input": "此流程圖中不存在 Flow 輸入「{{input}}」。",
+          "node": "上游節點「{{nodeId}}」不存在。",
+          "output": "上游節點「{{nodeId}}」沒有輸出「{{output}}」。"
+        },
+        "target-missing": {
+          "subflow": "Subflow「{{subflowId}}」不存在。",
+          "task": "Task「{{taskId}}」不存在。"
+        },
+        "trigger-not-allowed": "Trigger 節點只能用於 Flow。",
+        "variable-incompatible": "Variable 繫結「{{bindingId}}」與此輸入不相容。",
+        "variable-source-mixed": "Variable 必須是輸入的唯一來源。"
+      },
+      "llm": {
+        "unconfigured": "目前部署尚未設定 LLM。請設定 OPEN_FLOW_LLM_ORIGIN 和 OPEN_FLOW_LLM_TOKEN。"
+      },
+      "module": {
+        "commonjs": "CodeModule「{{moduleId}}」不能使用 CommonJS require。",
+        "declared-import-missing": "CodeModule「{{moduleId}}」宣告了「{{importedModuleId}}」，但沒有對應的靜態 import。",
+        "dynamic-code": "CodeModule「{{moduleId}}」不能執行動態程式碼。",
+        "dynamic-import": "CodeModule「{{moduleId}}」不能使用動態 import。",
+        "import-not-declared": "CodeModule「{{moduleId}}」沒有宣告對「{{importedModuleId}}」的 import。",
+        "missing": "CodeModule「{{moduleId}}」不存在。",
+        "missing-export": {
+          "module": "CodeModule「{{moduleId}}」沒有匯出「{{name}}」。",
+          "platform": "Platform Library 沒有匯出「{{name}}」。"
+        },
+        "syntax": "CodeModule「{{moduleId}}」包含無效的 JavaScript 語法。",
+        "unsupported-import": {
+          "import": "CodeModule「{{moduleId}}」不能 import「{{specifier}}」。",
+          "reexport": "CodeModule「{{moduleId}}」必須先 import，再重新匯出值。"
+        }
+      },
+      "subflow": {
+        "cycle": "Subflow 循環無法執行：{{subflows}}。"
+      },
+      "task": {
+        "capability-incomplete": "Inline Task「{{nodeId}}」的 Connector Capability 設定不完整。",
+        "connector-connection-required": "Connector Task「{{taskId}}」需要選擇一個 Connection。",
+        "connector-incomplete": "Connector Task「{{taskId}}」需要選擇一個 action。",
+        "missing-entry": "Inline Task 使用的 CodeModule「{{moduleId}}」必須匯出 default function。",
+        "module-missing": "Inline Task「{{nodeId}}」參照的 CodeModule「{{moduleId}}」不存在。"
+      },
+      "trigger": {
+        "config-incomplete": "請填寫必要的 Trigger 設定欄位：{{fields}}。",
+        "config-invalid": "Trigger「{{triggerId}}」的設定與固定定義不相符。",
+        "connection-invalid": "Trigger 繫結「{{bindingId}}」必須是 Connection。",
+        "connection-missing": "Trigger 的 Connection 繫結「{{bindingId}}」不存在。",
+        "input-duplicate": "Webhook Trigger 輸入「{{input}}」被重複宣告。"
+      }
+    },
     "notChecked": "尚未檢查",
     "notCheckedDescription": "檢查目前的草稿，找出流程圖、任務、Connection 和 JavaScript 的問題。",
     "notCheckedTitle": "檢查這份草稿",
@@ -452,8 +518,7 @@
   },
   "runInput": {
     "close": "關閉執行輸入",
-    "description": "請為每個未連接的輸入提供值。已有流程圖連線、靜態值或定義預設值的輸入不會顯示。",
-    "groupInvalid": "需要有效的值",
+    "description": "請為每個未連接的輸入提供值。已有流程圖連線、靜態值或定義預設值的輸入不會顯示。在此填寫的值僅用於本次執行，不會儲存至 Flow。",
     "invalid": "執行前，請將列出的每個輸入都設為有效的 JSON 值。",
     "title": "執行輸入"
   },

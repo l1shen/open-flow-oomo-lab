@@ -432,8 +432,74 @@
     "close": "Fermer les problèmes",
     "emptyDescription": "Ce Flow est prêt à être exécuté et publié.",
     "emptyTitle": "Aucun problème détecté",
-    "locate": "Ouvrir l'emplacement",
-    "locateIssue": "Ouvrir le problème : {{message}}",
+    "locate": "Ouvrir l’emplacement",
+    "locateIssue": "Ouvrir le problème : {{message}}",
+    "messages": {
+      "binding": {
+        "variable-invalid": "La liaison Variable « {{bindingId}} » a une cible non valide."
+      },
+      "condition": {
+        "input-missing": "L’expression de condition référence l’entrée inconnue « {{input}} ».",
+        "output-duplicate": "La sortie de condition « {{output}} » est déclarée plusieurs fois."
+      },
+      "graph": {
+        "binding-invalid": "La liaison « {{bindingId}} » doit être une Variable.",
+        "binding-missing": "La liaison « {{bindingId}} » n’existe pas.",
+        "cycle": "Le graphe contient un cycle de dépendances entre les nœuds : {{nodes}}.",
+        "input-missing": "Le nœud « {{nodeId}} » n’expose pas l’entrée « {{handle}} ».",
+        "node-output-incompatible": "La sortie « {{output}} » du nœud en amont « {{nodeId}} » n’est pas compatible avec cette entrée.",
+        "schema-unsupported": "Les schémas Runtime Ref ne sont pas pris en charge.",
+        "source-missing": {
+          "flow-input": "L’entrée de Flow « {{input}} » n’existe pas dans ce graphe.",
+          "node": "Le nœud en amont « {{nodeId}} » n’existe pas.",
+          "output": "Le nœud en amont « {{nodeId}} » n’expose pas la sortie « {{output}} »."
+        },
+        "target-missing": {
+          "subflow": "Le Subflow « {{subflowId}} » n’existe pas.",
+          "task": "La Task « {{taskId}} » n’existe pas."
+        },
+        "trigger-not-allowed": "Les nœuds Trigger sont uniquement autorisés dans les Flows.",
+        "variable-incompatible": "La liaison Variable « {{bindingId}} » n’est pas compatible avec cette entrée.",
+        "variable-source-mixed": "Une Variable doit être l’unique source d’une entrée."
+      },
+      "llm": {
+        "unconfigured": "Aucun LLM n’est configuré pour ce déploiement. Configurez OPEN_FLOW_LLM_ORIGIN et OPEN_FLOW_LLM_TOKEN."
+      },
+      "module": {
+        "commonjs": "Le CodeModule « {{moduleId}} » ne peut pas utiliser require de CommonJS.",
+        "declared-import-missing": "Le CodeModule « {{moduleId}} » déclare « {{importedModuleId}} » sans import statique correspondant.",
+        "dynamic-code": "Le CodeModule « {{moduleId}} » ne peut pas évaluer de code dynamique.",
+        "dynamic-import": "Le CodeModule « {{moduleId}} » ne peut pas utiliser d’import dynamique.",
+        "import-not-declared": "Le CodeModule « {{moduleId}} » ne déclare pas son import de « {{importedModuleId}} ».",
+        "missing": "Le CodeModule « {{moduleId}} » n’existe pas.",
+        "missing-export": {
+          "module": "Le CodeModule « {{moduleId}} » n’exporte pas « {{name}} ».",
+          "platform": "La Platform Library n’exporte pas « {{name}} »."
+        },
+        "syntax": "Le CodeModule « {{moduleId}} » contient une syntaxe JavaScript non valide.",
+        "unsupported-import": {
+          "import": "Le CodeModule « {{moduleId}} » ne peut pas importer « {{specifier}} ».",
+          "reexport": "Le CodeModule « {{moduleId}} » doit importer les valeurs avant de les réexporter."
+        }
+      },
+      "subflow": {
+        "cycle": "Le cycle de Subflows n’est pas exécutable : {{subflows}}."
+      },
+      "task": {
+        "capability-incomplete": "L’Inline Task « {{nodeId}} » possède une Connector Capability incomplète.",
+        "connector-connection-required": "La Connector Task « {{taskId}} » nécessite une Connection.",
+        "connector-incomplete": "La Connector Task « {{taskId}} » nécessite une action.",
+        "missing-entry": "Le CodeModule « {{moduleId}} » utilisé par une Inline Task doit exporter une fonction par défaut.",
+        "module-missing": "L’Inline Task « {{nodeId}} » référence le CodeModule manquant « {{moduleId}} »."
+      },
+      "trigger": {
+        "config-incomplete": "Renseignez les champs de configuration Trigger requis : {{fields}}.",
+        "config-invalid": "La configuration du Trigger « {{triggerId}} » ne correspond pas à sa définition fixe.",
+        "connection-invalid": "La liaison Trigger « {{bindingId}} » doit être une Connection.",
+        "connection-missing": "La liaison de Connection du Trigger « {{bindingId}} » n’existe pas.",
+        "input-duplicate": "L’entrée « {{input}} » du Webhook Trigger est déclarée plusieurs fois."
+      }
+    },
     "notChecked": "Non vérifié",
     "notCheckedDescription": "Vérifiez le Brouillon actuel pour détecter les problèmes de graphe, de tâche, de Connection et de JavaScript.",
     "notCheckedTitle": "Vérifier ce Brouillon",
@@ -452,8 +518,7 @@
   },
   "runInput": {
     "close": "Fermer les entrées d'exécution",
-    "description": "Fournissez une valeur pour chaque entrée non connectée. Les entrées ayant une connexion dans le graphe, une valeur statique ou une valeur par défaut ne sont pas affichées.",
-    "groupInvalid": "Valeur valide requise",
+    "description": "Fournissez une valeur pour chaque entrée non connectée. Les entrées ayant une connexion dans le graphe, une valeur statique ou une valeur par défaut ne sont pas affichées. Les valeurs saisies ici s’appliquent uniquement à cette exécution et ne sont pas enregistrées dans le Flow.",
     "invalid": "Définissez une valeur JSON valide pour chaque entrée listée avant d'exécuter.",
     "title": "Entrées d'exécution"
   },

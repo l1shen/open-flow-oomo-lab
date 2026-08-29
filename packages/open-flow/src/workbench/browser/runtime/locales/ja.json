@@ -434,6 +434,72 @@
     "emptyTitle": "問題は見つかりませんでした",
     "locate": "該当箇所を開く",
     "locateIssue": "問題を開く：{{message}}",
+    "messages": {
+      "binding": {
+        "variable-invalid": "Variable バインディング「{{bindingId}}」の参照先が無効です。"
+      },
+      "condition": {
+        "input-missing": "条件式が不明な入力「{{input}}」を参照しています。",
+        "output-duplicate": "条件出力「{{output}}」が複数回定義されています。"
+      },
+      "graph": {
+        "binding-invalid": "バインディング「{{bindingId}}」は Variable である必要があります。",
+        "binding-missing": "バインディング「{{bindingId}}」は存在しません。",
+        "cycle": "ノード間に依存関係の循環があります：{{nodes}}。",
+        "input-missing": "ノード「{{nodeId}}」に入力「{{handle}}」はありません。",
+        "node-output-incompatible": "上流ノード「{{nodeId}}」の出力「{{output}}」はこの入力と互換性がありません。",
+        "schema-unsupported": "Runtime Ref スキーマはサポートされていません。",
+        "source-missing": {
+          "flow-input": "このグラフに Flow 入力「{{input}}」は存在しません。",
+          "node": "上流ノード「{{nodeId}}」は存在しません。",
+          "output": "上流ノード「{{nodeId}}」に出力「{{output}}」はありません。"
+        },
+        "target-missing": {
+          "subflow": "Subflow「{{subflowId}}」は存在しません。",
+          "task": "Task「{{taskId}}」は存在しません。"
+        },
+        "trigger-not-allowed": "Trigger ノードは Flow 内でのみ使用できます。",
+        "variable-incompatible": "Variable バインディング「{{bindingId}}」はこの入力と互換性がありません。",
+        "variable-source-mixed": "Variable は入力の唯一のソースである必要があります。"
+      },
+      "llm": {
+        "unconfigured": "このデプロイには LLM が設定されていません。OPEN_FLOW_LLM_ORIGIN と OPEN_FLOW_LLM_TOKEN を設定してください。"
+      },
+      "module": {
+        "commonjs": "CodeModule「{{moduleId}}」では CommonJS の require を使用できません。",
+        "declared-import-missing": "CodeModule「{{moduleId}}」は、対応する静的 import なしで「{{importedModuleId}}」を宣言しています。",
+        "dynamic-code": "CodeModule「{{moduleId}}」では動的コードを評価できません。",
+        "dynamic-import": "CodeModule「{{moduleId}}」では動的 import を使用できません。",
+        "import-not-declared": "CodeModule「{{moduleId}}」は「{{importedModuleId}}」の import を宣言していません。",
+        "missing": "CodeModule「{{moduleId}}」は存在しません。",
+        "missing-export": {
+          "module": "CodeModule「{{moduleId}}」は「{{name}}」を export していません。",
+          "platform": "Platform Library は「{{name}}」を export していません。"
+        },
+        "syntax": "CodeModule「{{moduleId}}」に無効な JavaScript 構文があります。",
+        "unsupported-import": {
+          "import": "CodeModule「{{moduleId}}」は「{{specifier}}」を import できません。",
+          "reexport": "CodeModule「{{moduleId}}」は、値を再 export する前に import する必要があります。"
+        }
+      },
+      "subflow": {
+        "cycle": "Subflow の循環は実行できません：{{subflows}}。"
+      },
+      "task": {
+        "capability-incomplete": "Inline Task「{{nodeId}}」の Connector Capability が未設定です。",
+        "connector-connection-required": "Connector Task「{{taskId}}」には Connection が必要です。",
+        "connector-incomplete": "Connector Task「{{taskId}}」には action が必要です。",
+        "missing-entry": "Inline Task で使用する CodeModule「{{moduleId}}」は default function を export する必要があります。",
+        "module-missing": "Inline Task「{{nodeId}}」が存在しない CodeModule「{{moduleId}}」を参照しています。"
+      },
+      "trigger": {
+        "config-incomplete": "必須の Trigger 設定項目を入力してください：{{fields}}。",
+        "config-invalid": "Trigger「{{triggerId}}」の設定が固定定義と一致しません。",
+        "connection-invalid": "Trigger バインディング「{{bindingId}}」は Connection である必要があります。",
+        "connection-missing": "Trigger の Connection バインディング「{{bindingId}}」は存在しません。",
+        "input-duplicate": "Webhook Trigger の入力「{{input}}」が複数回定義されています。"
+      }
+    },
     "notChecked": "未検査",
     "notCheckedDescription": "現在のドラフトを検査して、グラフ、タスク、Connection、JavaScript の問題を見つけます。",
     "notCheckedTitle": "このドラフトを検査",
@@ -452,8 +518,7 @@
   },
   "runInput": {
     "close": "実行入力を閉じる",
-    "description": "未接続の入力ごとに値を指定してください。グラフ接続、静的な値、定義のデフォルト値がある入力は表示されません。",
-    "groupInvalid": "有効な値が必要です",
+    "description": "未接続の入力ごとに値を指定してください。グラフ接続、静的な値、定義のデフォルト値がある入力は表示されません。ここで入力した値は今回の実行にのみ使用され、Flow には保存されません。",
     "invalid": "実行する前に、表示されているすべての入力へ有効な JSON 値を設定してください。",
     "title": "実行入力"
   },

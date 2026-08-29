@@ -81,6 +81,7 @@ export interface HandleEditorProps {
   readonly panelWidth$: Val<number | undefined>
   readonly reactFlowStore?: ReturnType<typeof useStoreApi>
   readonly presentation?: 'form' | 'handle'
+  readonly showFormError?: boolean
   readonly showSchemaSettings?: boolean
   /** Return an error message when a proposed name is invalid. */
   validate?: (name: string, oldName: string) => string | undefined
@@ -115,6 +116,7 @@ export function HandleEditor({
   onDragStart,
   onDragOver,
   variable,
+  showFormError = true,
 }: HandleEditorProps): JSX.Element {
   const { context } = store
 
@@ -133,7 +135,7 @@ export function HandleEditor({
   const nullable = useVal(store.nullable$)
   const showSettings = useVal(store.showSettings$)
   const kind = useVal(store.kind$)
-  const formError = useVal(presentation === 'form' ? store.error$ : undefined)
+  const formError = useVal(presentation === 'form' && showFormError ? store.error$ : undefined)
   const formSchema = useVal(presentation === 'form' ? store.schema$ : undefined)
   const formValue = useVal(presentation === 'form' ? store.value$ : undefined)
 
@@ -162,26 +164,35 @@ export function HandleEditor({
     const errorMessage =
       formError == null
         ? undefined
-        : missing.length > 0
-          ? t('inputHandleEditor.requiredFieldsUnset', { fields: missing.join(', ') })
-          : formError.type === 'typeError'
-            ? t('inputHandleEditor.typeError', { expected: asPrimitiveType(schemaType) || schemaType })
-            : formError.message.startsWith('$')
-              ? t(`inputHandleEditor.${formError.message.slice(1)}`)
-              : t('inputHandleEditor.validationError', { message: formError.message })
+        : formValue === undefined
+          ? t('inputHandleEditor.connectionRequired')
+          : missing.length > 0
+            ? t('inputHandleEditor.requiredFieldsUnset', { fields: missing.join(', ') })
+            : formError.type === 'typeError'
+              ? t('inputHandleEditor.typeError', { expected: asPrimitiveType(schemaType) || schemaType })
+              : formError.message.startsWith('$')
+                ? t(`inputHandleEditor.${formError.message.slice(1)}`)
+                : t('inputHandleEditor.validationError', { message: formError.message })
 
     return (
       <>
+        {schemaType === 'any' ? (
+          <div className={styles.formValue}>
+            <ValueReconciler type="any" store={widget} nullable={nullable} presentation="form" showError={toTrue(showFormError)} />
+          </div>
+        ) : hasSubpanel ? (
+          <Subpanel isLast type={widgetType} store={widget} nullable={nullable} presentation="form" />
+        ) : (
+          <div className={styles.formValue}>
+            <ValueReconciler type={widgetType} store={widget} nullable={nullable} presentation="form" showError={toTrue(showFormError)} />
+          </div>
+        )}
+        {schemaType === 'any' && hasSubpanel && !collapsed && <Subpanel isLast type={widgetType} store={widget} nullable={nullable} presentation="form" />}
         {errorMessage != null && (
           <div className={styles.formError} role="alert">
             <i aria-hidden="true" className="i-codicon:error" />
             <span>{errorMessage}</span>
           </div>
-        )}
-        {hasSubpanel ? (
-          <Subpanel isLast type={widgetType} store={widget} nullable={nullable} presentation="form" />
-        ) : (
-          <HandleRow className={styles[context.inout]} variant="value-only" value={<ValueReconciler type={widgetType} store={widget} nullable={nullable} />} />
         )}
       </>
     )
@@ -352,7 +363,7 @@ function RootField(props: RootFieldProps) {
         setVariableMode(true)
         props.variable?.onOpen()
       } else if (isString(e.value) && isWidgetType(e.value)) {
-        if (variableMode) props.variable?.onChange(undefined)
+        if (props.variable?.name != null) props.variable.onChange(undefined)
         setVariableMode(false)
         setValue(props.store.schema$, getBaseSchema(e.value, props.store.schema$.value))
       }
@@ -946,11 +957,25 @@ function ValueAny(props: ValueProps) {
       </Button>
     )
   ) : (
-    <div className={styles.inlineAny}>
-      <Button dropDown onClick={() => setMenuOpen(true)} disabled={!props.store.context.canEditValue}>
-        <i className={iconOf(finalType)} />
+    <div className={clsx(styles.inlineAny, props.presentation === 'form' && styles.formAny)}>
+      <Button
+        dropDown
+        wrapperClassName={props.presentation === 'form' ? styles.formAnyType : undefined}
+        onClick={() => setMenuOpen(true)}
+        disabled={!props.store.context.canEditValue}
+      >
+        {props.presentation === 'form' ? optionOf(t, finalType).label : <i className={iconOf(finalType)} />}
       </Button>
-      <ValueReconciler isSuffix type={finalType} store={props.store} nullable={props.nullable} onRequestType={() => setMenuOpen(true)} />
+      <ValueReconciler
+        isSuffix={props.presentation === 'form' ? undefined : true}
+        type={finalType}
+        store={props.store}
+        nullable={props.nullable}
+        presentation={props.presentation}
+        showError={props.showError}
+        error={props.error}
+        onRequestType={() => setMenuOpen(true)}
+      />
     </div>
   )
 }
@@ -1585,7 +1610,7 @@ function ValueError(props: ValueProps) {
   return (
     <Button
       variant={toTrue(showError || isDefined(value)) && 'danger'}
-      title={props.error}
+      title={props.presentation === 'form' ? undefined : props.error}
       titlePlacement="bottomRight"
       disabled={!props.store.context.canEditValue}
       isSuffix={props.isSuffix}

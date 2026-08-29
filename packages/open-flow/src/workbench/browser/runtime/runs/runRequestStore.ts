@@ -186,7 +186,7 @@ export class RunRequestStore {
 
   async #request(source: RunSource, flow: Flow, revision: Draft, revisionId: string, current: Current, publicationId?: string): Promise<RunRequestOutcome> {
     const previous = this.#state.value.inputRequest
-    this.#set({ inputRequest: undefined, starting: true, submitting: source })
+    this.#set({ inputRequest: undefined, starting: true, submitting: undefined })
     this.#disposeInputRequest(previous)
     let groups: readonly RunInputGroup[]
     try {

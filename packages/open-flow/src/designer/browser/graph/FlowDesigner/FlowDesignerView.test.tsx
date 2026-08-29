@@ -296,6 +296,24 @@ describe('FlowDesignerView model synchronization', () => {
     view.props.flowDesignerStore.dispose()
   })
 
+  it('uses the Task default when an input has no override', () => {
+    const validate = captureIdleValidation()
+    const editable = {
+      ...task([{ defaultValue: null, handle: 'value', jsonSchema: {}, nullable: true }]),
+      editablePorts: true,
+    }
+    const view = FlowDesignerView(props(model([editable]))) as React.ReactElement<FlowDesignerProps>
+    const { node, row, section } = firstInput(view.props.flowDesignerStore)
+
+    validate()
+
+    expect(row.value$?.value).toBeNull()
+    expect(row.error$.value).toBeUndefined()
+    expect(section.hasError$.value).toBe(false)
+    expect(node.$.hasError.value).toBe(false)
+    view.props.flowDesignerStore.dispose()
+  })
+
   it('keeps handle definition values stable when only an input value changes', () => {
     const initial = task([{ handle: 'value', jsonSchema: {} }])
     const changed = task([{ handle: 'value', jsonSchema: {}, value: 'message' }])

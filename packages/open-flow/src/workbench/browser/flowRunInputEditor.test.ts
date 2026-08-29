@@ -24,6 +24,7 @@ describe('FlowRunInputEditorStore', () => {
     )
 
     expect(store.valid$.value).toBe(false)
+    expect(store.values()).toEqual({})
     expect(store.replaceValues({ name: 'Ada' })).toBe(true)
     expect(store.valid$.value).toBe(false)
     expect(store.replaceValues({ name: 'Ada', optional: null })).toBe(true)
