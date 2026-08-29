@@ -7,8 +7,8 @@
   min-width: 0;
   flex-direction: column;
   color: var(--ui-foreground);
-  font-size: 14px;
-  --base-font-size: 14px;
+  font-size: 13px;
+  --base-font-size: 13px;
   --widget-height: 32px;
   --widget-radius: var(--ui-radius);
   --fill-1: var(--ui-background);
@@ -113,13 +113,17 @@
 .field {
   min-width: 0;
   margin: 0;
-  padding: 0 0 14px;
+  padding: 0;
   border: 0;
 }
 
 .field + .field {
-  padding-top: 14px;
-  border-top: 1px solid var(--ui-border);
+  margin-top: 14px;
+}
+
+.field:not(:last-child) {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .legend {
@@ -127,6 +131,7 @@
   width: 100%;
   align-items: baseline;
   gap: 8px;
+  margin-bottom: 6px;
   padding: 0;
   color: var(--ui-foreground);
   font-size: 12px;

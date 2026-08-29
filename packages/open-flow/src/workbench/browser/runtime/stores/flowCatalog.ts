@@ -152,6 +152,14 @@ export class FlowCatalog {
     this.#set({ flows: this.#state.value.flows.with(index, flow) })
   }
 
+  public insert(flow: Flow): void {
+    if (this.#state.value.flows.some((candidate) => candidate.flowId == flow.flowId)) return
+    this.#set({
+      flows: [...this.#state.value.flows, flow],
+      total: this.#state.value.total == null ? undefined : this.#state.value.total + 1,
+    })
+  }
+
   public remove(flowId: string): void {
     this.#set({
       flows: this.#state.value.flows.filter((flow) => flow.flowId != flowId),

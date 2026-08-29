@@ -20,14 +20,28 @@ interface RuntimeAction {
 }
 
 export interface ConnectorHost {
-  execute(action: string, connectionId: string, input: Readonly<Record<string, JsonValue>>, invocationId: string, signal: AbortSignal): Promise<JsonValue>
-  getAction(actionId: string, signal?: AbortSignal): Promise<ConnectorAction>
-  listActions(serviceId?: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]>
-  listConnections(serviceId: string, signal?: AbortSignal): Promise<readonly ConnectorConnection[]>
-  listProviders(signal?: AbortSignal): Promise<readonly ConnectorProvider[]>
-  proxy(provider: string, connectionId: string, rateLimitId: string, request: ConnectorProxyRequest, signal: AbortSignal): Promise<ConnectorProxyResult>
+  execute(
+    action: string,
+    connectionId: string,
+    input: Readonly<Record<string, JsonValue>>,
+    invocationId: string,
+    signal: AbortSignal,
+    teamId?: string,
+  ): Promise<JsonValue>
+  getAction(actionId: string, signal?: AbortSignal, teamId?: string): Promise<ConnectorAction>
+  listActions(serviceId?: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorAction[]>
+  listConnections(serviceId: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorConnection[]>
+  listProviders(signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorProvider[]>
+  proxy(
+    provider: string,
+    connectionId: string,
+    rateLimitId: string,
+    request: ConnectorProxyRequest,
+    signal: AbortSignal,
+    teamId?: string,
+  ): Promise<ConnectorProxyResult>
   ready(): Promise<boolean>
-  searchActions(query: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]>
+  searchActions(query: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorAction[]>
 }
 
 export type ConnectorErrorCode = 'connector.action-not-found' | 'connector.connection-required' | 'connector.unavailable'
@@ -45,6 +59,7 @@ export class ConnectorTaskError extends Error {
 export class ConnectorClient implements ConnectorHost {
   readonly #logger: Logger
   readonly #origin: URL
+  readonly #teamOrigin?: URL
   readonly #timeoutMs: number
   readonly #token: string
 
@@ -58,8 +73,22 @@ export class ConnectorClient implements ConnectorHost {
     url.pathname = `${url.pathname.replace(/\/+$/, '')}/`
     this.#logger = logger.child({ component: 'connector' })
     this.#origin = url
+    if (url.hostname == 'connector.oomol.com' || url.hostname == 'connector.oomol.dev') {
+      this.#teamOrigin = new URL(`https://relation-control.${url.hostname.slice('connector.'.length)}/`)
+    }
     this.#timeoutMs = timeoutMs
     this.#token = token
+  }
+
+  teamSupported(): boolean {
+    return this.#teamOrigin != null && this.#token.length > 0
+  }
+
+  async listTeams(signal?: AbortSignal): Promise<readonly { readonly id: string; readonly name: string; readonly systemCreated: boolean }[]> {
+    if (this.#teamOrigin == null || this.#token.length == 0) throw unavailable()
+    const response = await this.#request('teams.list', 'v1/me/teams', { method: 'GET' }, signal, { origin: this.#teamOrigin })
+    if (!response.ok || !record(response.value) || !Array.isArray(response.value.teams)) throw unavailable()
+    return response.value.teams.map(runtimeTeam)
   }
 
   async ready(): Promise<boolean> {
@@ -75,26 +104,26 @@ export class ConnectorClient implements ConnectorHost {
     }
   }
 
-  async listProviders(signal?: AbortSignal): Promise<readonly ConnectorProvider[]> {
-    const response = await this.#request('providers.list', 'v1/providers', { method: 'GET' }, signal)
+  async listProviders(signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorProvider[]> {
+    const response = await this.#request('providers.list', 'v1/providers', { method: 'GET' }, signal, { teamId })
     if (!response.ok) throw unavailable()
     return runtimeList(runtimeData(response.value), runtimeProvider)
   }
 
-  async listActions(serviceId?: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
+  async listActions(serviceId?: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorAction[]> {
     if (serviceId != null) {
       const [providers, connections, actions] = await Promise.all([
-        this.listProviders(signal),
-        this.#connections(serviceId, signal),
-        this.#actions(`v1/actions?service=${encodeURIComponent(serviceId)}`, false, signal),
+        this.listProviders(signal, teamId),
+        this.#connections(serviceId, signal, teamId),
+        this.#actions(`v1/actions?service=${encodeURIComponent(serviceId)}`, false, signal, teamId),
       ])
       return mapActions(actions, providers, connections)
     }
-    const [providers, connections] = await Promise.all([this.listProviders(signal), this.#connections(undefined, signal)])
+    const [providers, connections] = await Promise.all([this.listProviders(signal, teamId), this.#connections(undefined, signal, teamId)])
     const actions: RuntimeAction[] = []
     let bytes = 0
     for (const provider of providers) {
-      const current = await this.#actions(`v1/actions?service=${encodeURIComponent(provider.serviceId)}`, false, signal)
+      const current = await this.#actions(`v1/actions?service=${encodeURIComponent(provider.serviceId)}`, false, signal, teamId)
       bytes += Buffer.byteLength(JSON.stringify(current))
       if (bytes > maxActionCatalogBytes) throw unavailable()
       actions.push(...current)
@@ -102,20 +131,20 @@ export class ConnectorClient implements ConnectorHost {
     return mapActions(actions, providers, connections)
   }
 
-  async searchActions(query: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
+  async searchActions(query: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorAction[]> {
     const [providers, connections, actions] = await Promise.all([
-      this.listProviders(signal),
-      this.#connections(undefined, signal),
-      this.#actions(`v1/actions/search?q=${encodeURIComponent(query)}`, true, signal),
+      this.listProviders(signal, teamId),
+      this.#connections(undefined, signal, teamId),
+      this.#actions(`v1/actions/search?q=${encodeURIComponent(query)}`, true, signal, teamId),
     ])
     return mapActions(actions, providers, connections)
   }
 
-  async getAction(actionId: string, signal?: AbortSignal): Promise<ConnectorAction> {
+  async getAction(actionId: string, signal?: AbortSignal, teamId?: string): Promise<ConnectorAction> {
     const [providers, connections, response] = await Promise.all([
-      this.listProviders(signal),
-      this.#connections(undefined, signal),
-      this.#request('actions.get', `v1/actions/${encodeURIComponent(actionId)}`, { method: 'GET' }, signal, maxResponseBytes, { actionId }),
+      this.listProviders(signal, teamId),
+      this.#connections(undefined, signal, teamId),
+      this.#request('actions.get', `v1/actions/${encodeURIComponent(actionId)}`, { method: 'GET' }, signal, { fields: { actionId }, teamId }),
     ])
     if (!response.ok) {
       const failure = record(response.value) ? response.value : undefined
@@ -125,8 +154,8 @@ export class ConnectorClient implements ConnectorHost {
     return mapAction(runtimeAction(runtimeData(response.value)), providers, connections)
   }
 
-  async listConnections(serviceId: string, signal?: AbortSignal): Promise<readonly ConnectorConnection[]> {
-    return await this.#connections(serviceId, signal)
+  async listConnections(serviceId: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorConnection[]> {
+    return await this.#connections(serviceId, signal, teamId)
   }
 
   async execute(
@@ -135,10 +164,11 @@ export class ConnectorClient implements ConnectorHost {
     input: Readonly<Record<string, JsonValue>>,
     invocationId: string,
     signal: AbortSignal,
+    teamId?: string,
   ): Promise<JsonValue> {
     const separator = action.indexOf('.')
     if (separator <= 0) throw connectionRequired()
-    const alias = await this.#resolveConnection(connectionId, action.slice(0, separator), signal)
+    const alias = await this.#resolveConnection(connectionId, action.slice(0, separator), signal, teamId)
 
     const actionResponse = await this.#request(
       'action.execute',
@@ -153,8 +183,7 @@ export class ConnectorClient implements ConnectorHost {
         method: 'POST',
       },
       signal,
-      maxResponseBytes,
-      { actionId: action, connectionId, invocationId },
+      { fields: { actionId: action, connectionId, invocationId }, teamId },
     )
     const response = actionResponse.value
     if (!record(response)) throw unavailable()
@@ -163,8 +192,15 @@ export class ConnectorClient implements ConnectorHost {
     throw actionFailure(response)
   }
 
-  async proxy(provider: string, connectionId: string, rateLimitId: string, request: ConnectorProxyRequest, signal: AbortSignal): Promise<ConnectorProxyResult> {
-    const alias = await this.#resolveConnection(connectionId, provider, signal)
+  async proxy(
+    provider: string,
+    connectionId: string,
+    rateLimitId: string,
+    request: ConnectorProxyRequest,
+    signal: AbortSignal,
+    teamId?: string,
+  ): Promise<ConnectorProxyResult> {
+    const alias = await this.#resolveConnection(connectionId, provider, signal, teamId)
     const proxyResponse = await this.#request(
       'proxy.execute',
       `v1/proxy/${encodeURIComponent(provider)}`,
@@ -178,8 +214,7 @@ export class ConnectorClient implements ConnectorHost {
         method: 'POST',
       },
       signal,
-      maxResponseBytes,
-      { connectionId, provider, rateLimitId },
+      { fields: { connectionId, provider, rateLimitId }, teamId },
     )
     const response = proxyResponse.value
     if (!record(response)) throw unavailable()
@@ -193,30 +228,30 @@ export class ConnectorClient implements ConnectorHost {
     throw unavailable()
   }
 
-  async #actions(path: string, search: boolean, signal?: AbortSignal): Promise<readonly RuntimeAction[]> {
-    const response = await this.#request(
-      search ? 'actions.search' : 'actions.list',
-      path,
-      { method: 'GET' },
-      signal,
-      search ? maxResponseBytes : maxActionCatalogBytes,
-    )
+  async #actions(path: string, search: boolean, signal?: AbortSignal, teamId?: string): Promise<readonly RuntimeAction[]> {
+    const response = await this.#request(search ? 'actions.search' : 'actions.list', path, { method: 'GET' }, signal, {
+      maximumResponseBytes: search ? maxResponseBytes : maxActionCatalogBytes,
+      teamId,
+    })
     if (!response.ok) throw unavailable()
     return runtimeList(runtimeData(response.value), runtimeAction)
   }
 
-  async #connections(serviceId?: string, signal?: AbortSignal): Promise<readonly ConnectorConnection[]> {
+  async #connections(serviceId?: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorConnection[]> {
     const path = serviceId == null ? 'v1/apps' : `v1/apps/services/${encodeURIComponent(serviceId)}`
-    const response = await this.#request('connections.list', path, { method: 'GET' }, signal, maxResponseBytes, serviceId == null ? {} : { serviceId })
+    const response = await this.#request('connections.list', path, { method: 'GET' }, signal, {
+      fields: serviceId == null ? {} : { serviceId },
+      teamId,
+    })
     if (!response.ok) throw unavailable()
     const connections = runtimeList(runtimeData(response.value), runtimeConnection)
     if (serviceId != null && connections.some((connection) => connection.serviceId != serviceId)) throw unavailable()
     return connections
   }
 
-  async #resolveConnection(connectionId: string, service: string, signal: AbortSignal): Promise<string> {
+  async #resolveConnection(connectionId: string, service: string, signal: AbortSignal, teamId?: string): Promise<string> {
     const fields = { connectionId, provider: service }
-    const appsResponse = await this.#request('connection.resolve', 'v1/apps', { method: 'GET' }, signal, maxResponseBytes, fields)
+    const appsResponse = await this.#request('connection.resolve', 'v1/apps', { method: 'GET' }, signal, { fields, teamId })
     const apps = appsResponse.value
     if (!appsResponse.ok || !record(apps) || apps.success !== true || !Array.isArray(apps.data)) throw unavailable()
     const connection = apps.data.find((value) => record(value) && value.id === connectionId)
@@ -238,17 +273,27 @@ export class ConnectorClient implements ConnectorHost {
     path: string,
     init: RequestInit,
     signal?: AbortSignal,
-    maximumResponseBytes = maxResponseBytes,
-    fields: Readonly<Record<string, string>> = {},
+    {
+      fields = {},
+      maximumResponseBytes = maxResponseBytes,
+      origin = this.#origin,
+      teamId,
+    }: {
+      readonly fields?: Readonly<Record<string, string>>
+      readonly maximumResponseBytes?: number
+      readonly origin?: URL
+      readonly teamId?: string
+    } = {},
   ): Promise<{ readonly ok: boolean; readonly value: unknown }> {
     const startedAt = performance.now()
     const timeout = AbortSignal.timeout(this.#timeoutMs)
     let status: number | undefined
     try {
-      const response = await fetch(new URL(path, this.#origin), {
+      const response = await fetch(new URL(path, origin), {
         ...init,
         headers: {
           ...(this.#token == '' ? {} : { authorization: `Bearer ${this.#token}` }),
+          ...(origin == this.#origin && teamId != null ? { 'x-oo-team-id': teamId } : {}),
           ...init.headers,
         },
         redirect: 'error',
@@ -397,6 +442,15 @@ function runtimeConnection(value: unknown): ConnectorConnection {
     isDefault: source.isDefault,
     serviceId: string(source.service),
     status,
+  }
+}
+
+function runtimeTeam(value: unknown): { readonly id: string; readonly name: string; readonly systemCreated: boolean } {
+  if (!record(value)) throw unavailable()
+  return {
+    id: string(value.id),
+    name: string(value.name),
+    systemCreated: value.system_created === true,
   }
 }
 

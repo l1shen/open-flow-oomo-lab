@@ -16,6 +16,17 @@
     "notifications": "Notifications",
     "variables": "Variables"
   },
+  "team": {
+    "createFailed": "The Flow could not be created for this Connector Team.",
+    "defaultNamed": "{{name}} (Default)",
+    "fixedHint": "The Flow will always use this Team after it is created.",
+    "flowBadge": "Team: {{name}}",
+    "label": "OOMOL Team",
+    "loadFailed": "Teams could not be loaded.",
+    "loading": "Loading Teams…",
+    "retry": "Retry Teams",
+    "selectForCreation": "Select the Connector Team for the new Flow"
+  },
   "variables": {
     "all": "All Variables",
     "cancel": "Cancel",

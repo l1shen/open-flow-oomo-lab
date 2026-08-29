@@ -132,7 +132,14 @@ interface Presentation {
 ```ts
 interface FlowCheck {
   closureDigest: string
-  diagnostics: readonly { code: string; column: number; line: number; message: string; path: string }[]
+  diagnostics: readonly {
+    code: string
+    column: number
+    line: number
+    message: string
+    path: string
+    values?: Readonly<Record<string, string | number>>
+  }[]
   engineContract: string
   flowId: string
   modelVersion: number
@@ -144,6 +151,8 @@ interface FlowCheck {
 ```
 
 Check body 是 `{ engineContract: 'open-flow-engine/v1', version: 1 }`，始终验证 path 中固定的 Flow Revision。
+`message` 是稳定的 canonical English fallback；Workbench 可以使用 `code`、可选 `values.variant` 和其余 `values` 显示本地化文案，未知 code 或 variant
+必须回退到 `message`。
 
 ```ts
 interface Publication {
@@ -232,6 +241,8 @@ interface RunEvents {
 }
 ```
 
+Run list 按 `createdAt`、`runId` 逆序稳定分页。
+
 `after` 是已观察的最后 sequence，只返回更大的事件。terminal Run 最多有一个 terminal event。非 terminal Run 的 result 返回
 `run.not-terminal`；取消成功与重复取消分别返回 `cancelAccepted: true` 和 `false`。
 
@@ -267,7 +278,7 @@ interface TriggerBinding {
 列表 response 是 `{ bindings, flowId, version: 1 }`。pause/resume body 固定为 `{ version: 1 }`。状态改变递增 `runtimeVersion`，使旧版本
 occurrence 无法通过最终 admission guard。Poll test 不推进 checkpoint、不写 dedupe、不创建 Run。
 
-Connector Provider、Action、Connection 和授权页面都是 deployment scope 资源，不接收 Flow identity。Connector credential 不进入响应、Revision 或 RunEvent。
+Connector credential 不进入响应、Revision 或 RunEvent。
 部署没有配置 Connector 时，catalog 和 Connection 请求返回 `connector.unconfigured`；已经配置但上游不可用或响应无效时返回
 `connector.unavailable`，客户端不能把两者合并为同一配置提示。
 
@@ -332,10 +343,13 @@ type FlowChangeEvent =
 | `POST`    | `/v1/flows/:flowId/triggers/:triggerNodeId/pause`        |      200 | pause                                            |
 | `POST`    | `/v1/flows/:flowId/triggers/:triggerNodeId/resume`       |      200 | resume                                           |
 | `POST`    | `/v1/flows/:flowId/triggers/:triggerNodeId/test`         |      200 | Poll test                                        |
-| `GET`     | `/v1/connector/providers`                                |      200 | Provider catalog                                 |
-| `GET`     | `/v1/connector/actions`                                  |      200 | `service` 或 `q`                                 |
-| `GET`     | `/v1/connector/actions/:actionId`                        |      200 | Action detail                                    |
-| `GET`     | `/v1/connector/connections/:serviceId`                   |      200 | Connections                                      |
-| `POST`    | `/v1/connector/connections/:serviceId/page`              |      200 | 外部授权页 URL                                   |
+| `GET`     | `/v1/connector/providers`                                |      200 | Provider catalog；可选 `flowId`                  |
+| `GET`     | `/v1/connector/actions`                                  |      200 | `service` 或 `q`；可选 `flowId`                  |
+| `GET`     | `/v1/connector/actions/:actionId`                        |      200 | Action detail；可选 `flowId`                     |
+| `GET`     | `/v1/connector/connections/:serviceId`                   |      200 | Connections；可选 `flowId`                       |
+| `POST`    | `/v1/connector/connections/:serviceId/page`              |      200 | 外部授权页 URL；可选 `flowId`                    |
+
+Connector route 的 `flowId` 是 opaque Flow identity。提供时部署必须先确认 Flow 存在，并在该 Flow 的 Connector scope 内解析 Provider、Action 与
+Connection；客户端不能改用 Team ID、Connection owner 或其他外部 identity 代替 Flow scope。省略时使用部署的未限定 Connector catalog。
 
 分页 cursor 是 opaque、scope-bound token。跨 Flow、Trigger 或资源类型使用 cursor 返回 `page.invalid-cursor`。

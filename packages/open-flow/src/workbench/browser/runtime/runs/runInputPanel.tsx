@@ -18,18 +18,15 @@ interface Props {
 }
 
 function InputGroup({ attempted, group, theme }: { readonly attempted: boolean; readonly group: RunInputGroup; readonly theme: WorkbenchTheme }): ReactElement {
-  const t = useTranslate()
-  const valid = useVal(group.editor.valid$)
   return (
-    <section className={`run-input-group ${attempted && !valid ? 'invalid' : ''}`}>
+    <section className="run-input-group">
       <header>
         <div>
           <strong>{group.title}</strong>
           <code>{group.nodeId}</code>
         </div>
-        {attempted && !valid && <span>{t('runInput.groupInvalid')}</span>}
       </header>
-      <FlowRunInputEditor store={group.editor} theme={theme} />
+      <FlowRunInputEditor store={group.editor} theme={theme} showErrors={attempted} />
     </section>
   )
 }

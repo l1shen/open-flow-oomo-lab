@@ -99,8 +99,9 @@
 
 .clear {
   position: absolute;
-  top: 1px;
+  top: 50%;
   right: 1px;
+  transform: translateY(-50%);
   opacity: 0;
 
   .wrapper:hover > &,

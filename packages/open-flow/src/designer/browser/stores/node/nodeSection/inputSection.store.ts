@@ -520,8 +520,12 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
             continue
           }
 
+          const reference$ = boundHandles
+            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
+            : derive(connectedHandles$, (set) => set.has(handle))
+
           const { schema$, defaultValue$, description$, displayDescription$, kind$, nullable$, showSettings$, schemaOverrides$, value$ } =
-            this.deriveHandleRowVals$(props, props.inputHandleDefs, handle, props.role)
+            this.deriveHandleRowVals$(props, props.inputHandleDefs, handle, reference$)
 
           const collapsed$ = attachSetter(
             derive(collapsed, (c) => c?.[handle], equalConfig),
@@ -532,10 +536,6 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
             derive(height, (h) => h?.[handle], equalConfig),
             setPartial(height, handle),
           )
-
-          const reference$ = boundHandles
-            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
-            : derive(connectedHandles$, (set) => set.has(handle))
 
           const context = new WidgetContext(
             {
@@ -599,8 +599,12 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
           }
 
           const role = props.role === 'user' ? 'author' : props.role
+          const reference$ = boundHandles
+            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
+            : derive(connectedHandles$, (set) => set.has(handle))
+
           const { schema$, defaultValue$, description$, displayDescription$, kind$, nullable$, showSettings$, schemaOverrides$, value$ } =
-            this.deriveHandleRowVals$(props, props.additionalInputDefs, handle, role)
+            this.deriveHandleRowVals$(props, props.additionalInputDefs, handle, reference$)
 
           const collapsed$ = attachSetter(
             derive(collapsed, (c) => c?.[handle], equalConfig),
@@ -611,10 +615,6 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
             derive(height, (h) => h?.[handle], equalConfig),
             setPartial(height, handle),
           )
-
-          const reference$ = boundHandles
-            ? compute((read) => read(connectedHandles$).has(handle) || read(boundHandles).has(handle))
-            : derive(connectedHandles$, (set) => set.has(handle))
 
           const context = new WidgetContext(
             {
@@ -666,7 +666,7 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
     { showSettings, handleInputsFrom, lang, userLocales }: InputSectionStoreProps,
     inputDefs$: Val<GroupedInputHandleDef[] | undefined> | ReadonlyVal<GroupedInputHandleDef[] | undefined>,
     handle: HandleName,
-    role: Role,
+    reference$: ReadonlyVal<boolean>,
   ) {
     const def$ = attachSetter(
       derive(inputDefs$, (defs) => defs?.find((e) => e.handle === handle) as InputHandleDef | undefined),
@@ -709,7 +709,7 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
       derive(def$, (d) => d?.kind),
       updatePartial(def$, 'kind'),
     )
-    const defaultValue$ = role === 'user' ? derive(def$, (d) => d?.value) : val()
+    const defaultValue$ = derive(def$, (d) => d?.value)
     const showSettings$ = attachSetter(
       derive(showSettings, (s) => s?.scope === 'input' && s.handle === handle),
       (b) => showSettings.set(b ? { scope: 'input', handle } : undefined),
@@ -750,9 +750,12 @@ export class InputSectionStore implements INodeSectionStore<InputSectionUIState 
     let value$: Val<unknown>
     if (handleInputsFrom) {
       value$ = attachSetter(
-        derive(handleInputsFrom, (f) => f?.find((e) => e.handle === handle)?.value, equalConfig),
+        compute((get) => {
+          const value = get(handleInputsFrom)?.find((input) => input.handle === handle)?.value
+          return value === undefined ? get(defaultValue$) : value
+        }, equalConfig),
         (value) => {
-          if (!def$.value) return
+          if (!def$.value || reference$.value) return
           const current = handleInputsFrom.value
           if (current) {
             const result = current.findIndex((e) => e.handle === handle)

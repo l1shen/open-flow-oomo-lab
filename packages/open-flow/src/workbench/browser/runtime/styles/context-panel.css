@@ -69,6 +69,7 @@
   }
 
   .inspector-task-tab-panel.code-tab {
+    display: flex;
     overflow: hidden;
   }
 
@@ -420,14 +421,14 @@
   }
 
   .code-tab .code-section {
-    height: 100%;
+    flex: 1;
     min-height: 0;
     border-bottom: 0;
   }
 
   .code-tab .code-editor {
     height: auto;
-    min-height: 240px;
+    min-height: 0;
     flex: 1;
   }
 

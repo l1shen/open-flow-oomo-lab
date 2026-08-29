@@ -168,6 +168,7 @@ export interface Diagnostic {
   readonly line: number
   readonly message: string
   readonly path: string
+  readonly values?: Readonly<Record<string, string | number>>
 }
 
 export interface FlowCheck {
@@ -692,12 +693,23 @@ function publication(value: unknown): Publication {
 
 function diagnostic(value: unknown): Diagnostic {
   const source = record(value)
+  const values = source.values == null ? undefined : record(source.values)
   return {
     code: string(source.code),
     column: integer(source.column),
     line: integer(source.line),
     message: string(source.message),
     path: typeof source.path == 'string' ? source.path : invalidResponse(),
+    ...(values == null
+      ? {}
+      : {
+          values: Object.fromEntries(
+            Object.entries(values).map(([key, candidate]) => [
+              key,
+              typeof candidate == 'string' || typeof candidate == 'number' ? candidate : invalidResponse(),
+            ]),
+          ),
+        }),
   }
 }
 
@@ -1061,30 +1073,32 @@ export class ControlClient {
     return draft(await this.request(`/v1/flows/${segment(flowId)}/revisions/${segment(revisionId)}`))
   }
 
-  async listConnectorProviders(signal?: AbortSignal): Promise<readonly ConnectorProvider[]> {
-    const source = record(await this.request('/v1/connector/providers', { signal }))
+  async listConnectorProviders(signal?: AbortSignal, flowId?: string): Promise<readonly ConnectorProvider[]> {
+    const source = record(await this.request(`/v1/connector/providers${flowId == null ? '' : `?flowId=${segment(flowId)}`}`, { signal }))
     exact(source, ['providers', 'version'])
     if (source.version != 1 || !Array.isArray(source.providers)) return invalidResponse()
     return source.providers.map(connectorProvider)
   }
 
-  async listConnectorActions(serviceId?: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
-    return await this.connectorActions(serviceId == null ? {} : { service: serviceId }, signal)
+  async listConnectorActions(serviceId?: string, signal?: AbortSignal, flowId?: string): Promise<readonly ConnectorAction[]> {
+    return await this.connectorActions({ ...(flowId == null ? {} : { flowId }), ...(serviceId == null ? {} : { service: serviceId }) }, signal)
   }
 
-  async searchConnectorActions(query: string, signal?: AbortSignal): Promise<readonly ConnectorAction[]> {
-    return await this.connectorActions({ q: query.trim() }, signal)
+  async searchConnectorActions(query: string, signal?: AbortSignal, flowId?: string): Promise<readonly ConnectorAction[]> {
+    return await this.connectorActions({ ...(flowId == null ? {} : { flowId }), q: query.trim() }, signal)
   }
 
-  async getConnectorAction(actionId: string, signal?: AbortSignal): Promise<ConnectorAction> {
-    const source = record(await this.request(`/v1/connector/actions/${segment(actionId)}`, { signal }))
+  async getConnectorAction(actionId: string, signal?: AbortSignal, flowId?: string): Promise<ConnectorAction> {
+    const source = record(await this.request(`/v1/connector/actions/${segment(actionId)}${flowId == null ? '' : `?flowId=${segment(flowId)}`}`, { signal }))
     exact(source, ['action', 'version'])
     if (source.version != 1) return invalidResponse()
     return connectorAction(source.action)
   }
 
-  async listConnectorConnections(serviceId: string, signal?: AbortSignal): Promise<readonly ConnectorConnection[]> {
-    const source = record(await this.request(`/v1/connector/connections/${segment(serviceId)}`, { signal }))
+  async listConnectorConnections(serviceId: string, signal?: AbortSignal, flowId?: string): Promise<readonly ConnectorConnection[]> {
+    const source = record(
+      await this.request(`/v1/connector/connections/${segment(serviceId)}${flowId == null ? '' : `?flowId=${segment(flowId)}`}`, { signal }),
+    )
     exact(source, ['connections', 'serviceId', 'version'])
     if (source.version != 1 || string(source.serviceId) != serviceId || !Array.isArray(source.connections)) {
       return invalidResponse()
@@ -1092,9 +1106,9 @@ export class ControlClient {
     return source.connections.map(connection)
   }
 
-  async createConnectorConnectionPage(serviceId: string): Promise<string> {
+  async createConnectorConnectionPage(serviceId: string, flowId?: string): Promise<string> {
     const source = record(
-      await this.request(`/v1/connector/connections/${segment(serviceId)}/page`, {
+      await this.request(`/v1/connector/connections/${segment(serviceId)}/page${flowId == null ? '' : `?flowId=${segment(flowId)}`}`, {
         body: JSON.stringify({ version: 1 }),
         method: 'POST',
       }),

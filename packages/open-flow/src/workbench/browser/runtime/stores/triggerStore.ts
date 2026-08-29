@@ -220,7 +220,7 @@ export class TriggerStore {
       const loaded = await Promise.all(
         providers
           .slice(index, index + connectionBatchSize)
-          .map(async (provider) => [provider, connectionCatalog(await this.#client.listConnectorConnections(provider, signal))] as const),
+          .map(async (provider) => [provider, connectionCatalog(await this.#client.listConnectorConnections(provider, signal, flowId))] as const),
       )
       if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
       this.#set({ catalogs: { ...this.#state.value.catalogs, ...Object.fromEntries(loaded) } })
@@ -236,7 +236,7 @@ export class TriggerStore {
     if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value || definition == null) return
     let catalog = this.#state.value.catalogs[definition.provider]
     if (catalog == null) {
-      catalog = connectionCatalog(await this.#client.listConnectorConnections(definition.provider, signal))
+      catalog = connectionCatalog(await this.#client.listConnectorConnections(definition.provider, signal, flowId))
       if (signal.aborted || this.#disposed || flowId != this.#workspace.$.flowId.value) return
       this.#set({ catalogs: { ...this.#state.value.catalogs, [definition.provider]: catalog } })
     }
@@ -255,7 +255,7 @@ export class TriggerStore {
     if (!force && this.#state.value.catalogs[selected.provider] != null) return
     this.#set({ connectionError: undefined, connectionLoading: selected.provider })
     try {
-      const catalog = connectionCatalog(await this.#client.listConnectorConnections(selected.provider))
+      const catalog = connectionCatalog(await this.#client.listConnectorConnections(selected.provider, undefined, flowId))
       if (!this.#current(current, flowId)) return
       this.#set({ catalogs: { ...this.#state.value.catalogs, [selected.provider]: catalog } })
     } catch (error) {
@@ -271,7 +271,7 @@ export class TriggerStore {
     const flowId = this.#workspace.$.flowId.value
     if (this.#disposed || flowId == null) return
     try {
-      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(provider))
+      const opened = await this.#host.openExternalPage(() => this.#client.createConnectorConnectionPage(provider, flowId))
       if (!opened) {
         this.#setNotice({ kind: 'error', message: this.#i18n.t('notice.connectionPopupBlocked') })
         return

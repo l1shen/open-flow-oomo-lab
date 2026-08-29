@@ -16,6 +16,17 @@
     "notifications": "通知",
     "variables": "Variables"
   },
+  "team": {
+    "createFailed": "無法在這個 Connector 團隊中建立 Flow。",
+    "defaultNamed": "{{name}}（預設）",
+    "fixedHint": "Flow 建立後將一律使用這個團隊。",
+    "flowBadge": "團隊：{{name}}",
+    "label": "OOMOL 團隊",
+    "loadFailed": "無法載入團隊。",
+    "loading": "正在載入團隊…",
+    "retry": "重新載入團隊",
+    "selectForCreation": "選擇新 Flow 使用的 Connector 團隊"
+  },
   "variables": {
     "all": "全部 Variable",
     "cancel": "取消",

@@ -144,6 +144,7 @@ export interface Diagnostic {
   readonly line: number
   readonly message: string
   readonly path: string
+  readonly values?: Readonly<Record<string, string | number>>
 }
 
 interface ImportReference {
@@ -237,6 +238,7 @@ function analyzeModule(moduleId: string, source: string, diagnostics: Diagnostic
           : 1,
       message: `CodeModule "${moduleId}" contains invalid JavaScript syntax.`,
       path: modulePath(moduleId),
+      values: { moduleId },
     })
     return
   }
@@ -265,6 +267,7 @@ function analyzeModule(moduleId: string, source: string, diagnostics: Diagnostic
         ...location(statement.source),
         message: `CodeModule "${moduleId}" must import before re-exporting values.`,
         path: modulePath(moduleId),
+        values: { moduleId, variant: 'reexport' },
       })
       continue
     }
@@ -296,6 +299,7 @@ function analyzeModule(moduleId: string, source: string, diagnostics: Diagnostic
         ...location(node),
         message: `CodeModule "${moduleId}" cannot use dynamic import.`,
         path: modulePath(moduleId),
+        values: { moduleId },
       })
     } else if (node.type == 'CallExpression' && callee?.type == 'Identifier' && callee.name == 'require') {
       diagnostics.push({
@@ -303,6 +307,7 @@ function analyzeModule(moduleId: string, source: string, diagnostics: Diagnostic
         ...location(node),
         message: `CodeModule "${moduleId}" cannot use CommonJS require.`,
         path: modulePath(moduleId),
+        values: { moduleId },
       })
     } else if (
       (node.type == 'CallExpression' && callee?.type == 'Identifier' && (callee.name == 'eval' || callee.name == 'Function')) ||
@@ -313,6 +318,7 @@ function analyzeModule(moduleId: string, source: string, diagnostics: Diagnostic
         ...location(node),
         message: `CodeModule "${moduleId}" cannot evaluate dynamic code.`,
         path: modulePath(moduleId),
+        values: { moduleId },
       })
     }
     for (const [key, child] of Object.entries(node)) {
@@ -342,8 +348,8 @@ function compareDiagnostics(left: Diagnostic, right: Diagnostic): number {
   )
 }
 
-function graphDiagnostic(code: string, message: string, path: string): Diagnostic {
-  return { code, column: 0, line: 1, message, path }
+function graphDiagnostic(code: string, message: string, path: string, values?: Readonly<Record<string, string | number>>): Diagnostic {
+  return { code, column: 0, line: 1, message, path, ...(values == null ? {} : { values }) }
 }
 
 function jsonEqual(left: JsonValue, right: JsonValue): boolean {
@@ -493,6 +499,7 @@ function validateTrigger(triggerId: string, trigger: TriggerNode, document: Flow
             'trigger.input-duplicate',
             `Webhook Trigger input "${input.handle}" is declared more than once.`,
             `${path}/inputsDef/${index}/handle`,
+            { input: input.handle },
           ),
         )
       }
@@ -503,19 +510,31 @@ function validateTrigger(triggerId: string, trigger: TriggerNode, document: Flow
   if (trigger.kind == 'cron') return
   const binding = document.bindings[trigger.bindingId]
   if (binding == null) {
-    diagnostics.push(graphDiagnostic('trigger.connection-missing', `Trigger Connection binding "${trigger.bindingId}" does not exist.`, `${path}/bindingId`))
+    diagnostics.push(
+      graphDiagnostic('trigger.connection-missing', `Trigger Connection binding "${trigger.bindingId}" does not exist.`, `${path}/bindingId`, {
+        bindingId: trigger.bindingId,
+      }),
+    )
   } else if (binding.kind != 'connection') {
-    diagnostics.push(graphDiagnostic('trigger.connection-invalid', `Trigger binding "${trigger.bindingId}" must be a Connection.`, `${path}/bindingId`))
+    diagnostics.push(
+      graphDiagnostic('trigger.connection-invalid', `Trigger binding "${trigger.bindingId}" must be a Connection.`, `${path}/bindingId`, {
+        bindingId: trigger.bindingId,
+      }),
+    )
   }
   const configSchema = schemaObject(trigger.definition.configSchema)
   const missingConfig =
     schemaList(configSchema?.required)?.filter((name): name is string => typeof name == 'string' && !Object.hasOwn(trigger.config, name)) ?? []
   if (missingConfig.length > 0) {
     diagnostics.push(
-      graphDiagnostic('trigger.config-incomplete', `Complete the required Trigger config fields: ${missingConfig.join(', ')}.`, `${path}/config`),
+      graphDiagnostic('trigger.config-incomplete', `Complete the required Trigger config fields: ${missingConfig.join(', ')}.`, `${path}/config`, {
+        fields: missingConfig.join(', '),
+      }),
     )
   } else if (!matchesSchema(trigger.config, trigger.definition.configSchema)) {
-    diagnostics.push(graphDiagnostic('trigger.config-invalid', `Trigger "${triggerId}" config does not match its fixed definition.`, `${path}/config`))
+    diagnostics.push(
+      graphDiagnostic('trigger.config-invalid', `Trigger "${triggerId}" config does not match its fixed definition.`, `${path}/config`, { triggerId }),
+    )
   }
 }
 
@@ -569,27 +588,47 @@ function checkSource(
   switch (source.kind) {
     case 'binding':
       if (document.bindings[source.bindingId] == null) {
-        diagnostics.push(graphDiagnostic('graph.binding-missing', `Binding "${source.bindingId}" does not exist.`, path))
+        diagnostics.push(graphDiagnostic('graph.binding-missing', `Binding "${source.bindingId}" does not exist.`, path, { bindingId: source.bindingId }))
       } else if (document.bindings[source.bindingId].kind != 'variable') {
-        diagnostics.push(graphDiagnostic('graph.binding-invalid', `Binding "${source.bindingId}" must be a Variable.`, path))
+        diagnostics.push(graphDiagnostic('graph.binding-invalid', `Binding "${source.bindingId}" must be a Variable.`, path, { bindingId: source.bindingId }))
       } else if (targetInput != null && !variableInputCompatible(targetInput.jsonSchema)) {
-        diagnostics.push(graphDiagnostic('graph.variable-incompatible', `Variable binding "${source.bindingId}" is not compatible with this input.`, path))
+        diagnostics.push(
+          graphDiagnostic('graph.variable-incompatible', `Variable binding "${source.bindingId}" is not compatible with this input.`, path, {
+            bindingId: source.bindingId,
+          }),
+        )
       }
       return
     case 'flow':
       if (flowInputs?.has(source.input) != true) {
-        diagnostics.push(graphDiagnostic('graph.source-missing', `Flow input "${source.input}" does not exist in this graph.`, path))
+        diagnostics.push(
+          graphDiagnostic('graph.source-missing', `Flow input "${source.input}" does not exist in this graph.`, path, {
+            input: source.input,
+            variant: 'flow-input',
+          }),
+        )
       }
       return
     case 'node': {
       const upstream = graph.nodes[source.nodeId]
       if (upstream == null) {
-        diagnostics.push(graphDiagnostic('graph.source-missing', `Upstream node "${source.nodeId}" does not exist.`, path))
+        diagnostics.push(
+          graphDiagnostic('graph.source-missing', `Upstream node "${source.nodeId}" does not exist.`, path, {
+            nodeId: source.nodeId,
+            variant: 'node',
+          }),
+        )
         return
       }
       const output = nodeOutputPorts(document, upstream)[source.output]
       if (output == null) {
-        diagnostics.push(graphDiagnostic('graph.source-missing', `Upstream node "${source.nodeId}" does not expose output "${source.output}".`, path))
+        diagnostics.push(
+          graphDiagnostic('graph.source-missing', `Upstream node "${source.nodeId}" does not expose output "${source.output}".`, path, {
+            nodeId: source.nodeId,
+            output: source.output,
+            variant: 'output',
+          }),
+        )
       } else if (
         targetInput != null &&
         ((!jsonEqual(output.jsonSchema, {}) && output.jsonSchema !== true && output.nullable && !targetInput.nullable) ||
@@ -600,6 +639,7 @@ function checkSource(
             'graph.node-output-incompatible',
             `Upstream node "${source.nodeId}" output "${source.output}" is not compatible with this input.`,
             path,
+            { nodeId: source.nodeId, output: source.output },
           ),
         )
       }
@@ -624,9 +664,8 @@ function checkCycles(graph: Graph, path: string, diagnostics: Diagnostic[]): voi
   while (dependencies.size > 0) {
     const ready = [...dependencies].filter(([, sources]) => sources.size == 0).map(([nodeId]) => nodeId)
     if (ready.length == 0) {
-      diagnostics.push(
-        graphDiagnostic('graph.cycle', `Graph contains a dependency cycle among nodes: ${[...dependencies.keys()].toSorted().join(', ')}.`, path),
-      )
+      const nodes = [...dependencies.keys()].toSorted().join(', ')
+      diagnostics.push(graphDiagnostic('graph.cycle', `Graph contains a dependency cycle among nodes: ${nodes}.`, path, { nodes }))
       return
     }
     for (const nodeId of ready) dependencies.delete(nodeId)
@@ -656,9 +695,19 @@ function validateGraph(
       continue
     }
     if (node.kind == 'task' && node.task == null && document.tasks[node.taskId] == null) {
-      diagnostics.push(graphDiagnostic('graph.target-missing', `Task "${node.taskId}" does not exist.`, `${nodePath}/taskId`))
+      diagnostics.push(
+        graphDiagnostic('graph.target-missing', `Task "${node.taskId}" does not exist.`, `${nodePath}/taskId`, {
+          taskId: node.taskId,
+          variant: 'task',
+        }),
+      )
     } else if (node.kind == 'subflow' && document.subflows[node.subflowId] == null) {
-      diagnostics.push(graphDiagnostic('graph.target-missing', `Subflow "${node.subflowId}" does not exist.`, `${nodePath}/subflowId`))
+      diagnostics.push(
+        graphDiagnostic('graph.target-missing', `Subflow "${node.subflowId}" does not exist.`, `${nodePath}/subflowId`, {
+          subflowId: node.subflowId,
+          variant: 'subflow',
+        }),
+      )
     }
     const inputPorts = nodeInputPorts(document, node)
     const ports = [...Object.values(inputPorts), ...Object.values(nodeOutputPorts(document, node))]
@@ -669,7 +718,7 @@ function validateGraph(
     for (const [handle, mapping] of Object.entries(node.inputs)) {
       const mappingPath = `${nodePath}/inputs/${handle}`
       if (!inputs.has(handle)) {
-        diagnostics.push(graphDiagnostic('graph.input-missing', `Node "${nodeId}" does not expose input "${handle}".`, mappingPath))
+        diagnostics.push(graphDiagnostic('graph.input-missing', `Node "${nodeId}" does not expose input "${handle}".`, mappingPath, { handle, nodeId }))
       }
       if (mapping.kind == 'sources') {
         const variableSources = mapping.sources.filter((source) => source.kind == 'binding' && document.bindings[source.bindingId]?.kind == 'variable')
@@ -688,6 +737,7 @@ function validateGraph(
             'condition.output-duplicate',
             `Condition output "${condition.output}" is declared more than once.`,
             `${nodePath}/cases/${index}/output`,
+            { output: condition.output },
           ),
         )
       }
@@ -699,6 +749,7 @@ function validateGraph(
             'condition.input-missing',
             `Condition expression references unknown input "${expression.input}".`,
             `${nodePath}/cases/${index}/expressions/${expressionIndex}/input`,
+            { input: expression.input },
           ),
         )
       }
@@ -716,13 +767,8 @@ function validateSubflowCycles(document: FlowDocument, diagnostics: Diagnostic[]
       if (node.kind != 'subflow' || document.subflows[node.subflowId] == null) continue
       const cycle = stack.indexOf(node.subflowId)
       if (cycle >= 0) {
-        diagnostics.push(
-          graphDiagnostic(
-            'subflow.cycle',
-            `Subflow cycle is not executable: ${[...stack.slice(cycle), node.subflowId].join(' -> ')}.`,
-            `${path}/nodes/${nodeId}/subflowId`,
-          ),
-        )
+        const subflows = [...stack.slice(cycle), node.subflowId].join(' -> ')
+        diagnostics.push(graphDiagnostic('subflow.cycle', `Subflow cycle is not executable: ${subflows}.`, `${path}/nodes/${nodeId}/subflowId`, { subflows }))
         continue
       }
       if (visited.has(node.subflowId)) continue
@@ -741,7 +787,9 @@ function validateFlowGraph(revision: RevisionContent, closure: SemanticClosure):
   for (const [bindingId, binding] of Object.entries(revision.document.bindings)) {
     if (binding.kind == 'variable' && !validVariableName(binding.target)) {
       diagnostics.push(
-        graphDiagnostic('binding.variable-invalid', `Variable binding "${bindingId}" has an invalid target.`, `/document/bindings/${bindingId}/target`),
+        graphDiagnostic('binding.variable-invalid', `Variable binding "${bindingId}" has an invalid target.`, `/document/bindings/${bindingId}/target`, {
+          bindingId,
+        }),
       )
     }
   }
@@ -810,6 +858,7 @@ function validateModuleGraph(
             line: imported.line,
             message: `Platform Library does not export "${name}".`,
             path: modulePath(moduleId),
+            values: { name, variant: 'platform' },
           })
         }
         continue
@@ -822,6 +871,7 @@ function validateModuleGraph(
           line: imported.line,
           message: `CodeModule "${moduleId}" cannot import "${imported.specifier}".`,
           path: modulePath(moduleId),
+          values: { moduleId, specifier: imported.specifier, variant: 'import' },
         })
         continue
       }
@@ -833,6 +883,7 @@ function validateModuleGraph(
           line: imported.line,
           message: `CodeModule "${importedModuleId}" does not exist.`,
           path: modulePath(moduleId),
+          values: { moduleId: importedModuleId },
         })
         continue
       }
@@ -843,6 +894,7 @@ function validateModuleGraph(
           line: imported.line,
           message: `CodeModule "${moduleId}" does not declare its import of "${importedModuleId}".`,
           path: modulePath(moduleId),
+          values: { importedModuleId, moduleId },
         })
         continue
       }
@@ -856,6 +908,7 @@ function validateModuleGraph(
           line: imported.line,
           message: `CodeModule "${importedModuleId}" does not export "${name}".`,
           path: modulePath(moduleId),
+          values: { moduleId: importedModuleId, name, variant: 'module' },
         })
       }
     }
@@ -867,6 +920,7 @@ function validateModuleGraph(
         line: 1,
         message: `CodeModule "${moduleId}" declares "${importedModuleId}" without a matching static import.`,
         path: modulePath(moduleId),
+        values: { importedModuleId, moduleId },
       })
     }
   }
@@ -899,6 +953,7 @@ export async function validateFlow(revision: RevisionContent, engine: EngineCont
           line: 1,
           message: `Inline Task "${nodeId}" references missing CodeModule "${node.task.moduleId}".`,
           path: `${graphPath}/nodes/${nodeId}/task/moduleId`,
+          values: { moduleId: node.task.moduleId, nodeId },
         })
       } else if (!checked.analysis.get(node.task.moduleId)?.exports.has('default') && !missingEntryModules.has(node.task.moduleId)) {
         missingEntryModules.add(node.task.moduleId)
@@ -908,6 +963,7 @@ export async function validateFlow(revision: RevisionContent, engine: EngineCont
           line: 1,
           message: `CodeModule "${node.task.moduleId}" used by an Inline Task must export a default function.`,
           path: `/modules/${node.task.moduleId}/source`,
+          values: { moduleId: node.task.moduleId },
         })
       }
       for (const [index, capability] of (node.task.capabilities ?? []).entries()) {
@@ -918,6 +974,7 @@ export async function validateFlow(revision: RevisionContent, engine: EngineCont
           line: 1,
           message: `Inline Task "${nodeId}" has an incomplete Connector Capability.`,
           path: `${graphPath}/nodes/${nodeId}/task/capabilities/${index}`,
+          values: { nodeId },
         })
       }
     }
@@ -932,6 +989,7 @@ export async function validateFlow(revision: RevisionContent, engine: EngineCont
         line: 1,
         message: `Connector Task "${taskId}" requires an action.`,
         path: `/document/tasks/${taskId}/executor`,
+        values: { taskId },
       })
     }
     if (task.executor.kind == 'connector' && task.executor.connectionId == null) {
@@ -941,6 +999,7 @@ export async function validateFlow(revision: RevisionContent, engine: EngineCont
         line: 1,
         message: `Connector Task "${taskId}" requires a Connection.`,
         path: `/document/tasks/${taskId}/executor/connectionId`,
+        values: { taskId },
       })
     }
   }

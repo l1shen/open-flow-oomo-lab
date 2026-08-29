@@ -15,6 +15,7 @@ import type {
 } from '../api.ts'
 import type { RevisionView } from '../revisionView.ts'
 
+import { dequal } from 'dequal/lite'
 import { applyFlowChanges as reduceFlowChanges } from '../../../../flow/common/change.ts'
 import {
   cleanVariableBindings,
@@ -333,6 +334,8 @@ export function setInputValue(
   handle: string,
   value: JsonValue | undefined,
 ): FlowChanges | undefined {
+  const node = revision.graph(target)?.nodes[nodeId]
+  if (value === undefined && node != null && 'inputs' in node && node.inputs[handle] == null) return
   return setGraphInputValue(revision.revision.content, target, nodeId, handle, value)
 }
 
@@ -454,6 +457,7 @@ export function updateTask(revision: RevisionView, target: DesignerTarget, nodeI
 export function updateCodeTaskPorts(revision: RevisionView, target: DesignerTarget, nodeId: string, ports: CodeTaskPorts): FlowChanges | undefined {
   const selection = revision.node(target, nodeId)
   if (selection?.kind != 'task' || selection.node.task == null || selection.module == null) return
+  if (dequal(selection.node.task.inputs, ports.inputs) && dequal(selection.node.task.outputs, ports.outputs)) return
   const changes = replaceCodeTaskPorts(revision, target, nodeId, { ...selection.node.task, ...ports })
   if (changes == null) return
   return cleanVariableBindings(revision.revision.content, changes)

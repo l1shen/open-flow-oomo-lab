@@ -434,6 +434,72 @@
     "emptyTitle": "未发现问题",
     "locate": "打开位置",
     "locateIssue": "打开问题：{{message}}",
+    "messages": {
+      "binding": {
+        "variable-invalid": "Variable 绑定“{{bindingId}}”的目标无效。"
+      },
+      "condition": {
+        "input-missing": "条件表达式引用了未知输入“{{input}}”。",
+        "output-duplicate": "条件输出“{{output}}”被重复声明。"
+      },
+      "graph": {
+        "binding-invalid": "绑定“{{bindingId}}”必须是 Variable。",
+        "binding-missing": "绑定“{{bindingId}}”不存在。",
+        "cycle": "节点之间存在依赖循环：{{nodes}}。",
+        "input-missing": "节点“{{nodeId}}”没有输入“{{handle}}”。",
+        "node-output-incompatible": "上游节点“{{nodeId}}”的输出“{{output}}”与此输入不兼容。",
+        "schema-unsupported": "不支持 Runtime Ref schema。",
+        "source-missing": {
+          "flow-input": "此图中不存在 Flow 输入“{{input}}”。",
+          "node": "上游节点“{{nodeId}}”不存在。",
+          "output": "上游节点“{{nodeId}}”没有输出“{{output}}”。"
+        },
+        "target-missing": {
+          "subflow": "Subflow“{{subflowId}}”不存在。",
+          "task": "Task“{{taskId}}”不存在。"
+        },
+        "trigger-not-allowed": "Trigger 节点只能用于 Flow。",
+        "variable-incompatible": "Variable 绑定“{{bindingId}}”与此输入不兼容。",
+        "variable-source-mixed": "Variable 必须是一个输入的唯一来源。"
+      },
+      "llm": {
+        "unconfigured": "当前部署尚未配置 LLM。请配置 OPEN_FLOW_LLM_ORIGIN 和 OPEN_FLOW_LLM_TOKEN。"
+      },
+      "module": {
+        "commonjs": "CodeModule“{{moduleId}}”不能使用 CommonJS require。",
+        "declared-import-missing": "CodeModule“{{moduleId}}”声明了“{{importedModuleId}}”，但没有对应的静态 import。",
+        "dynamic-code": "CodeModule“{{moduleId}}”不能执行动态代码。",
+        "dynamic-import": "CodeModule“{{moduleId}}”不能使用动态 import。",
+        "import-not-declared": "CodeModule“{{moduleId}}”没有声明对“{{importedModuleId}}”的 import。",
+        "missing": "CodeModule“{{moduleId}}”不存在。",
+        "missing-export": {
+          "module": "CodeModule“{{moduleId}}”没有导出“{{name}}”。",
+          "platform": "Platform Library 没有导出“{{name}}”。"
+        },
+        "syntax": "CodeModule“{{moduleId}}”包含无效的 JavaScript 语法。",
+        "unsupported-import": {
+          "import": "CodeModule“{{moduleId}}”不能 import“{{specifier}}”。",
+          "reexport": "CodeModule“{{moduleId}}”必须先 import，再重新导出值。"
+        }
+      },
+      "subflow": {
+        "cycle": "Subflow 循环无法执行：{{subflows}}。"
+      },
+      "task": {
+        "capability-incomplete": "Inline Task“{{nodeId}}”的 Connector Capability 配置不完整。",
+        "connector-connection-required": "Connector Task“{{taskId}}”需要选择一个 Connection。",
+        "connector-incomplete": "Connector Task“{{taskId}}”需要选择一个 action。",
+        "missing-entry": "Inline Task 使用的 CodeModule“{{moduleId}}”必须导出 default function。",
+        "module-missing": "Inline Task“{{nodeId}}”引用的 CodeModule“{{moduleId}}”不存在。"
+      },
+      "trigger": {
+        "config-incomplete": "请填写必需的 Trigger 配置字段：{{fields}}。",
+        "config-invalid": "Trigger“{{triggerId}}”的配置与固定定义不匹配。",
+        "connection-invalid": "Trigger 绑定“{{bindingId}}”必须是 Connection。",
+        "connection-missing": "Trigger 的 Connection 绑定“{{bindingId}}”不存在。",
+        "input-duplicate": "Webhook Trigger 输入“{{input}}”被重复声明。"
+      }
+    },
     "notChecked": "尚未检查",
     "notCheckedDescription": "检查当前草稿，查找图、Task、Connection 和 JavaScript 问题。",
     "notCheckedTitle": "检查当前草稿",
@@ -452,8 +518,7 @@
   },
   "runInput": {
     "close": "关闭运行输入",
-    "description": "为每个未连接的输入提供值。已有图连接、静态值或定义默认值的输入不会显示。",
-    "groupInvalid": "需要有效值",
+    "description": "为每个未连接的输入提供值。已有图连接、静态值或定义默认值的输入不会显示。这里填写的值仅用于本次运行，不会保存到 Flow。",
     "invalid": "请为所有列出的输入设置有效的 JSON 值后再运行。",
     "title": "运行输入"
   },

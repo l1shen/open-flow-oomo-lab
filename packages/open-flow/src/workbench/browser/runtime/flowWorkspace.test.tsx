@@ -32,7 +32,7 @@ vi.mock('./designer/workbenchDesigner.tsx', () => ({ WorkbenchDesigner: () => nu
 
 const value = <T,>(current: T): { readonly value: T } => ({ value: current })
 
-function renderWorkspace() {
+function renderWorkspace(busy?: string) {
   const navigation = {
     $: { view: value('design') },
     open: vi.fn(),
@@ -40,6 +40,23 @@ function renderWorkspace() {
     openMainFlow: vi.fn(),
   } as unknown as NavigationStore
   const store = {
+    $: {
+      busy: value(busy),
+      designer: value({ nodes: [], viewport: { x: 0, y: 0, zoom: 1 } }),
+      selectedDesignerNode: value(undefined),
+    },
+    connectors: {
+      $: {
+        actionLoading: value(undefined),
+        connectionLoading: value(undefined),
+        selectedAction: value(undefined),
+        selectedActionError: value(undefined),
+        selectedActiveConnections: value([]),
+        selectedAuthorizationPending: value(false),
+        selectedConnection: value(undefined),
+        selectedConnectionError: value(undefined),
+      },
+    },
     requestDraftRun: vi.fn().mockResolvedValue('started'),
     requestLiveRun: vi.fn().mockResolvedValue('started'),
     runRequests: {
@@ -47,10 +64,28 @@ function renderWorkspace() {
       dismissInputs: vi.fn(),
     },
     runs: { $: { externalRunId: value(undefined) } },
+    triggers: {
+      $: {
+        connectionLoading: value(undefined),
+        selectedActiveConnections: value([]),
+        selectedAuthorizationPending: value(false),
+        selectedConnection: value(undefined),
+        selectedConnectionError: value(undefined),
+      },
+    },
     workspace: {
       $: {
+        addNodeOptions: value([]),
+        diagnosticFocus: value(undefined),
         draft: value({ revisionId: 'revision' }),
         flowId: value('flow'),
+        inspectorDiagnostics: value([]),
+        nodeFocus: value(undefined),
+        revision: value({}),
+        selectedNodeIds: value([]),
+        selection: value(undefined),
+        target: value({ kind: 'flow' }),
+        targetName: value('Flow'),
         workspaceLoadFailed: value(false),
         workspaceLoading: value(false),
       },
@@ -67,7 +102,8 @@ function renderWorkspace() {
     readonly onRunDraft: () => void
     readonly onRunLive: () => void
   }>
-  return { header, navigation, store }
+  const editor = (main.props.children as ReactElement[])[2]!
+  return { editor, header, navigation, store }
 }
 
 describe('FlowWorkspace run drawer', () => {
@@ -85,5 +121,13 @@ describe('FlowWorkspace run drawer', () => {
 
     expect(mocks.setVisible).toHaveBeenCalledWith(true)
     expect(mocks.setOpen).toHaveBeenCalledWith(true)
+  })
+
+  it('keeps the Designer editable while preparing a run', () => {
+    const { editor } = renderWorkspace('run')
+    const view = (editor.type as (props: typeof editor.props) => ReactElement)(editor.props)
+    const designer = (view.props.children as ReactElement[])[0]!
+
+    expect(designer.props.disabled).toBe(false)
   })
 })

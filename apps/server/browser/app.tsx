@@ -1,9 +1,16 @@
-import type { WorkbenchLanguage, WorkbenchLocation, WorkbenchNavigationOptions, WorkbenchNotification, WorkbenchTheme } from '@oomol-lab/open-flow/workbench'
+import type {
+  OpenFlowWorkbenchProps,
+  WorkbenchLanguage,
+  WorkbenchLocation,
+  WorkbenchNavigationOptions,
+  WorkbenchNotification,
+  WorkbenchTheme,
+} from '@oomol-lab/open-flow/workbench'
 import type { FormEvent, MouseEvent, ReactElement } from 'react'
 
 import { ControlClient } from '@oomol-lab/open-flow/control-api'
 import { OpenFlowSessionGate, OpenFlowWorkbench } from '@oomol-lab/open-flow/workbench'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Toaster, toast } from 'sonner'
 import { I18nProvider, useTranslate } from 'val-i18n-react'
 import { createBrowserHost } from './host.ts'
@@ -14,7 +21,6 @@ import { VariablesPage } from './variables.tsx'
 
 const notificationId = 'open-flow-workbench'
 const preferencePrefix = 'open-flow.workbench.server.'
-
 interface Props {
   readonly language: WorkbenchLanguage
   readonly onLanguageChange: (language: WorkbenchLanguage) => void
@@ -43,6 +49,38 @@ function sessionStatus(value: unknown): SessionStatus | undefined {
   return { authenticated: status.authenticated, configured: status.configured, version: 1 }
 }
 
+function connectorTeams(value: unknown):
+  | { readonly bindings: readonly []; readonly enabled: false; readonly teams: readonly []; readonly version: 1 }
+  | {
+      readonly bindings: readonly { readonly flowId: string; readonly teamId: string }[]
+      readonly enabled: true
+      readonly teams: readonly { readonly id: string; readonly name: string; readonly systemCreated: boolean }[]
+      readonly version: 1
+    }
+  | undefined {
+  if (value == null || typeof value != 'object' || Array.isArray(value)) return
+  const status = value as Record<string, unknown>
+  if (status.version !== 1 || typeof status.enabled != 'boolean' || !Array.isArray(status.bindings) || !Array.isArray(status.teams)) return
+  if (!status.enabled) return { bindings: [], enabled: false, teams: [], version: 1 }
+  const bindings: { readonly flowId: string; readonly teamId: string }[] = []
+  for (const item of status.bindings) {
+    if (item == null || typeof item != 'object' || Array.isArray(item)) return
+    const binding = item as Record<string, unknown>
+    if (typeof binding.flowId != 'string' || binding.flowId.length == 0 || typeof binding.teamId != 'string' || binding.teamId.length == 0) return
+    bindings.push({ flowId: binding.flowId, teamId: binding.teamId })
+  }
+  const teams: { readonly id: string; readonly name: string; readonly systemCreated: boolean }[] = []
+  for (const item of status.teams) {
+    if (item == null || typeof item != 'object' || Array.isArray(item)) return
+    const team = item as Record<string, unknown>
+    if (typeof team.id != 'string' || team.id.length == 0 || typeof team.name != 'string' || team.name.length == 0 || typeof team.systemCreated != 'boolean') {
+      return
+    }
+    teams.push({ id: team.id, name: team.name, systemCreated: team.systemCreated })
+  }
+  return { bindings, enabled: true, teams, version: 1 }
+}
+
 function notify(notification: WorkbenchNotification | undefined): void {
   if (notification == null) {
     toast.dismiss(notificationId)
@@ -59,6 +97,15 @@ function Shell({ language, onLanguageChange, theme }: Props): ReactElement {
   const [session, setSession] = useState<Session>({ kind: 'checking' })
   const [token, setToken] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [team, setTeam] = useState<
+    | { readonly kind: 'error' | 'hidden' | 'loading' }
+    | {
+        readonly bindings: readonly { readonly flowId: string; readonly teamId: string }[]
+        readonly kind: 'ready'
+        readonly selectedTeamId: string | undefined
+        readonly teams: readonly { readonly id: string; readonly name: string; readonly systemCreated: boolean }[]
+      }
+  >({ kind: 'loading' })
   const t = useTranslate()
   const host = useMemo(() => createBrowserHost(notify, () => setSession({ configured: true, kind: 'signed-out' })), [])
   const client = useMemo(() => new ControlClient((input, init) => host.request(input, init)), [host])
@@ -69,6 +116,27 @@ function Shell({ language, onLanguageChange, theme }: Props): ReactElement {
     }),
     [],
   )
+  const loadTeams = useCallback(async (signal?: AbortSignal): Promise<void> => {
+    try {
+      const response = await fetch('/connector/teams', { credentials: 'same-origin', signal })
+      if (response.status == 401) {
+        setSession({ configured: true, kind: 'signed-out' })
+        return
+      }
+      const status = connectorTeams(await response.json())
+      if (!response.ok || status == null) throw new Error('Invalid Connector Team response.')
+      setTeam((current) => {
+        if (!status.enabled) return { kind: 'hidden' }
+        const selectedTeamId =
+          current.kind == 'ready' && status.teams.some((item) => item.id == current.selectedTeamId)
+            ? current.selectedTeamId
+            : (status.teams.find((item) => item.systemCreated)?.id ?? status.teams[0]?.id)
+        return { bindings: status.bindings, kind: 'ready', selectedTeamId, teams: status.teams }
+      })
+    } catch {
+      if (!signal?.aborted) setTeam({ kind: 'error' })
+    }
+  }, [])
   let sessionMessage = t('session.configured')
   if (session.kind == 'signed-out') {
     if (session.configured === false) sessionMessage = t('session.notConfigured')
@@ -88,6 +156,15 @@ function Shell({ language, onLanguageChange, theme }: Props): ReactElement {
   }
 
   useEffect(() => void checkSession(), [])
+  useEffect(() => {
+    if (session.kind != 'signed-in') {
+      setTeam({ kind: 'loading' })
+      return
+    }
+    const controller = new AbortController()
+    void loadTeams(controller.signal)
+    return () => controller.abort()
+  }, [loadTeams, session.kind])
   useEffect(() => {
     const restore = (): void => {
       setVariablesOpen(window.location.pathname == '/variables')
@@ -150,6 +227,78 @@ function Shell({ language, onLanguageChange, theme }: Props): ReactElement {
     }
   }
 
+  async function createHostedFlow(name: string): Promise<string> {
+    if (team.kind != 'ready' || team.selectedTeamId == null) throw new Error(t('team.loadFailed'))
+    const teamId = team.selectedTeamId
+    const response = await fetch('/connector/flows', {
+      body: JSON.stringify({ name, teamId, version: 1 }),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', 'idempotency-key': `flow-${crypto.randomUUID()}` },
+      method: 'POST',
+    })
+    const value = (await response.json()) as unknown
+    if (response.status == 401) setSession({ configured: true, kind: 'signed-out' })
+    if (!response.ok) {
+      const source = value != null && typeof value == 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+      const error =
+        source?.error != null && typeof source.error == 'object' && !Array.isArray(source.error) ? (source.error as Record<string, unknown>) : undefined
+      throw new Error(typeof error?.message == 'string' ? error.message : t('team.createFailed'))
+    }
+    const source = value != null && typeof value == 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+    if (typeof source?.flowId != 'string' || source.flowId.length == 0) throw new Error(t('team.createFailed'))
+    const flowId = source.flowId
+    setTeam((current) =>
+      current.kind == 'ready' ? { ...current, bindings: [...current.bindings.filter((binding) => binding.flowId != flowId), { flowId, teamId }] } : current,
+    )
+    return flowId
+  }
+
+  const teamOptions: { readonly label: string; readonly value: string }[] = []
+  const defaultTeam = team.kind == 'ready' ? team.teams.find((item) => item.systemCreated) : undefined
+  if (team.kind == 'ready') {
+    if (defaultTeam != null) teamOptions.push({ label: t('team.defaultNamed', { name: defaultTeam.name }), value: defaultTeam.id })
+    teamOptions.push(...team.teams.filter((item) => !item.systemCreated).map((item) => ({ label: item.name, value: item.id })))
+  }
+  let flowBadges: Readonly<Record<string, string>> | undefined
+  if (team.kind == 'ready') {
+    const teams = new Map(team.teams.map((item) => [item.id, item]))
+    flowBadges = Object.fromEntries(
+      team.bindings.map((binding) => {
+        const bound = teams.get(binding.teamId)
+        const name = bound?.systemCreated ? t('team.defaultNamed', { name: bound.name }) : (bound?.name ?? binding.teamId)
+        return [binding.flowId, t('team.flowBadge', { name })]
+      }),
+    )
+  }
+  let createFlowField: OpenFlowWorkbenchProps['createFlowField']
+  if (team.kind == 'ready' && team.selectedTeamId != null) {
+    createFlowField = {
+      ariaLabel: t('team.selectForCreation'),
+      description: t('team.fixedHint'),
+      label: t('team.label'),
+      onValueChange: (selectedTeamId) => setTeam({ ...team, selectedTeamId }),
+      options: teamOptions,
+      state: 'ready',
+      value: team.selectedTeamId,
+    }
+  } else if (team.kind == 'error') {
+    createFlowField = {
+      description: t('team.fixedHint'),
+      label: t('team.label'),
+      onRetry: () => void loadTeams(),
+      retry: t('team.retry'),
+      state: 'error',
+      status: t('team.loadFailed'),
+    }
+  } else if (team.kind == 'loading') {
+    createFlowField = {
+      description: t('team.fixedHint'),
+      label: t('team.label'),
+      state: 'loading',
+      status: t('team.loading'),
+    }
+  }
+
   return (
     <div className="open-flow-theme server-host" data-theme={theme}>
       {session.kind == 'signed-in' ? (
@@ -164,15 +313,21 @@ function Shell({ language, onLanguageChange, theme }: Props): ReactElement {
                 {t('shell.variables')}
               </a>
             </nav>
-            <button className="server-button server-button-ghost server-sign-out" onClick={() => void signOut()} type="button">
-              {t('session.signOut')}
-            </button>
+            <div className="server-nav-actions">
+              <button className="server-button server-button-ghost server-sign-out" onClick={() => void signOut()} type="button">
+                {t('session.signOut')}
+              </button>
+            </div>
           </header>
           <div className="workbench-frame">
             {variablesOpen ? (
               <VariablesPage client={client} language={language} />
             ) : (
               <OpenFlowWorkbench
+                createFlow={team.kind == 'ready' && team.selectedTeamId != null ? createHostedFlow : undefined}
+                createFlowDisabled={team.kind != 'hidden' && (team.kind != 'ready' || team.selectedTeamId == null)}
+                createFlowField={createFlowField}
+                flowBadges={flowBadges}
                 hrefFor={routePath}
                 host={host}
                 language={language}

@@ -77,9 +77,16 @@ export function run() { return identity({ engineContract, value }) }`,
       ['module-main', 'module-helper'],
     )
 
-    expect(syntax).toMatchObject([{ code: 'module.syntax', line: 1, path: '/modules/module-main/source' }])
+    expect(syntax).toMatchObject([{ code: 'module.syntax', line: 1, path: '/modules/module-main/source', values: { moduleId: 'module-main' } }])
     expect(missingModule).toMatchObject([{ code: 'module.missing', line: 1, path: '/modules/module-main/source' }])
-    expect(missingExport).toMatchObject([{ code: 'module.missing-export', line: 1, path: '/modules/module-main/source' }])
+    expect(missingExport).toMatchObject([
+      {
+        code: 'module.missing-export',
+        line: 1,
+        path: '/modules/module-main/source',
+        values: { moduleId: 'module-helper', name: 'missing', variant: 'module' },
+      },
+    ])
   })
 
   it('rejects npm, Node, remote, dynamic and undeclared imports deterministically', () => {

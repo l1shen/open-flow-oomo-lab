@@ -16,6 +16,17 @@
     "notifications": "Уведомления",
     "variables": "Variables"
   },
+  "team": {
+    "createFailed": "Не удалось создать Flow для этой команды Connector.",
+    "defaultNamed": "{{name}} (по умолчанию)",
+    "fixedHint": "После создания Flow всегда будет использовать эту команду.",
+    "flowBadge": "Команда: {{name}}",
+    "label": "Команда OOMOL",
+    "loadFailed": "Не удалось загрузить команды.",
+    "loading": "Загрузка команд…",
+    "retry": "Повторить загрузку команд",
+    "selectForCreation": "Выбрать команду Connector для нового Flow"
+  },
   "variables": {
     "all": "Все Variables",
     "cancel": "Отмена",

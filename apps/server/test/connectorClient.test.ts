@@ -7,7 +7,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConnectorClient } from '../node/connector.ts'
 import { createLogger } from '../node/logger.ts'
 import { ServerService } from '../node/service.ts'
@@ -20,6 +20,7 @@ const services: ServerService[] = []
 const port = { jsonSchema: {}, nullable: false } as const
 
 afterEach(async () => {
+  vi.unstubAllGlobals()
   const currentServers = servers.splice(0)
   for (const server of currentServers) server.closeAllConnections()
   await Promise.allSettled(currentServers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))))
@@ -154,6 +155,41 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
 const app = { alias: 'work', id: 'connection-work', service: 'example', status: 'active' }
 
 describe('Server Connector client', () => {
+  it('lists OOMOL Teams and scopes Connector requests to the selected Team', async () => {
+    const requests: { readonly authorization: string | null; readonly teamId: string | null; readonly url: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const headers = new Headers(init?.headers)
+        const url = String(input)
+        requests.push({ authorization: headers.get('authorization'), teamId: headers.get('x-oo-team-id'), url })
+        return url.startsWith('https://relation-control.oomol.dev/')
+          ? Response.json({ extra: true, teams: [{ id: 'team-1', name: 'Engineering', status: 'normal', system_created: true }] })
+          : Response.json(success([]))
+      }),
+    )
+    const connector = new ConnectorClient('https://connector.oomol.dev', 'runtime-token')
+
+    expect(connector.teamSupported()).toBe(true)
+    await expect(connector.listTeams()).resolves.toEqual([{ id: 'team-1', name: 'Engineering', systemCreated: true }])
+    await expect(connector.listProviders(undefined, 'team-1')).resolves.toEqual([])
+
+    expect(requests).toEqual([
+      {
+        authorization: 'Bearer runtime-token',
+        teamId: null,
+        url: 'https://relation-control.oomol.dev/v1/me/teams',
+      },
+      {
+        authorization: 'Bearer runtime-token',
+        teamId: 'team-1',
+        url: 'https://connector.oomol.dev/v1/providers',
+      },
+    ])
+    expect(new ConnectorClient('https://connector.example.com', 'runtime-token').teamSupported()).toBe(false)
+    expect(new ConnectorClient('https://connector.oomol.com', '').teamSupported()).toBe(false)
+  })
+
   it('checks Connector readiness without using the runtime token', async () => {
     let status = 200
     const requests: { readonly authorization?: string; readonly path: string }[] = []

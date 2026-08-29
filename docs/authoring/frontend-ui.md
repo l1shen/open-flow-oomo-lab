@@ -114,8 +114,11 @@ Handle、ID、URL 示例和 `null` / `undefined` 等代码 token 不翻译。Ser
 和 `Operator token` 保留为既有产品或技术 token。同一 feature 不得在相同语境下再并行引入另一套称呼；若要调整术语，必须一次同步所有对应 locale key，
 而不是在单个页面局部替换。
 
-部署宿主持有全局语言偏好，并通过 Workbench 的 `language` 与可选 `onLanguageChange` 传递语言状态，不能维护第二份偏好。宿主若要把语言入口移到
-Workbench 外部，必须先提供正式的 Host-facing 共享 Select composition；不能用原生 `select` 或复制 popup 样式替代现有 `WorkbenchSelect`。
+部署宿主持有全局语言偏好，并通过 Workbench 的 `language` 与可选 `onLanguageChange` 传递语言状态，不能维护第二份偏好。宿主不能通过 deep import
+或复制 popup 样式重建 Workbench 内部 Select；创建 Flow 的宿主字段通过公开 Workbench props 注入，并由公共 Dialog 组合共享 primitive。
+Server 宿主的 OOMOL Team Select 只出现在新建 Flow 的 Dialog 内，并作为创建 operation 的必填字段；默认选项显示具体 Team name 与默认标记，创建后
+不再提供可修改的 Select；Resource Browser 可以显示宿主提供的只读 Team badge。部署宿主通过公开 Workbench props 注入字段、badge 和原子创建回调，不能
+复制公共 Dialog 或把 Team 暂存在 deployment 全局选择器中。
 用户内容、Connector / Provider 数据、Run 日志和代码输出保持原文。Control API 与 Diagnostic 的 canonical message 也保持协议原文；客户端只有在拥有稳定 error code
 和结构化参数时才显示本地化版本，未知错误回退到原始 message 与 code，不能通过解析 English message 进行翻译。
 

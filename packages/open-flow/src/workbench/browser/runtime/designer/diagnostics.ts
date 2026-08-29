@@ -1,3 +1,4 @@
+import type { TFunction } from 'val-i18n'
 import type { Diagnostic, FlowCheck, GraphNode } from '../api.ts'
 import type { ResolvedSelection, RevisionView } from '../revisionView.ts'
 import type { DesignerTarget } from './flowChanges.ts'
@@ -19,6 +20,13 @@ export interface DiagnosticItem {
 export interface DiagnosticFocus extends DiagnosticLocation {
   readonly diagnostic: Diagnostic
   readonly requestId: number
+}
+
+export function diagnosticMessage(diagnostic: Diagnostic, t: TFunction): string {
+  const variant = diagnostic.values?.variant
+  const key = `diagnostics.messages.${diagnostic.code}${typeof variant == 'string' ? `.${variant}` : ''}`
+  const translated = t(key, diagnostic.values)
+  return translated == key ? diagnostic.message : translated
 }
 
 function within(path: string, candidate: string): boolean {
