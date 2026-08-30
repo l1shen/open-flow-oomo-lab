@@ -583,6 +583,25 @@ describe('FlowDesignerView model synchronization', () => {
     store.dispose()
   })
 
+  it('keeps the current node position when editability changes', () => {
+    const value = model([task([])])
+    const initial = props(value)
+    const view = FlowDesignerView(initial) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
+    node.$$.position.set({ x: 320, y: 180 })
+
+    FlowDesignerView({ ...initial, editable: false })
+    expect([...view.props.flowDesignerStore.$.nodes.values()][0]?.$.position.value).toEqual({ x: 320, y: 180 })
+
+    FlowDesignerView(initial)
+    expect([...view.props.flowDesignerStore.$.nodes.values()][0]?.$.position.value).toEqual({ x: 320, y: 180 })
+
+    const moved = { ...task([]), position: { x: 500, y: 400 } }
+    FlowDesignerView(props(model([moved]), { editable: false }))
+    expect([...view.props.flowDesignerStore.$.nodes.values()][0]?.$.position.value).toEqual(moved.position)
+    view.props.flowDesignerStore.dispose()
+  })
+
   it('persists edits made through the inline Condition controls', () => {
     const onChangeCondition = vi.fn()
     const view = FlowDesignerView(props(model([conditionNode()]), { onChangeCondition })) as React.ReactElement<FlowDesignerProps>
