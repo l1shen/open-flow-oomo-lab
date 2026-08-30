@@ -779,7 +779,19 @@ export class WorkspaceStore {
     this.#set({ checkLoading: true, diagnosticFocus: undefined })
     try {
       const diagnostics = await this.#client.checkFlow(flowId, draft.revisionId)
-      if (!this.#disposed && flowId == this.#model.value.flowId && draft.revisionId == this.#model.value.draft?.revisionId) this.#set({ diagnostics })
+      if (!this.#disposed && flowId == this.#model.value.flowId && draft.revisionId == this.#model.value.draft?.revisionId) {
+        const live = this.#model.value.live
+        this.#set({
+          diagnostics,
+          live:
+            live == null
+              ? undefined
+              : {
+                  ...live,
+                  hasUnpublishedChanges: live.publication == null || live.publication.closureDigest != diagnostics.closureDigest,
+                },
+        })
+      }
     } catch (error) {
       if (!this.#disposed && flowId == this.#model.value.flowId && draft.revisionId == this.#model.value.draft?.revisionId) {
         this.#setNotice(errorNotice(error, this.#i18n.t))

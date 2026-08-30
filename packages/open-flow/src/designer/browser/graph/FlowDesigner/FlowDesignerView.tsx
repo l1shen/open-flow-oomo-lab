@@ -697,9 +697,14 @@ class FlowDesignerViewAdapter {
       const { position, ...content } = node
       const contentKey = JSON.stringify([content, outputHandles])
       let entry = this.#entries.get(node.id)
+      let createdPosition = position
       let created = false
       if (entry?.kind != node.kind) entry = undefined
-      if (entry?.kind != 'comment' && entry?.editable != this.store.$.editable.value) entry = undefined
+      if (entry != null && entry.kind != 'comment' && entry.editable != this.store.$.editable.value) {
+        const previousPosition = this.#modelPositions.get(node.id)
+        if (previousPosition?.x == position.x && previousPosition.y == position.y) createdPosition = entry.store.$.position.value
+        entry = undefined
+      }
       if (node.kind == 'comment') {
         if (entry?.kind != 'comment') {
           entry = createCommentNodeEntry(node, contentKey, this.store.designerUIStore, this.store, this.#callbacks)
@@ -711,7 +716,7 @@ class FlowDesignerViewAdapter {
         }
         nextComments.set(node.id as NodeId, entry.store)
       } else if (entry == null) {
-        this.store.designerUIStore.setNodeUIData(node.id as NodeId, { rfNode: { position } })
+        this.store.designerUIStore.setNodeUIData(node.id as NodeId, { rfNode: { position: createdPosition } })
         entry = createNodeEntry(node, outputHandles, contentKey, this.store.designerUIStore, this.store, this.#callbacks)
         created = true
       } else {

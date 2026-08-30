@@ -34,6 +34,85 @@ const draft = {
 } as const
 
 describe('WorkspaceStore', () => {
+  it('enables publishing after adding a node to a published Flow', async () => {
+    const publication = {
+      actorId: 'actor-1',
+      closureDigest: 'closure-1',
+      createdAt: timestamp,
+      engineContract: 'open-flow-engine/v1',
+      flowId: flow.flowId,
+      modelVersion: 1,
+      operation: 'publish',
+      publicationId: 'publication-1',
+      revisionDigest: draft.digest,
+      revisionId: draft.revisionId,
+      version: 1,
+    } as const
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path == '/v1/flows?limit=50&includeTotal=true') return Response.json({ flows: [flow], total: 1, version: 1 })
+      if (path == `/v1/flows/${flow.flowId}/draft`) return Response.json(draft)
+      if (path == `/v1/flows/${flow.flowId}/live`) {
+        return Response.json({
+          flowId: flow.flowId,
+          hasUnpublishedChanges: false,
+          publication,
+          revision: 1,
+          status: 'runnable',
+          version: 1,
+        })
+      }
+      if (path == `/v1/flows/${flow.flowId}/presentation`) {
+        if (init?.method == 'PUT') return Response.json({ revision: 2, updatedAt: timestamp, value: {}, version: 1 })
+        return Response.json({ revision: 1, updatedAt: timestamp, value: {}, version: 1 })
+      }
+      if (path == `/v1/flows/${flow.flowId}/draft/changes`) {
+        return Response.json({
+          revision: {
+            actorId: 'actor-1',
+            createdAt: timestamp,
+            digest: 'digest-2',
+            flowId: flow.flowId,
+            modelVersion: 1,
+            parentRevisionId: draft.revisionId,
+            revisionId: 'revision-2',
+            version: 1,
+          },
+          version: 1,
+        })
+      }
+      const check = /^\/v1\/flows\/flow-1\/revisions\/(revision-[12])\/check$/.exec(path)
+      if (check != null) {
+        return Response.json({
+          closureDigest: check[1] == 'revision-1' ? publication.closureDigest : 'closure-2',
+          diagnostics: [],
+          engineContract: publication.engineContract,
+          flowId: flow.flowId,
+          modelVersion: 1,
+          revisionDigest: check[1] == 'revision-1' ? draft.digest : 'digest-2',
+          revisionId: check[1],
+          valid: true,
+          version: 1,
+        })
+      }
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    const store = new WorkspaceStore(new WorkbenchClient(request), vi.fn(), () => 'node-1')
+
+    try {
+      await store.start(flow.flowId)
+      expect(store.$.live.value?.hasUnpublishedChanges).toBe(false)
+      const option = store.$.addNodeOptions.value.find((candidate) => candidate.kind == 'value')
+      if (option == null) throw new Error('Expected Value node option.')
+
+      await store.addNode(option, { x: 100, y: 100 })
+
+      await vi.waitFor(() => expect(store.$.live.value?.hasUnpublishedChanges).toBe(true))
+      expect(request).toHaveBeenCalledWith(`/v1/flows/${flow.flowId}/draft/changes`, expect.objectContaining({ method: 'POST' }))
+    } finally {
+      store.dispose()
+    }
+  })
+
   it('loads a host-created Flow by ID before adding it to the catalog', async () => {
     const request = vi.fn(async (path: string) => {
       if (path == `/v1/flows/${flow.flowId}`) return Response.json(flow)
