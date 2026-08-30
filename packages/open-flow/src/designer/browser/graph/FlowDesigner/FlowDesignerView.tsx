@@ -24,7 +24,7 @@ import type { InteractiveMode } from '../../stores/designer/designer.store.ts'
 import type { DesignerUILayout, DesignerUIStore } from '../../stores/designer/designerUI.store.ts'
 import type { FlowRunStatus } from '../../stores/designer/typings.ts'
 import type { NodeStatus } from '../../stores/node/constants.ts'
-import type { NodeStore } from '../../stores/node/node.store.ts'
+import type { NodeShowSettings, NodeStore } from '../../stores/node/node.store.ts'
 import type { InlineTask } from '../../stores/node/taskNode.store.ts'
 
 import { dispose } from '@wopjs/disposable'
@@ -32,6 +32,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { unstable_batchedUpdates } from 'react-dom'
 import { derive, val } from 'value-enhancer'
 import { reactiveMap } from 'value-enhancer/collections'
+import { isSameXYPosition } from '../../base/compare.ts'
 import { toManifestHandleName, toManifestNodeId } from '../../base/rfHelpers.ts'
 import { MarkdownPreview } from '../../preview/markdownPreview.tsx'
 import { DesignerUIStore as DesignerUIStoreImpl } from '../../stores/designer/designerUI.store.ts'
@@ -657,6 +658,11 @@ class FlowDesignerViewAdapter {
   }
 
   #syncModel(model: FlowDesignerViewModel): void {
+    this.#syncState(model)
+    this.#syncNodes(model)
+  }
+
+  #syncState(model: FlowDesignerViewModel): void {
     const runStatus = model.runStatus == 'running' ? FLOW_RUN_STATUS.Running : FLOW_RUN_STATUS.Idle
     if (this.#runStatus.value != runStatus) this.#runStatus.set(runStatus)
     const inputs = variableInputs(model.nodes)
@@ -686,6 +692,9 @@ class FlowDesignerViewAdapter {
       this.store.$$.viewport.set(model.viewport)
       this.#modelViewport = { ...model.viewport }
     }
+  }
+
+  #syncNodes(model: FlowDesignerViewModel): void {
     const connected = connectedOutputs(model.nodes)
     const nextEntries = new Map<string, NodeEntry>()
     const nextComments = new Map<NodeId, CommentNodeStore>()
@@ -694,15 +703,15 @@ class FlowDesignerViewAdapter {
 
     for (const node of model.nodes) {
       const outputHandles = [...(connected.get(node.id) ?? [])].toSorted()
-      const { position, ...content } = node
+      const { position: modelPosition, ...content } = node
       const contentKey = JSON.stringify([content, outputHandles])
       let entry = this.#entries.get(node.id)
-      let createdPosition = position
+      let position = modelPosition
       let created = false
       if (entry?.kind != node.kind) entry = undefined
       if (entry != null && entry.kind != 'comment' && entry.editable != this.store.$.editable.value) {
         const previousPosition = this.#modelPositions.get(node.id)
-        if (previousPosition?.x == position.x && previousPosition.y == position.y) createdPosition = entry.store.$.position.value
+        if (isSameXYPosition(previousPosition, modelPosition)) position = entry.store.$.position.value
         entry = undefined
       }
       if (node.kind == 'comment') {
@@ -712,23 +721,23 @@ class FlowDesignerViewAdapter {
         } else {
           if (entry.contentKey != contentKey) entry = updateCommentNodeEntry(entry, node, contentKey)
           const previousPosition = this.#modelPositions.get(node.id)
-          if (previousPosition == null || previousPosition.x != position.x || previousPosition.y != position.y) entry.store.$$.position.set(position)
+          if (!isSameXYPosition(previousPosition, modelPosition)) entry.store.$$.position.set(modelPosition)
         }
         nextComments.set(node.id as NodeId, entry.store)
       } else if (entry == null) {
-        this.store.designerUIStore.setNodeUIData(node.id as NodeId, { rfNode: { position: createdPosition } })
+        this.store.designerUIStore.setNodeUIData(node.id as NodeId, { rfNode: { position } })
         entry = createNodeEntry(node, outputHandles, contentKey, this.store.designerUIStore, this.store, this.#callbacks)
         created = true
       } else {
         if (entry.kind == 'comment') throw new Error('Unexpected Comment node entry.')
         if (entry.contentKey != contentKey) entry = updateNodeEntry(entry, node, outputHandles, contentKey)
         const previousPosition = this.#modelPositions.get(node.id)
-        if (previousPosition == null || previousPosition.x != position.x || previousPosition.y != position.y) entry.store.$$.position.set(position)
+        if (!isSameXYPosition(previousPosition, modelPosition)) entry.store.$$.position.set(modelPosition)
       }
       if (created && this.#selectedNodeIds.has(node.id)) entry.store.$$.selected.set(true)
       nextEntries.set(node.id, entry)
       if (entry.kind != 'comment') nextStores.set(node.id as NodeId, entry.store)
-      nextPositions.set(node.id, position)
+      nextPositions.set(node.id, modelPosition)
     }
 
     if (nextStores.size != this.store.$.nodes.size || [...nextStores].some(([nodeId, store]) => this.store.$.nodes.get(nodeId) !== store)) {
@@ -905,6 +914,88 @@ function createDiagnosticSection(diagnostics: Val<boolean>) {
   }
 }
 
+function createNodeValues(node: FlowDesignerViewSemanticNode, connected: readonly HandleName[]): NodeValues {
+  return {
+    concurrency: val(node.concurrency),
+    description: val(node.description),
+    diagnostics: val((node.diagnostics ?? 0) > 0),
+    executorName: val(node.kind == 'task' ? node.executorName : undefined),
+    icon: val(node.icon),
+    inputDefs: val(inputDefs(node)),
+    inputsFrom: val<readonly HandleInputFrom[] | undefined>(inputsFrom(node)),
+    outputDefs: val(outputDefs(node)),
+    outputsTo: val([...connected]),
+    progress: val(node.run?.progress),
+    rawIcon: val(node.rawIcon),
+    rawTitle: val(node.rawTitle),
+    reference: val(node.kind == 'task' || node.kind == 'subflow' ? node.reference : undefined),
+    status: val<NodeStatus>(node.run?.status ?? NODE_STATUS.Idle),
+    successCount: val(node.run?.successCount),
+    timeout: val(node.timeoutSeconds),
+    title: val(node.title),
+  }
+}
+
+function createInputSection(
+  node: FlowDesignerViewSemanticNode,
+  values: NodeValues,
+  showSettings: Val<NodeShowSettings | undefined>,
+  designerStore: FlowDesignerStore,
+  callbacks: ViewCallbacks,
+): InputSectionStore {
+  const variablePrefix = `${node.id}\0`
+  const boundHandles = derive(designerStore.$.variableInputs, (inputs) => {
+    const handles = new Set<HandleName>()
+    for (const [key, input] of inputs) {
+      if (key.startsWith(variablePrefix) && input.name != null) handles.add(key.slice(variablePrefix.length) as HandleName)
+    }
+    return handles
+  })
+  let role: 'author' | 'guest' | 'user' = 'guest'
+  if (designerStore.$.editable.value) role = node.kind == 'task' && node.editablePorts ? 'author' : 'user'
+  const section = new InputSectionStore({
+    role,
+    lang: designerStore.lang$,
+    boundHandles,
+    handleInputsFrom: values.inputsFrom,
+    inputHandleDefs: values.inputDefs,
+    showSettings,
+    createSchemaEditor: () => undefined,
+  })
+  section.dispose.add(boundHandles)
+
+  let previous = new Map((values.inputsFrom.value ?? []).flatMap((input) => (Object.hasOwn(input, 'value') ? [[input.handle, input.value] as const] : [])))
+  section.dispose.add(
+    values.inputsFrom.reaction((inputs) => {
+      const current = new Map((inputs ?? []).flatMap((input) => (Object.hasOwn(input, 'value') ? [[input.handle, input.value] as const] : [])))
+      if (!values.syncingInput && designerStore.$.editable.value) {
+        for (const handle of new Set([...previous.keys(), ...current.keys()])) {
+          if (previous.has(handle) == current.has(handle) && Object.is(previous.get(handle), current.get(handle))) continue
+          callbacks.onChangeInput?.(node.id, handle, current.get(handle))
+        }
+      }
+      previous = current
+    }, true),
+  )
+  return section
+}
+
+function createOutputSection(
+  role: 'author' | 'guest',
+  values: NodeValues,
+  showSettings: Val<NodeShowSettings | undefined>,
+  designerStore: FlowDesignerStore,
+): OutputSectionStore {
+  return new OutputSectionStore({
+    role,
+    lang: designerStore.lang$,
+    handleOutputsTo: values.outputsTo,
+    outputHandleDefs: values.outputDefs,
+    showSettings,
+    createSchemaEditor: () => undefined,
+  })
+}
+
 function createCommentNodeEntry(
   node: FlowDesignerViewCommentNode,
   contentKey: string,
@@ -983,60 +1074,9 @@ function createNodeEntry(
   designerStore: FlowDesignerStore,
   callbacks: ViewCallbacks,
 ): SemanticNodeEntry {
-  const nodeInputsFrom = inputsFrom(node)
-  const variablePrefix = `${node.id}\0`
-  const boundHandles = derive(designerStore.$.variableInputs, (inputs) => {
-    const handles = new Set<HandleName>()
-    for (const [key, input] of inputs) {
-      if (key.startsWith(variablePrefix) && input.name != null) handles.add(key.slice(variablePrefix.length) as HandleName)
-    }
-    return handles
-  })
-  const values: NodeValues = {
-    concurrency: val(node.concurrency),
-    description: val(node.description),
-    diagnostics: val((node.diagnostics ?? 0) > 0),
-    executorName: val(node.kind == 'task' ? node.executorName : undefined),
-    icon: val(node.icon),
-    inputDefs: val(inputDefs(node)),
-    inputsFrom: val<readonly HandleInputFrom[] | undefined>(nodeInputsFrom),
-    outputDefs: val(outputDefs(node)),
-    outputsTo: val([...connected]),
-    progress: val(node.run?.progress),
-    rawIcon: val(node.rawIcon),
-    rawTitle: val(node.rawTitle),
-    reference: val(node.kind == 'task' || node.kind == 'subflow' ? node.reference : undefined),
-    status: val<NodeStatus>(node.run?.status ?? NODE_STATUS.Idle),
-    successCount: val(node.run?.successCount),
-    timeout: val(node.timeoutSeconds),
-    title: val(node.title),
-  }
-  const showSettings = val()
-  let inputRole: 'author' | 'guest' | 'user' = 'guest'
-  if (designerStore.$.editable.value) inputRole = node.kind == 'task' && node.editablePorts ? 'author' : 'user'
-  const inputSection = new InputSectionStore({
-    role: inputRole,
-    lang: designerStore.lang$,
-    boundHandles,
-    handleInputsFrom: values.inputsFrom,
-    inputHandleDefs: values.inputDefs,
-    showSettings,
-    createSchemaEditor: () => undefined,
-  })
-  inputSection.dispose.add(boundHandles)
-  let previousInputValues = new Map(nodeInputsFrom.flatMap((input) => (Object.hasOwn(input, 'value') ? [[input.handle, input.value] as const] : [])))
-  inputSection.dispose.add(
-    values.inputsFrom.reaction((inputs) => {
-      const inputValues = new Map((inputs ?? []).flatMap((input) => (Object.hasOwn(input, 'value') ? [[input.handle, input.value] as const] : [])))
-      if (!values.syncingInput && designerStore.$.editable.value) {
-        for (const handle of new Set([...previousInputValues.keys(), ...inputValues.keys()])) {
-          if (previousInputValues.has(handle) == inputValues.has(handle) && Object.is(previousInputValues.get(handle), inputValues.get(handle))) continue
-          callbacks.onChangeInput?.(node.id, handle, inputValues.get(handle))
-        }
-      }
-      previousInputValues = inputValues
-    }, true),
-  )
+  const values = createNodeValues(node, connected)
+  const showSettings = val<NodeShowSettings | undefined>()
+  const inputSection = createInputSection(node, values, showSettings, designerStore, callbacks)
   const diagnosticSection = createDiagnosticSection(values.diagnostics)
   const duplicateNode = (offset?: FlowDesignerViewPosition) => designerStore.onDuplicate?.([node.id as NodeId], offset)
   const manifest$ = { description: values.description, icon: values.rawIcon, title: values.rawTitle }
@@ -1106,14 +1146,7 @@ function createNodeEntry(
       break
     }
     case 'subflow': {
-      const outputSection = new OutputSectionStore({
-        role: 'guest',
-        lang: designerStore.lang$,
-        handleOutputsTo: values.outputsTo,
-        outputHandleDefs: values.outputDefs,
-        showSettings,
-        createSchemaEditor: () => undefined,
-      })
+      const outputSection = createOutputSection('guest', values, showSettings, designerStore)
       store = new SubflowNodeStore(node.id as NodeId, {
         changeDescription,
         display$: {
@@ -1128,14 +1161,7 @@ function createNodeEntry(
       break
     }
     case 'task': {
-      const outputSection = new OutputSectionStore({
-        role: designerStore.$.editable.value && node.editablePorts ? 'author' : 'guest',
-        lang: designerStore.lang$,
-        handleOutputsTo: values.outputsTo,
-        outputHandleDefs: values.outputDefs,
-        showSettings,
-        createSchemaEditor: () => undefined,
-      })
+      const outputSection = createOutputSection(designerStore.$.editable.value && node.editablePorts ? 'author' : 'guest', values, showSettings, designerStore)
       store = new TaskNodeStore(node.id as NodeId, {
         changeDescription,
         display$: {
@@ -1161,14 +1187,7 @@ function createNodeEntry(
     case 'trigger': {
       inputSection.dispose()
       values.triggerPresentation = val(node.presentation)
-      const outputSection = new OutputSectionStore({
-        role: 'guest',
-        lang: designerStore.lang$,
-        handleOutputsTo: values.outputsTo,
-        outputHandleDefs: values.outputDefs,
-        showSettings,
-        createSchemaEditor: () => undefined,
-      })
+      const outputSection = createOutputSection('guest', values, showSettings, designerStore)
       store = new TriggerNodeStore(node.id as NodeId, {
         changeDescription,
         changeConfig:
