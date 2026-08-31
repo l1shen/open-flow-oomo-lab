@@ -25,7 +25,7 @@ async function databaseFile(): Promise<string> {
   return path.join(directory, 'open-flow.sqlite')
 }
 
-function capture() {
+function capture(level = 'trace') {
   let output = ''
   const destination: DestinationStream = {
     write(chunk) {
@@ -39,7 +39,7 @@ function capture() {
         .split('\n')
         .filter((line) => line.length > 0)
         .map((line) => JSON.parse(line) as Readonly<Record<string, unknown>>),
-    logger: createLogger('trace', destination),
+    logger: createLogger(level, destination),
     output: () => output,
   }
 }
@@ -134,7 +134,7 @@ it('correlates an unknown HTTP failure without logging headers or request bodies
       expect.objectContaining({
         category: 'http.request.completed',
         errorCode: 'internal',
-        level: 10,
+        level: 40,
         method: 'POST',
         path: '/v1/flows',
         requestId: 'request-123',
@@ -147,8 +147,8 @@ it('correlates an unknown HTTP failure without logging headers or request bodies
   expect(captured.output()).not.toContain('request-body-secret')
 })
 
-it('adds the stable Control error code to the completed request log', async () => {
-  const captured = capture()
+it('logs the stable Control error code for server errors at the default level', async () => {
+  const captured = capture('info')
   const service = await openService(await databaseFile())
   services.push(service)
   const app = createServerApp(service, { logger: captured.logger, resolveControlActor: () => 'operator' })
@@ -162,6 +162,7 @@ it('adds the stable Control error code to the completed request log', async () =
       expect.objectContaining({
         category: 'http.request.completed',
         errorCode: 'connector.unconfigured',
+        level: 40,
         method: 'GET',
         path: '/v1/connector/actions',
         status: 503,

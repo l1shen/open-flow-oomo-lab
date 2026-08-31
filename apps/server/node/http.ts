@@ -95,7 +95,8 @@ export function createServerApp(service: ServerService, options: ServerAppOption
       requestId,
       status: context.res.status,
     }
-    logger.trace(fields, 'HTTP request completed.')
+    if (context.res.status >= 500) logger.warn(fields, 'HTTP request completed with a server error.')
+    else logger.trace(fields, 'HTTP request completed.')
   })
 
   app.route('/auth', createOperatorApp(operator, options.operatorLoginAttemptsPerMinute))

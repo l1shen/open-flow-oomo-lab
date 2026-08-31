@@ -234,13 +234,6 @@ describe('Server Connector client', () => {
     const action = {
       asyncLifecycle: null,
       description: 'Echo one message.',
-      execution: {
-        catalogOnly: false,
-        locallyExecutable: true,
-        needsCredential: true,
-        noAuthRunnable: false,
-        requiredAuthTypes: ['api_key'],
-      },
       followUpActions: [],
       id: 'example.echo',
       inputSchema: {
@@ -274,7 +267,6 @@ describe('Server Connector client', () => {
           200,
           success([
             {
-              authenticated: true,
               description: action.description,
               id: action.id,
               inputSchema: action.inputSchema,
@@ -329,6 +321,7 @@ describe('Server Connector client', () => {
 
   it('projects Hosted Connector discovery responses without requiring exact keys', async () => {
     const provider = {
+      authTypes: ['api_key'],
       credential: 'must-not-cross-boundary',
       displayName: 'Example',
       iconUrl: null,
@@ -337,7 +330,6 @@ describe('Server Connector client', () => {
     }
     const action = {
       description: 'Echo one message.',
-      execution: { noAuthRunnable: false },
       id: 'example.echo',
       inputSchema: { properties: {}, type: 'object' },
       name: 'echo',
@@ -394,10 +386,54 @@ describe('Server Connector client', () => {
     ])
   })
 
+  it('loads the full Action catalog with bounded concurrency and stable order', async () => {
+    const providers = Array.from({ length: 18 }, (_, index) => ({
+      authTypes: ['no_auth'],
+      displayName: `Service ${index}`,
+      service: `service-${index}`,
+    }))
+    let active = 0
+    let maximumActive = 0
+    const origin = await startConnector(async (request, response) => {
+      if (request.url == '/v1/providers') return send(response, 200, success(providers))
+      if (request.url == '/v1/apps') return send(response, 200, success([]))
+      if (request.url == null) throw new Error('Action catalog request omitted its URL.')
+      const service = new URL(request.url, 'http://connector.test').searchParams.get('service')
+      if (service == null) throw new Error('Action catalog request omitted its Provider service.')
+      const index = Number(service.slice('service-'.length))
+      active += 1
+      maximumActive = Math.max(maximumActive, active)
+      await new Promise((resolve) => setTimeout(resolve, (index % 3) + 1))
+      active -= 1
+      send(
+        response,
+        200,
+        success([
+          {
+            description: `Run Service ${index}.`,
+            id: `${service}.run`,
+            inputSchema: { properties: {}, type: 'object' },
+            name: 'Run',
+            outputSchema: { properties: {}, type: 'object' },
+            service,
+          },
+        ]),
+      )
+    })
+    const connector = new ConnectorClient(origin, 'runtime-token')
+
+    const actions = await connector.listActions()
+
+    expect(maximumActive).toBeGreaterThan(1)
+    expect(maximumActive).toBeLessThanOrEqual(16)
+    expect(actions.map((action) => action.actionId)).toEqual(providers.map((provider) => `${provider.service}.run`))
+    expect(actions.every((action) => !action.authenticated)).toBe(true)
+  })
+
   it('projects public Connector Actions without a Connection', async () => {
     const origin = await startConnector((request, response) => {
       if (request.url == '/v1/providers') {
-        return send(response, 200, success([{ displayName: 'Hacker News', service: 'hacker-news' }]))
+        return send(response, 200, success([{ authTypes: ['api_key', 'no_auth'], displayName: 'Hacker News', service: 'hacker-news' }]))
       }
       if (request.url == '/v1/apps/services/hacker-news') {
         return send(
@@ -420,7 +456,6 @@ describe('Server Connector client', () => {
         success([
           {
             description: 'Get Ask HN stories.',
-            execution: { noAuthRunnable: true },
             id: 'hacker-news.get-ask-stories',
             inputSchema: { properties: {}, type: 'object' },
             name: 'Get Ask Stories',
@@ -449,13 +484,12 @@ describe('Server Connector client', () => {
   it('rejects a Connector Action without a stable id', async () => {
     const origin = await startConnector((request, response) => {
       if (request.url == '/v1/providers') {
-        return send(response, 200, { data: [{ displayName: 'Example', service: 'example' }], success: true })
+        return send(response, 200, { data: [{ authTypes: ['no_auth'], displayName: 'Example', service: 'example' }], success: true })
       }
       if (request.url == '/v1/apps') return send(response, 200, { data: [], success: true })
       return send(response, 200, {
         data: [
           {
-            authenticated: false,
             description: 'Echo one message.',
             inputSchema: { properties: {}, type: 'object' },
             name: 'echo',
@@ -479,7 +513,7 @@ describe('Server Connector client', () => {
           200,
           success([
             {
-              authTypes: [],
+              authTypes: ['no_auth'],
               categories: [],
               displayName: 'Example',
               homepageUrl: null,
@@ -498,13 +532,6 @@ describe('Server Connector client', () => {
           {
             asyncLifecycle: null,
             description: 'Invalid schema.',
-            execution: {
-              catalogOnly: false,
-              locallyExecutable: true,
-              needsCredential: false,
-              noAuthRunnable: true,
-              requiredAuthTypes: [],
-            },
             followUpActions: [],
             id: 'example.invalid',
             inputSchema: null,
@@ -517,9 +544,14 @@ describe('Server Connector client', () => {
         ]),
       )
     })
-    const connector = new ConnectorClient(origin, 'runtime-token')
+    const captured = captureLogger()
+    const connector = new ConnectorClient(origin, 'runtime-token', 30_000, captured.logger)
 
     await expect(connector.listActions('example')).rejects.toMatchObject({ code: 'connector.unavailable' })
+    expect(captured.output()).toContain('"category":"connector.request.failed"')
+    expect(captured.output()).toContain('"failure":"response-invalid"')
+    expect(captured.output()).toContain('"operation":"actions.list"')
+    expect(captured.output()).not.toContain('Invalid schema.')
   })
 
   it('uses only the explicit public Console origin for Connection pages', async () => {
