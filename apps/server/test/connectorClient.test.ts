@@ -430,6 +430,100 @@ describe('Server Connector client', () => {
     expect(actions.every((action) => !action.authenticated)).toBe(true)
   })
 
+  it('stops concurrent Action responses when the shared catalog budget is exhausted', async () => {
+    const providers = Array.from({ length: 16 }, (_, index) => ({
+      authTypes: ['no_auth'],
+      displayName: `Service ${index}`,
+      service: `service-${index}`,
+    }))
+    const firstChunkBytes = 512 * 1024
+    const releases: (() => void)[] = []
+    let abortedBodies = 0
+    let finishedBodies = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : input.toString())
+        if (url.pathname == '/v1/providers') return new Response(JSON.stringify(success(providers)))
+        if (url.pathname == '/v1/apps') return new Response(JSON.stringify(success([])))
+        const service = url.searchParams.get('service')
+        if (service == null) throw new Error('Action catalog request omitted its Provider service.')
+        const body = new TextEncoder().encode(
+          JSON.stringify(
+            success([
+              {
+                description: 'x'.repeat(600 * 1024),
+                id: `${service}.run`,
+                inputSchema: { properties: {}, type: 'object' },
+                name: 'Run',
+                outputSchema: { properties: {}, type: 'object' },
+                service,
+              },
+            ]),
+          ),
+        )
+        let closed = false
+        let first = true
+        let resolvePull: (() => void) | undefined
+        const stream = new ReadableStream<Uint8Array>(
+          {
+            start(controller) {
+              init?.signal?.addEventListener(
+                'abort',
+                () => {
+                  if (closed) return
+                  closed = true
+                  abortedBodies += 1
+                  controller.error(init.signal?.reason)
+                  resolvePull?.()
+                },
+                { once: true },
+              )
+            },
+            pull(controller) {
+              if (first) {
+                first = false
+                controller.enqueue(body.slice(0, firstChunkBytes))
+                return
+              }
+              return new Promise<void>((resolve) => {
+                resolvePull = resolve
+                releases.push(() => {
+                  if (!closed) {
+                    closed = true
+                    finishedBodies += 1
+                    controller.enqueue(body.slice(firstChunkBytes))
+                    controller.close()
+                  }
+                  resolve()
+                })
+                if (releases.length == providers.length) {
+                  const [release, ...rest] = releases
+                  release?.()
+                  queueMicrotask(() => {
+                    for (const current of rest) current()
+                  })
+                }
+              })
+            },
+          },
+          { highWaterMark: 0 },
+        )
+        return new Response(stream)
+      }),
+    )
+    const captured = captureLogger()
+    const connector = new ConnectorClient('https://connector.test', 'runtime-token', 30_000, captured.logger)
+
+    await expect(connector.listActions()).rejects.toMatchObject({ code: 'connector.unavailable' })
+    await Promise.resolve()
+
+    expect(finishedBodies).toBeLessThan(providers.length)
+    expect(abortedBodies).toBeGreaterThan(0)
+    expect(captured.output().match(/"failure":"response-too-large"/g)).toHaveLength(1)
+    expect(captured.output()).toContain('"limitBytes":8388608')
+  })
+
   it('projects public Connector Actions without a Connection', async () => {
     const origin = await startConnector((request, response) => {
       if (request.url == '/v1/providers') {

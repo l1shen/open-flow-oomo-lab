@@ -135,7 +135,27 @@ export class ConnectorClient implements ConnectorHost {
     const catalogs: (readonly RuntimeAction[])[] = []
     const controller = new AbortController()
     const requestSignal = signal == null ? controller.signal : AbortSignal.any([signal, controller.signal])
-    let bytes = 0
+    let catalogError: ConnectorTaskError | undefined
+    const budget = {
+      exhaust: (responseBytes: number) => {
+        if (catalogError != null) return catalogError
+        catalogError = unavailable()
+        this.#logger.warn(
+          {
+            category: 'connector.request.failed',
+            failure: 'response-too-large',
+            limitBytes: maxActionCatalogBytes,
+            operation: 'actions.list',
+            responseBytes,
+          },
+          'Connector Action catalog was too large.',
+        )
+        controller.abort(catalogError)
+        return catalogError
+      },
+      limit: maxActionCatalogBytes,
+      used: 0,
+    }
     let next = 0
     try {
       await Promise.all(
@@ -144,23 +164,16 @@ export class ConnectorClient implements ConnectorHost {
             const index = next++
             const provider = providers[index]
             if (provider == null) return
-            const current = await this.#actions(`v1/actions?service=${encodeURIComponent(provider.serviceId)}`, false, requestSignal, teamId, {
-              serviceId: provider.serviceId,
-            })
-            bytes += Buffer.byteLength(JSON.stringify(current))
-            if (bytes > maxActionCatalogBytes) {
-              this.#logger.warn(
-                {
-                  category: 'connector.request.failed',
-                  failure: 'response-too-large',
-                  limitBytes: maxActionCatalogBytes,
-                  operation: 'actions.list',
-                  responseBytes: bytes,
-                },
-                'Connector Action catalog was too large.',
-              )
-              throw unavailable()
-            }
+            const current = await this.#actions(
+              `v1/actions?service=${encodeURIComponent(provider.serviceId)}`,
+              false,
+              requestSignal,
+              teamId,
+              {
+                serviceId: provider.serviceId,
+              },
+              budget,
+            )
             catalogs[index] = current
           }
         }),
@@ -276,8 +289,10 @@ export class ConnectorClient implements ConnectorHost {
     signal?: AbortSignal,
     teamId?: string,
     fields: Readonly<Record<string, string>> = {},
+    budget?: { readonly exhaust: (responseBytes: number) => ConnectorTaskError; readonly limit: number; used: number },
   ): Promise<readonly RuntimeAction[]> {
     const response = await this.#request(search ? 'actions.search' : 'actions.list', path, { method: 'GET' }, signal, {
+      budget,
       fields,
       maximumResponseBytes: search ? maxResponseBytes : maxActionCatalogBytes,
       teamId,
@@ -339,11 +354,13 @@ export class ConnectorClient implements ConnectorHost {
     init: RequestInit,
     signal?: AbortSignal,
     {
+      budget,
       fields = {},
       maximumResponseBytes = maxResponseBytes,
       origin = this.#origin,
       teamId,
     }: {
+      readonly budget?: { readonly exhaust: (responseBytes: number) => ConnectorTaskError; readonly limit: number; used: number }
       readonly fields?: Readonly<Record<string, string>>
       readonly maximumResponseBytes?: number
       readonly origin?: URL
@@ -365,7 +382,7 @@ export class ConnectorClient implements ConnectorHost {
         signal: signal == null ? timeout : AbortSignal.any([signal, timeout]),
       })
       status = response.status
-      const value = await readJson(response, maximumResponseBytes)
+      const value = await readJson(response, maximumResponseBytes, budget)
       if (!response.ok) {
         this.#logger.warn(
           {
@@ -429,7 +446,11 @@ function record(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value == 'object' && !Array.isArray(value)
 }
 
-async function readJson(response: Response, limit: number): Promise<unknown> {
+async function readJson(
+  response: Response,
+  limit: number,
+  budget?: { readonly exhaust: (responseBytes: number) => ConnectorTaskError; readonly limit: number; used: number },
+): Promise<unknown> {
   if (response.body == null) throw unavailable()
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
@@ -438,6 +459,11 @@ async function readJson(response: Response, limit: number): Promise<unknown> {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
+      if (budget != null) {
+        const responseBytes = budget.used + value.byteLength
+        if (responseBytes > budget.limit) throw budget.exhaust(responseBytes)
+        budget.used = responseBytes
+      }
       bytes += value.byteLength
       if (bytes > limit) {
         await reader.cancel()
