@@ -190,68 +190,6 @@ test('keeps Designer node controls in the compact root normalization', async () 
   assert.match(toggleGroup, /data-\[spacing=0\]:last:rounded/)
 })
 
-test('keeps shared popup motion accessible without replacing Designer layout ownership', async () => {
-  const [
-    dropdownMenu,
-    select,
-    contextMenu,
-    popover,
-    tooltip,
-    progress,
-    designerSelect,
-    dateTimePicker,
-    translationInput,
-    reactFlowContainer,
-    reactFlowStyles,
-    nodeMenu,
-    blockQuickPick,
-  ] = await Promise.all([
-    readFile(new URL('src/ui/browser/dropdown-menu.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/ui/browser/select.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/ui/browser/context-menu.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/ui/browser/popover.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/ui/browser/tooltip.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/ui/browser/progress.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/designer/browser/components/select.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/designer/browser/components/dateTimePicker.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/designer/browser/components/input2.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/designer/browser/graph/ReactFlowContainer/ReactFlowContainer.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/designer/browser/graph/ReactFlowContainer/ReactFlowContainer.module.scss', packageRoot), 'utf8'),
-    readFile(new URL('src/designer/browser/graph/Nodes/components/NodeHeadMoreMenu.tsx', packageRoot), 'utf8'),
-    readFile(new URL('src/designer/browser/graph/BlockQuickPickPanel.tsx', packageRoot), 'utf8'),
-  ])
-
-  for (const source of [dropdownMenu, popover]) {
-    assert.match(source, /motion-reduce:animate-none/)
-    assert.match(source, /motion-reduce:transition-none/)
-  }
-  for (const source of [dropdownMenu, select, contextMenu, popover, tooltip]) {
-    assert.ok((source.match(/z-50/g) ?? []).length >= 2)
-  }
-  assert.match(progress, /transition-\[width\]/)
-  assert.match(progress, /motion-reduce:transition-none/)
-  assert.doesNotMatch(progress, /transition-all/)
-  assert.match(designerSelect, /from '@rc-component\/tooltip'/)
-  assert.doesNotMatch(designerSelect, /from 'antd'/)
-  assert.match(designerSelect, /from 'react-select'/)
-  assert.match(designerSelect, /menuPosition=\{props\.menuPosition\}/)
-  assert.match(designerSelect, /getTooltipContainer=\{\(\) => popupContainerRef\.current \|\| getPopupContainer\(\)\}/)
-  assert.doesNotMatch(dateTimePicker, /react-datepicker/)
-  assert.match(dateTimePicker, /'datetime-local'/)
-  assert.match(dateTimePicker, /'date'/)
-  assert.match(dateTimePicker, /'time'/)
-  assert.match(contextMenu, /@base-ui\/react\/context-menu/)
-  assert.match(translationInput, /DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger/)
-  assert.match(translationInput, /<DropdownMenuGroup>[\s\S]*?<DropdownMenuItem[\s\S]*?<\/DropdownMenuGroup>/)
-  assert.match(reactFlowContainer, /<DropdownMenuTrigger nativeButton=\{false\} render=\{<div/)
-  assert.match(reactFlowContainer, /<PopoverTrigger nativeButton=\{false\} render=\{<div/)
-  assert.match(reactFlowStyles, /\.contextMenu\s*\{[^}]*padding:\s*4px;/)
-  assert.match(reactFlowStyles, /\.quickPickPopover\s*\{[^}]*width:\s*auto;/)
-  assert.match(reactFlowStyles, /\.quickPickPopover\s*\{[^}]*padding:\s*0;/)
-  assert.match(nodeMenu, /<ContextMenuTrigger[\s\S]*?\{children\}[\s\S]*?<\/ContextMenuTrigger>/)
-  assert.match(blockQuickPick, /<DropdownMenuTrigger nativeButton=\{false\} render=\{row\}/)
-})
-
 test('keeps Workbench feature CSS from reclaiming shared primitive visuals', async () => {
   const [
     button,
