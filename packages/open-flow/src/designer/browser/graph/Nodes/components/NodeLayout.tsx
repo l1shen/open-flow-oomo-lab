@@ -71,6 +71,7 @@ export const NodeLayout: React.FC<NodeLayoutProps> = /* @__PURE__ */ memo(({ des
   const containerStyle: CSSProperties = {
     width: overviewNodeStore ? OVERVIEW_NODE_WIDTH : Math.max(contentWidth || DEFAULT_NODE_WIDTH, MIN_NODE_WIDTH),
     ['--node-selected-border-color' as any]: selectedOutlineColor,
+    ['--node-selected-shadow' as any]: showError ? 'var(--node-error-selected-shadow)' : undefined,
   }
   const overviewNode = overviewNodeStore ? (
     <OverviewNode
