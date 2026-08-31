@@ -59,6 +59,7 @@ interface ServerAppOptions {
 
 interface AppEnv {
   readonly Variables: {
+    readonly errorCode?: string
     readonly requestId: string
   }
 }
@@ -88,6 +89,7 @@ export function createServerApp(service: ServerService, options: ServerAppOption
     const fields = {
       category: 'http.request.completed',
       durationMs: Math.round(performance.now() - startedAt),
+      ...(context.get('errorCode') == null ? {} : { errorCode: context.get('errorCode') }),
       method: context.req.method,
       path: logPath(context.req.path),
       requestId,
@@ -165,12 +167,15 @@ export function createServerApp(service: ServerService, options: ServerAppOption
   app.notFound(routeNotFound)
   app.onError((error, context) => {
     if (error instanceof ControlError) {
+      context.set('errorCode', error.code)
       return json(error.status, { error: { code: error.code, message: error.message }, version: 1 })
     }
     if (error instanceof AcceptanceError) {
+      context.set('errorCode', error.code)
       const status = error.code == 'revision-conflict' ? 409 : 422
       return json(status, { error: { code: error.code, message: error.message } })
     }
+    context.set('errorCode', serverErrorCode.internal)
     logger.error(
       {
         category: 'http.request.failed',

@@ -30,5 +30,13 @@ export function createLogger(level = process.env.OPEN_FLOW_LOG_LEVEL ?? 'info', 
 export function errorKind(error: unknown): Readonly<Record<string, string>> {
   if (!(error instanceof Error)) return { errorType: typeof error }
   const code = 'code' in error && typeof error.code == 'string' ? error.code : undefined
-  return { ...(code == null ? {} : { errorCode: code }), errorType: error.name }
+  const cause = error.cause
+  if (!(cause instanceof Error)) return { ...(code == null ? {} : { errorCode: code }), errorType: error.name }
+  const causeCode = 'code' in cause && typeof cause.code == 'string' ? cause.code : undefined
+  return {
+    ...(causeCode == null ? {} : { causeErrorCode: causeCode }),
+    causeErrorType: cause.name,
+    ...(code == null ? {} : { errorCode: code }),
+    errorType: error.name,
+  }
 }
