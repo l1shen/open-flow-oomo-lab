@@ -27,7 +27,7 @@ it('applies the Flow-first schema without foreign keys', async () => {
   migrateDatabase(file)
   const database = new DatabaseSync(file)
   try {
-    expect(version(database)).toBe(4)
+    expect(version(database)).toBe(7)
     const tables = database.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as {
       readonly name: string
     }[]
@@ -37,7 +37,12 @@ it('applies the Flow-first schema without foreign keys', async () => {
     expect(tables.map(({ name }) => name)).toContain('flow_connector_teams')
     expect(tables.map(({ name }) => name)).toContain('operator_auth')
     expect(tables.map(({ name }) => name)).toContain('deployment_settings')
+    expect(tables.map(({ name }) => name)).toContain('publish_operations')
+    expect(tables.map(({ name }) => name)).toContain('publish_work')
+    expect(tables.map(({ name }) => name)).toContain('integration_candidates')
+    expect(tables.map(({ name }) => name)).toContain('poll_candidates')
     expect(tables.map(({ name }) => name)).not.toContain('projects')
+    expect(database.prepare("SELECT name FROM pragma_index_info('publish_work_operation') WHERE seqno = 0").get()).toEqual({ name: 'operation_id' })
     for (const { name } of tables) expect(database.prepare(`PRAGMA foreign_key_list(${name})`).all(), name).toEqual([])
   } finally {
     database.close()
@@ -56,7 +61,7 @@ it('upgrades a version 1 Flow database without changing its data', async () => {
 
   const reopened = new DatabaseSync(file)
   try {
-    expect(version(reopened)).toBe(4)
+    expect(version(reopened)).toBe(7)
     expect(reopened.prepare('SELECT revision_id AS revisionId FROM revisions').all()).toEqual([{ revisionId: 'revision-a' }])
     expect(reopened.prepare('SELECT name FROM variables').all()).toEqual([])
   } finally {
@@ -86,7 +91,7 @@ it('adds an immutable Connector Team binding to every existing Flow', async () =
 
   const reopened = new DatabaseSync(file)
   try {
-    expect(version(reopened)).toBe(4)
+    expect(version(reopened)).toBe(7)
     expect(reopened.prepare('SELECT flow_id AS flowId, team_id AS teamId FROM flow_connector_teams').all()).toEqual([{ flowId: 'flow-a', teamId: null }])
     expect(reopened.prepare("SELECT name FROM pragma_table_info('runs') WHERE name = 'connector_team_id'").get()).toEqual({ name: 'connector_team_id' })
   } finally {
@@ -123,7 +128,7 @@ it('discards an old Project schema instead of migrating its data', async () => {
 
   const reset = new DatabaseSync(file)
   try {
-    expect(version(reset)).toBe(4)
+    expect(version(reset)).toBe(7)
     expect(reset.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'projects'").get()).toBeUndefined()
     expect(reset.prepare('SELECT flow_id FROM flows').all()).toEqual([])
   } finally {
@@ -135,13 +140,13 @@ it('rejects a newer Flow schema version without modifying it', async () => {
   const file = await databaseFile()
   migrateDatabase(file)
   const database = new DatabaseSync(file)
-  database.exec('PRAGMA user_version = 5')
+  database.exec('PRAGMA user_version = 8')
   database.close()
 
-  expect(() => migrateDatabase(file)).toThrow('SQLite schema version 5 is newer than the supported version 4.')
+  expect(() => migrateDatabase(file)).toThrow('SQLite schema version 8 is newer than the supported version 7.')
 
   const reopened = new DatabaseSync(file)
-  expect(version(reopened)).toBe(5)
+  expect(version(reopened)).toBe(8)
   reopened.close()
 })
 
@@ -155,7 +160,7 @@ it('resets an unversioned application schema', async () => {
 
   const reset = new DatabaseSync(file)
   try {
-    expect(version(reset)).toBe(4)
+    expect(version(reset)).toBe(7)
     expect(reset.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'flows'").get()).toEqual({ name: 'flows' })
   } finally {
     reset.close()
