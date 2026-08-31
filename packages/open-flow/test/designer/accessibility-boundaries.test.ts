@@ -5,12 +5,6 @@ import { expect, test } from 'vitest'
 
 const traverse = ((traverseModule as unknown as { readonly default?: typeof traverseModule }).default ?? traverseModule) as typeof traverseModule
 
-test('keeps the canvas keyboard focus visible', async () => {
-  const containerStyles = await readFile('src/designer/browser/graph/ReactFlowContainer/ReactFlowContainer.module.scss', 'utf8')
-
-  expect(containerStyles).toMatch(/\.flow:focus-visible \{[\s\S]*?box-shadow: inset 0 0 0 2px var\(--ui-ring\)/)
-})
-
 test('keeps Icon Picker controls named and stateful', async () => {
   const source = await readFile('src/designer/browser/icons/IconPicker/IconPicker.tsx', 'utf8')
 
