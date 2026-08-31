@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { createServerApp } from '../node/http.ts'
-import { createLogger } from '../node/logger.ts'
+import { createLogger, errorKind } from '../node/logger.ts'
 import { ServerService } from '../node/service.ts'
 import { acceptRun } from './runFixture.ts'
 import { closeService, openService, startService } from './serviceFixture.ts'
@@ -25,7 +25,7 @@ async function databaseFile(): Promise<string> {
   return path.join(directory, 'open-flow.sqlite')
 }
 
-function capture() {
+function capture(level = 'trace') {
   let output = ''
   const destination: DestinationStream = {
     write(chunk) {
@@ -39,7 +39,7 @@ function capture() {
         .split('\n')
         .filter((line) => line.length > 0)
         .map((line) => JSON.parse(line) as Readonly<Record<string, unknown>>),
-    logger: createLogger('trace', destination),
+    logger: createLogger(level, destination),
     output: () => output,
   }
 }
@@ -92,6 +92,18 @@ it('writes Pino JSON and redacts common secret fields', () => {
   expect(captured.output()).not.toContain('root-token-secret')
 })
 
+it('keeps nested transport categories without logging error messages', () => {
+  const cause = Object.assign(new Error('network-secret-must-not-leak'), { code: 'ECONNRESET' })
+  const error = new TypeError('request-secret-must-not-leak', { cause })
+
+  expect(errorKind(error)).toEqual({
+    causeErrorCode: 'ECONNRESET',
+    causeErrorType: 'Error',
+    errorType: 'TypeError',
+  })
+  expect(JSON.stringify(errorKind(error))).not.toContain('secret-must-not-leak')
+})
+
 it('correlates an unknown HTTP failure without logging headers or request bodies', async () => {
   const captured = capture()
   const service = await openService(await databaseFile())
@@ -121,7 +133,8 @@ it('correlates an unknown HTTP failure without logging headers or request bodies
       expect.objectContaining({ category: 'http.request.failed', level: 50, method: 'POST', path: '/v1/flows', requestId: 'request-123' }),
       expect.objectContaining({
         category: 'http.request.completed',
-        level: 10,
+        errorCode: 'internal',
+        level: 40,
         method: 'POST',
         path: '/v1/flows',
         requestId: 'request-123',
@@ -132,6 +145,30 @@ it('correlates an unknown HTTP failure without logging headers or request bodies
   expect(captured.output()).not.toContain('request-authorization-secret')
   expect(captured.output()).not.toContain('request-cookie-secret')
   expect(captured.output()).not.toContain('request-body-secret')
+})
+
+it('logs the stable Control error code for server errors at the default level', async () => {
+  const captured = capture('info')
+  const service = await openService(await databaseFile())
+  services.push(service)
+  const app = createServerApp(service, { logger: captured.logger, resolveControlActor: () => 'operator' })
+
+  const response = await app.request('http://server.local/v1/connector/actions')
+
+  expect(response.status).toBe(503)
+  expect(await response.json()).toMatchObject({ error: { code: 'connector.unconfigured' } })
+  expect(captured.entries()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        category: 'http.request.completed',
+        errorCode: 'connector.unconfigured',
+        level: 40,
+        method: 'GET',
+        path: '/v1/connector/actions',
+        status: 503,
+      }),
+    ]),
+  )
 })
 
 it('does not log callback endpoint identities', async () => {

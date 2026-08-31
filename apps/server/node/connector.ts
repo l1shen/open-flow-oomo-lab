@@ -8,10 +8,10 @@ import { errorKind, silentLogger } from './logger.ts'
 
 const maxResponseBytes = 1024 * 1024
 const maxActionCatalogBytes = 8 * 1024 * 1024
+const catalogConcurrency = 16
 const readinessTimeoutMs = 1_000
 
 interface RuntimeAction {
-  readonly authenticated: boolean
   readonly description: string
   readonly id: string
   readonly inputSchema: JsonValue
@@ -88,8 +88,11 @@ export class ConnectorClient implements ConnectorHost {
   async listTeams(signal?: AbortSignal): Promise<readonly { readonly id: string; readonly name: string; readonly systemCreated: boolean }[]> {
     if (this.#teamOrigin == null || this.#token.length == 0) throw unavailable()
     const response = await this.#request('teams.list', 'v1/me/teams', { method: 'GET' }, signal, { origin: this.#teamOrigin })
-    if (!response.ok || !record(response.value) || !Array.isArray(response.value.teams)) throw unavailable()
-    return response.value.teams.map(runtimeTeam)
+    if (!response.ok) throw unavailable()
+    return this.#decode('teams.list', {}, () => {
+      if (!record(response.value) || !Array.isArray(response.value.teams)) throw unavailable()
+      return response.value.teams.map(runtimeTeam)
+    })
   }
 
   async ready(): Promise<boolean> {
@@ -106,44 +109,95 @@ export class ConnectorClient implements ConnectorHost {
   }
 
   async listProviders(signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorProvider[]> {
+    return (await this.#providers(signal, teamId)).map((provider) =>
+      provider.icon == null
+        ? { serviceId: provider.serviceId, serviceName: provider.serviceName }
+        : { icon: provider.icon, serviceId: provider.serviceId, serviceName: provider.serviceName },
+    )
+  }
+
+  async #providers(signal?: AbortSignal, teamId?: string) {
     const response = await this.#request('providers.list', 'v1/providers', { method: 'GET' }, signal, { teamId })
     if (!response.ok) throw unavailable()
-    return runtimeList(runtimeData(response.value), runtimeProvider)
+    return this.#decode('providers.list', {}, () => runtimeList(runtimeData(response.value), runtimeProvider))
   }
 
   async listActions(serviceId?: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorAction[]> {
     if (serviceId != null) {
       const [providers, connections, actions] = await Promise.all([
-        this.listProviders(signal, teamId),
+        this.#providers(signal, teamId),
         this.#connections(serviceId, signal, teamId),
-        this.#actions(`v1/actions?service=${encodeURIComponent(serviceId)}`, false, signal, teamId),
+        this.#actions(`v1/actions?service=${encodeURIComponent(serviceId)}`, false, signal, teamId, { serviceId }),
       ])
-      return mapActions(actions, providers, connections)
+      return this.#decode('actions.list', { serviceId }, () => mapActions(actions, providers, connections))
     }
-    const [providers, connections] = await Promise.all([this.listProviders(signal, teamId), this.#connections(undefined, signal, teamId)])
-    const actions: RuntimeAction[] = []
-    let bytes = 0
-    for (const provider of providers) {
-      const current = await this.#actions(`v1/actions?service=${encodeURIComponent(provider.serviceId)}`, false, signal, teamId)
-      bytes += Buffer.byteLength(JSON.stringify(current))
-      if (bytes > maxActionCatalogBytes) throw unavailable()
-      actions.push(...current)
+    const [providers, connections] = await Promise.all([this.#providers(signal, teamId), this.#connections(undefined, signal, teamId)])
+    const catalogs: (readonly RuntimeAction[])[] = []
+    const controller = new AbortController()
+    const requestSignal = signal == null ? controller.signal : AbortSignal.any([signal, controller.signal])
+    let catalogError: ConnectorTaskError | undefined
+    const budget = {
+      exhaust: (responseBytes: number) => {
+        if (catalogError != null) return catalogError
+        catalogError = unavailable()
+        this.#logger.warn(
+          {
+            category: 'connector.request.failed',
+            failure: 'response-too-large',
+            limitBytes: maxActionCatalogBytes,
+            operation: 'actions.list',
+            responseBytes,
+          },
+          'Connector Action catalog was too large.',
+        )
+        controller.abort(catalogError)
+        return catalogError
+      },
+      limit: maxActionCatalogBytes,
+      used: 0,
     }
-    return mapActions(actions, providers, connections)
+    let next = 0
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(catalogConcurrency, providers.length) }, async () => {
+          while (next < providers.length) {
+            const index = next++
+            const provider = providers[index]
+            if (provider == null) return
+            const current = await this.#actions(
+              `v1/actions?service=${encodeURIComponent(provider.serviceId)}`,
+              false,
+              requestSignal,
+              teamId,
+              {
+                serviceId: provider.serviceId,
+              },
+              budget,
+            )
+            catalogs[index] = current
+          }
+        }),
+      )
+    } catch (error) {
+      controller.abort(error)
+      throw error
+    }
+    const actions = catalogs.flat()
+    return this.#decode('actions.list', {}, () => mapActions(actions, providers, connections))
   }
 
   async searchActions(query: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorAction[]> {
     const [providers, connections, actions] = await Promise.all([
-      this.listProviders(signal, teamId),
+      this.#providers(signal, teamId),
       this.#connections(undefined, signal, teamId),
       this.#actions(`v1/actions/search?q=${encodeURIComponent(query)}`, true, signal, teamId),
     ])
-    return mapActions(actions, providers, connections)
+    return this.#decode('actions.search', {}, () => mapActions(actions, providers, connections))
   }
 
   async getAction(actionId: string, signal?: AbortSignal, teamId?: string): Promise<ConnectorAction> {
     const [providers, connections, response] = await Promise.all([
-      this.listProviders(signal, teamId),
+      this.#providers(signal, teamId),
       this.#connections(undefined, signal, teamId),
       this.#request('actions.get', `v1/actions/${encodeURIComponent(actionId)}`, { method: 'GET' }, signal, { fields: { actionId }, teamId }),
     ])
@@ -152,7 +206,7 @@ export class ConnectorClient implements ConnectorHost {
       if (failure?.success === false && failure.errorCode === 'unknown_action') throw actionNotFound()
       throw unavailable()
     }
-    return mapAction(runtimeAction(runtimeData(response.value)), providers, connections)
+    return this.#decode('actions.get', { actionId }, () => mapAction(runtimeAction(runtimeData(response.value)), providers, connections))
   }
 
   async listConnections(serviceId: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorConnection[]> {
@@ -229,13 +283,22 @@ export class ConnectorClient implements ConnectorHost {
     throw unavailable()
   }
 
-  async #actions(path: string, search: boolean, signal?: AbortSignal, teamId?: string): Promise<readonly RuntimeAction[]> {
+  async #actions(
+    path: string,
+    search: boolean,
+    signal?: AbortSignal,
+    teamId?: string,
+    fields: Readonly<Record<string, string>> = {},
+    budget?: { readonly exhaust: (responseBytes: number) => ConnectorTaskError; readonly limit: number; used: number },
+  ): Promise<readonly RuntimeAction[]> {
     const response = await this.#request(search ? 'actions.search' : 'actions.list', path, { method: 'GET' }, signal, {
+      budget,
+      fields,
       maximumResponseBytes: search ? maxResponseBytes : maxActionCatalogBytes,
       teamId,
     })
     if (!response.ok) throw unavailable()
-    return runtimeList(runtimeData(response.value), runtimeAction)
+    return this.#decode(search ? 'actions.search' : 'actions.list', fields, () => runtimeList(runtimeData(response.value), runtimeAction))
   }
 
   async #connections(serviceId?: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorConnection[]> {
@@ -245,9 +308,25 @@ export class ConnectorClient implements ConnectorHost {
       teamId,
     })
     if (!response.ok) throw unavailable()
-    const connections = runtimeList(runtimeData(response.value), runtimeConnection)
-    if (serviceId != null && connections.some((connection) => connection.serviceId != serviceId)) throw unavailable()
-    return connections
+    const fields: Readonly<Record<string, string>> = serviceId == null ? {} : { serviceId }
+    return this.#decode('connections.list', fields, () => {
+      const connections = runtimeList(runtimeData(response.value), runtimeConnection)
+      if (serviceId != null && connections.some((connection) => connection.serviceId != serviceId)) throw unavailable()
+      return connections
+    })
+  }
+
+  #decode<Value>(operation: string, fields: Readonly<Record<string, string>>, decode: () => Value): Value {
+    try {
+      return decode()
+    } catch (error) {
+      this.#logger.warn(
+        { category: 'connector.request.failed', failure: 'response-invalid', operation, ...fields, ...errorKind(error) },
+        'Connector response was invalid.',
+      )
+      if (error instanceof ConnectorTaskError) throw error
+      throw unavailable()
+    }
   }
 
   async #resolveConnection(connectionId: string, service: string, signal: AbortSignal, teamId?: string): Promise<string> {
@@ -275,11 +354,13 @@ export class ConnectorClient implements ConnectorHost {
     init: RequestInit,
     signal?: AbortSignal,
     {
+      budget,
       fields = {},
       maximumResponseBytes = maxResponseBytes,
       origin = this.#origin,
       teamId,
     }: {
+      readonly budget?: { readonly exhaust: (responseBytes: number) => ConnectorTaskError; readonly limit: number; used: number }
       readonly fields?: Readonly<Record<string, string>>
       readonly maximumResponseBytes?: number
       readonly origin?: URL
@@ -301,7 +382,7 @@ export class ConnectorClient implements ConnectorHost {
         signal: signal == null ? timeout : AbortSignal.any([signal, timeout]),
       })
       status = response.status
-      const value = await readJson(response, maximumResponseBytes)
+      const value = await readJson(response, maximumResponseBytes, budget)
       if (!response.ok) {
         this.#logger.warn(
           {
@@ -365,7 +446,11 @@ function record(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value == 'object' && !Array.isArray(value)
 }
 
-async function readJson(response: Response, limit: number): Promise<unknown> {
+async function readJson(
+  response: Response,
+  limit: number,
+  budget?: { readonly exhaust: (responseBytes: number) => ConnectorTaskError; readonly limit: number; used: number },
+): Promise<unknown> {
   if (response.body == null) throw unavailable()
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
@@ -374,6 +459,11 @@ async function readJson(response: Response, limit: number): Promise<unknown> {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
+      if (budget != null) {
+        const responseBytes = budget.used + value.byteLength
+        if (responseBytes > budget.limit) throw budget.exhaust(responseBytes)
+        budget.used = responseBytes
+      }
       bytes += value.byteLength
       if (bytes > limit) {
         await reader.cancel()
@@ -407,11 +497,13 @@ function runtimeList<Value>(value: unknown, decode: (value: unknown) => Value): 
   return value.map(decode)
 }
 
-function runtimeProvider(value: unknown): ConnectorProvider {
+function runtimeProvider(value: unknown) {
   const source = record(value) ? value : undefined
   if (source == null) throw unavailable()
+  if (!Array.isArray(source.authTypes) || source.authTypes.some((authType) => typeof authType != 'string')) throw unavailable()
   if (source.iconUrl != null && typeof source.iconUrl != 'string') throw unavailable()
   return {
+    authenticated: !source.authTypes.includes('no_auth'),
     ...(source.iconUrl == null || source.iconUrl.length == 0 ? {} : { icon: source.iconUrl }),
     serviceId: string(source.service),
     serviceName: string(source.displayName),
@@ -422,13 +514,7 @@ function runtimeAction(value: unknown): RuntimeAction {
   const source = record(value) ? value : undefined
   if (source == null) throw unavailable()
   if (typeof source.description != 'string') throw unavailable()
-  const execution = record(source.execution) ? source.execution : undefined
-  let authenticated: boolean
-  if (typeof source.authenticated == 'boolean') authenticated = source.authenticated
-  else if (typeof execution?.noAuthRunnable == 'boolean') authenticated = !execution.noAuthRunnable
-  else throw unavailable()
   return {
-    authenticated,
     description: source.description,
     id: string(source.id),
     inputSchema: source.inputSchema as JsonValue,
@@ -474,17 +560,21 @@ function connectionStatus(value: unknown): 'active' | 'disconnected' {
 
 function mapActions(
   actions: readonly RuntimeAction[],
-  providers: readonly ConnectorProvider[],
+  providers: readonly ReturnType<typeof runtimeProvider>[],
   connections: readonly ConnectorConnection[],
 ): readonly ConnectorAction[] {
   return actions.map((action) => mapAction(action, providers, connections))
 }
 
-function mapAction(action: RuntimeAction, providers: readonly ConnectorProvider[], connections: readonly ConnectorConnection[]): ConnectorAction {
+function mapAction(
+  action: RuntimeAction,
+  providers: readonly ReturnType<typeof runtimeProvider>[],
+  connections: readonly ConnectorConnection[],
+): ConnectorAction {
   const provider = providers.find((candidate) => candidate.serviceId == action.service)
   if (provider == null) throw unavailable()
   const active = connections.filter((connection) => connection.serviceId == action.service && connection.status == 'active')
-  const defaultConnection = action.authenticated
+  const defaultConnection = provider.authenticated
     ? (active.find((connection) => connection.isDefault) ?? (active.length == 1 ? active[0] : undefined))
     : undefined
   let ports: ReturnType<typeof connectorActionPorts>
@@ -495,7 +585,7 @@ function mapAction(action: RuntimeAction, providers: readonly ConnectorProvider[
   }
   return {
     actionId: action.id,
-    authenticated: action.authenticated,
+    authenticated: provider.authenticated,
     ...(defaultConnection == null ? {} : { defaultConnection }),
     description: action.description,
     ...(provider.icon == null ? {} : { icon: provider.icon }),
