@@ -19,6 +19,7 @@ export interface HandleProps {
   kind?: HandleKind
   disabled?: boolean
   isConnectable?: boolean
+  onPointerDown?: React.PointerEventHandler<HTMLDivElement>
   tabIndex?: number
   ariaHidden?: React.AriaAttributes['aria-hidden']
 }
@@ -30,7 +31,14 @@ export function Handle(props: HandleProps): JSX.Element {
 
   return (
     <div
-      className={clsx(styles.wrapper, position === 'left' ? styles.left : styles.right, props.disabled && styles.disabled, props.className)}
+      className={clsx(
+        styles.wrapper,
+        position === 'left' ? styles.left : styles.right,
+        props.disabled && styles.disabled,
+        props.onPointerDown && styles.pointerDown,
+        props.className,
+      )}
+      onPointerDown={props.onPointerDown}
       style={props.kind && { ['--bg' as any]: `var(--edge-${props.kind})` }}
     >
       <Component

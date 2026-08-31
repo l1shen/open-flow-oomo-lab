@@ -90,3 +90,8 @@
     pointer-events: none;
   }
 }
+
+.pointerDown {
+  cursor: not-allowed;
+  pointer-events: auto;
+}

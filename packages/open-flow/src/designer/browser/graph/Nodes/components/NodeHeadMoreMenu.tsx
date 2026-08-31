@@ -6,14 +6,14 @@ import type { DesignerStore } from '../../../stores/designer/designer.store.ts'
 import type { FlowRunStatus } from '../../../stores/designer/typings.ts'
 import type { NodeStore, NodeStoreDisplay$ } from '../../../stores/node/node.store.ts'
 
-import { useStoreApi } from '@xyflow/react'
+import { NodeToolbar, useStoreApi, useViewport } from '@xyflow/react'
 import { memo } from 'react'
-import { useDerived, useVal } from 'use-value-enhancer'
+import { useVal } from 'use-value-enhancer'
 import { useTranslate } from 'val-i18n-react'
 import { Button } from '../../../../../ui/browser/button.tsx'
 import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuTrigger } from '../../../../../ui/browser/context-menu.tsx'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../../../../ui/browser/dropdown-menu.tsx'
-import { coalesce, identity, lerp, toggle, toTrue } from '../../../base/trivial.ts'
+import { coalesce, identity, toggle, toTrue } from '../../../base/trivial.ts'
 import { defaultTooltipClassName } from '../../../components/label.tsx'
 import { DesignerTooltip } from '../../../components/tooltip.tsx'
 import { iconOf } from '../../../jsonSchema/preset.ts'
@@ -340,30 +340,8 @@ function getContextMenuItems({
 }
 
 export const NodeFloatBar: React.FC<NodeFloatBarProps> = /* @__PURE__ */ memo(function NodeFloatBar({ designerStore, nodeStore }) {
-  const style = useDerived(
-    designerStore.$.viewport,
-    (viewport) => {
-      const MinZoom = 0.2
-      const MinY = -4
-      const MaxY = -4
-      const MinBorderRadius = 3
-      const MaxBorderRadius = 5
-      const MinFontSize = 12
-      const MaxFontSize = 13
-
-      const borderRadius = viewport ? lerp((viewport.zoom - MinZoom) / (1 - MinZoom), MinBorderRadius, MaxBorderRadius) : 5
-      const scale = viewport ? lerp((1 / viewport.zoom - 1) / (1 / MinZoom - 1), 1, (MinFontSize * 5) / MaxFontSize) : 1
-      const y = viewport ? lerp((viewport.zoom - MinZoom) / (1 - MinZoom), MinY, MaxY) : -10
-
-      return {
-        borderRadius: `${Math.min(borderRadius, MaxBorderRadius)}px`,
-        transform: `scale(${Math.max(scale, 1)}) translate(-50%, ${y}px)`,
-      }
-    },
-    true,
-  )
-
   const t = useTranslate()
+  const { zoom } = useViewport()
   const taskNodeStore = toTaskNodeStore(nodeStore)
   const runStatus = useVal(designerStore.$.runStatus)
   const showSettings = useVal(nodeStore.$.showSettings)
@@ -383,7 +361,7 @@ export const NodeFloatBar: React.FC<NodeFloatBarProps> = /* @__PURE__ */ memo(fu
   const floatBarItems = items.filter((item): item is ContextMenuActionItem => !!item)
 
   return (
-    <div className={styles.floatBar} style={style}>
+    <NodeToolbar className={styles.floatBar} offset={4 - 8 * zoom}>
       {nodeStore.display$ && <NodeStatus flowStatus$={designerStore.$.runStatus} display$={nodeStore.display$} />}
       {floatBarItems.map((item) => {
         const active = item.key === '$nodeSetting' && showSettings
@@ -403,7 +381,7 @@ export const NodeFloatBar: React.FC<NodeFloatBarProps> = /* @__PURE__ */ memo(fu
           </DesignerTooltip>
         )
       })}
-    </div>
+    </NodeToolbar>
   )
 })
 

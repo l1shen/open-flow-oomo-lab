@@ -53,6 +53,7 @@ function completed(child: ChildProcess, name: string): Promise<void> {
 const backend = start('node', ['--watch', '--no-node-snapshot', 'node/main.ts', '--api-only'], {
   ...process.env,
   OPEN_FLOW_HOST: '127.0.0.1',
+  OPEN_FLOW_LOG_LEVEL: process.env.OPEN_FLOW_LOG_LEVEL ?? 'debug',
   OPEN_FLOW_TOKEN: operatorToken,
   OPEN_FLOW_PORT: String(backendPort),
 })

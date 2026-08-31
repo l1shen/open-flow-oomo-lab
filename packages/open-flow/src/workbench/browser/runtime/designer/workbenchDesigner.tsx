@@ -18,7 +18,7 @@ import type { AddNodeOption } from './addNodeOptions.ts'
 import type { ConditionSettings, DesignerTarget } from './flowChanges.ts'
 import type { WebhookSettings } from './flowChanges.ts'
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLang, useTranslate } from 'val-i18n-react'
 import { FlowDesignerView } from '../../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import { compareJSONSchema } from '../../../../manifest/common/schemaCompare.ts'
@@ -32,7 +32,10 @@ interface Props {
   readonly blocksOpen: boolean
   readonly disabled: boolean
   readonly theme: WorkbenchTheme
-  readonly focusNodeRequest?: { readonly nodeId: string; readonly requestId: number }
+  readonly focusNodeRequest?: {
+    readonly nodeId: string
+    readonly requestId: number
+  }
   readonly inspectorOpen: boolean
   readonly model: DesignerGraph
   readonly onAddNode: (option: AddNodeOption, position: Point, connection?: (nodeId: string) => Omit<DesignerEdge, 'id'>) => Promise<string | undefined>
@@ -71,11 +74,13 @@ interface Props {
 }
 
 export interface WorkbenchDesignerHandle {
+  readonly addNode: (option: AddNodeOption, canvasPosition?: Point) => Promise<string | undefined>
   readonly focusCanvas: () => void
   readonly registerAddNodeOption: (option: AddNodeOption) => void
 }
 
 const browseProviderTriggersId = 'workbench:browse-provider-triggers'
+const inspectorReflowDelay = 300
 
 function conditionOperator(operator: FlowDesignerViewConditionChange['cases'][number]['expressions'][number]['operator']): ConditionOperator {
   switch (operator) {
@@ -121,7 +126,10 @@ function conditionSettings(value: FlowDesignerViewConditionChange): ConditionSet
     cases: value.cases.map((item) => ({
       expressions: item.expressions.map((expression) =>
         Object.assign(
-          { input: expression.input, operator: conditionOperator(expression.operator) },
+          {
+            input: expression.input,
+            operator: conditionOperator(expression.operator),
+          },
           expression.value === undefined ? {} : { value: expression.value as JsonValue },
         ),
       ),
@@ -210,12 +218,45 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
 ): ReactElement {
   const language = useLang()
   const t = useTranslate()
-  const [addNodeRequest, setAddNodeRequest] = useState<{ readonly position: Point }>()
+  const [addNodeRequest, setAddNodeRequest] = useState<{
+    readonly position: Point
+    readonly screenPosition?: Point
+  }>()
+  const [addItemRequest, setAddItemRequest] = useState<{
+    readonly itemId: string
+    readonly onComplete?: (nodeId: string | undefined) => void
+    readonly position: Point
+    readonly screenPosition?: Point
+  }>()
   const [selectedEdge, setSelectedEdge] = useState<DesignerEdge>()
+  const [readyFocusNodeRequest, setReadyFocusNodeRequest] = useState(focusNodeRequest)
   const canvas = useRef<HTMLElement>(null)
+  const inspectorOpenedAt = useRef(0)
   const dynamicOptions = useRef(new Map<string, AddNodeOption>())
+  const pendingAdd = useRef<((nodeId: string | undefined) => void) | undefined>(undefined)
   const targetGeneration = useRef(0)
   const staticOptions = useMemo(() => indexAddNodeOptions(addNodeOptions), [addNodeOptions])
+
+  useLayoutEffect(() => {
+    inspectorOpenedAt.current = inspectorOpen ? performance.now() : 0
+  }, [inspectorOpen])
+
+  useEffect(() => {
+    if (focusNodeRequest == null) {
+      setReadyFocusNodeRequest(undefined)
+      return
+    }
+    const elapsed = inspectorOpenedAt.current == 0 ? 0 : performance.now() - inspectorOpenedAt.current
+    const delay = Math.max(0, inspectorReflowDelay - elapsed)
+    if (delay == 0) {
+      setReadyFocusNodeRequest(focusNodeRequest)
+      return
+    }
+    setReadyFocusNodeRequest(undefined)
+    const timer = globalThis.setTimeout(() => setReadyFocusNodeRequest(focusNodeRequest), delay)
+    return () => globalThis.clearTimeout(timer)
+  }, [focusNodeRequest])
+
   const designerAddItems = useMemo(() => {
     const items = [...addItems(addNodeOptions)]
     if (target?.kind != 'flow') return items
@@ -248,8 +289,14 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
       if (from == null || to == null || typeof from != 'object' || Array.isArray(from) || typeof to != 'object' || Array.isArray(to)) return true
       if (Object.keys(from).length == 0 || Object.keys(to).length == 0) return true
       const result = compareJSONSchema(
-        { packageId: undefined, schema: output.nullable ? { anyOf: [from, { type: 'null' }] } : from },
-        { packageId: undefined, schema: input.nullable ? { anyOf: [to, { type: 'null' }] } : to },
+        {
+          packageId: undefined,
+          schema: output.nullable ? { anyOf: [from, { type: 'null' }] } : from,
+        },
+        {
+          packageId: undefined,
+          schema: input.nullable ? { anyOf: [to, { type: 'null' }] } : to,
+        },
       )
       return result.kind != 'incompatible'
     }
@@ -259,24 +306,59 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
     targetGeneration.current++
     setSelectedEdge(undefined)
     setAddNodeRequest(undefined)
+    setAddItemRequest(undefined)
+    pendingAdd.current?.(undefined)
+    pendingAdd.current = undefined
     dynamicOptions.current.clear()
   }, [target?.kind == 'subflow' ? target.id : undefined, target?.kind])
+
+  const defaultPosition = (canvasPosition: Point = { x: 92, y: 92 }): Point => ({
+    x: (canvasPosition.x - model.viewport.x) / model.viewport.zoom,
+    y: (canvasPosition.y - model.viewport.y) / model.viewport.zoom,
+  })
+
+  const screenPosition = (canvasPosition: Point): Point | undefined => {
+    const rect = canvas.current?.getBoundingClientRect()
+    return rect == null ? undefined : { x: rect.left + canvasPosition.x, y: rect.top + canvasPosition.y }
+  }
+
+  const requestAddNode = (option: AddNodeOption, canvasPosition: Point = { x: 92, y: 92 }): Promise<string | undefined> => {
+    pendingAdd.current?.(undefined)
+    dynamicOptions.current.set(option.id, option)
+    return new Promise((resolve) => {
+      const complete = (nodeId: string | undefined): void => {
+        if (pendingAdd.current != complete) return
+        pendingAdd.current = undefined
+        setAddItemRequest(undefined)
+        resolve(nodeId)
+      }
+      pendingAdd.current = complete
+      setAddItemRequest({
+        itemId: option.id,
+        onComplete: complete,
+        position: defaultPosition(canvasPosition),
+        screenPosition: screenPosition(canvasPosition),
+      })
+    })
+  }
 
   useImperativeHandle(
     ref,
     () => ({
+      addNode: requestAddNode,
       focusCanvas: () => canvas.current?.focus({ preventScroll: true }),
       registerAddNodeOption: (option) => dynamicOptions.current.set(option.id, option),
     }),
-    [],
+    [requestAddNode],
   )
 
-  const defaultPosition = (): Point => ({
-    x: (92 - model.viewport.x) / model.viewport.zoom,
-    y: (92 - model.viewport.y) / model.viewport.zoom,
-  })
-
-  const openAddNode = () => setAddNodeRequest({ position: defaultPosition() })
+  const openAddNode = () => {
+    const canvasPosition = { x: 92, y: 92 }
+    setAddNodeRequest({
+      position: defaultPosition(canvasPosition),
+      screenPosition: screenPosition(canvasPosition),
+    })
+  }
   const recommendedOptions = ['javascript', 'llm:chat', 'trigger:webhook'].flatMap((id) => {
     const option = staticOptions.get(id)
     return option == null ? [] : [option]
@@ -285,7 +367,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
     if (addingRecommended.current) return
     addingRecommended.current = true
     try {
-      if ((await onAddNode(option, defaultPosition())) != null) onOpenInspector()
+      if ((await requestAddNode(option)) != null) onOpenInspector()
     } finally {
       addingRecommended.current = false
     }
@@ -320,12 +402,13 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
       tabIndex={0}
     >
       <FlowDesignerView
+        addItemRequest={addItemRequest}
         addNodeRequest={addNodeRequest}
         addItems={designerAddItems}
         className="workbench-designer-canvas"
         dark={theme == 'dark'}
         editable={!disabled}
-        focusNodeRequest={focusNodeRequest}
+        focusNodeRequest={readyFocusNodeRequest}
         identity={target == null ? 'empty' : target.kind == 'flow' ? 'flow' : `subflow:${target.id}`}
         isValidConnection={isValidConnection}
         language={language}
@@ -336,7 +419,11 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
             return
           }
           const option = staticOptions.get(itemId) ?? dynamicOptions.current.get(itemId)
-          return option == null ? undefined : await onAddNode(option, position, connection)
+          if (option == null) return
+          const firstNode = model.nodes.length == 0
+          const nodeId = await onAddNode(option, position, connection)
+          if (nodeId != null && firstNode && option.kind == 'new-task') onOpenInspector()
+          return nodeId
         }}
         onConnect={onConnect}
         onChangeComment={onChangeComment}
@@ -380,7 +467,9 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
       />
       <Badge className="designer-overlay top-left" variant="secondary">
         <span className="status-dot neutral" />
-        {t('designer.draftBadge', { kind: t(target?.kind == 'subflow' ? 'common.subflow' : 'common.flow') })}
+        {t('designer.draftBadge', {
+          kind: t(target?.kind == 'subflow' ? 'common.subflow' : 'common.flow'),
+        })}
       </Badge>
       <div className="designer-actions designer-overlay top-right">
         <Button
@@ -425,9 +514,13 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
           <span className="empty-icon">
             <Icon name={target.kind == 'flow' ? 'flow' : 'subflow'} size={22} />
           </span>
-          <strong>{t('designer.emptyTitle', { kind: t(target.kind == 'flow' ? 'common.flow' : 'common.subflow') })}</strong>
+          <strong>
+            {t('designer.emptyTitle', {
+              kind: t(target.kind == 'flow' ? 'common.flow' : 'common.subflow'),
+            })}
+          </strong>
           <span className="canvas-empty-description">{t('designer.emptyDescription')}</span>
-          <Button disabled={disabled} onClick={(event) => onOpenBlocks(event.currentTarget)} type="button">
+          <Button disabled={disabled} onClick={openAddNode} type="button">
             <Icon data-icon="inline-start" name="plus" /> {t('designer.addFirstNode')}
           </Button>
           {recommendedOptions.length > 0 && (

@@ -1,5 +1,6 @@
-import type { IsValidConnection, OnMoveEnd, OnNodeDrag, OnSelectionChangeFunc, XYPosition, Edge as RFEdge, Node as RFNode } from '@xyflow/react'
+import type { IsValidConnection, OnMoveEnd, OnNodeDrag, OnSelectionChangeFunc, Edge as RFEdge, Node as RFNode } from '@xyflow/react'
 import type { FlowDesignerStore } from '../../stores/designer/flowDesigner.store.ts'
+import type { ReactFlowContainerProps } from '../ReactFlowContainer/ReactFlowContainer.tsx'
 
 import { useEffect } from 'react'
 import { useVal } from 'use-value-enhancer'
@@ -15,12 +16,13 @@ export interface FlowDesignerProps {
   dark: boolean
   fitView?: boolean
   className?: string
-  addNodeRequest?: { readonly position: XYPosition }
+  addNodeRequest?: ReactFlowContainerProps['addNodeRequest']
+  addItemRequest?: ReactFlowContainerProps['addItemRequest']
   onMoveEnd?: OnMoveEnd
   onNodeDragStop?: OnNodeDrag<RFNode<any>>
   onSelectionChange?: OnSelectionChangeFunc<RFNode<any>, RFEdge<any>>
   isValidConnection?: IsValidConnection<RFEdge<any>>
-  onDropAddItem?: (itemId: string, position: XYPosition) => void
+  onDropAddItem?: ReactFlowContainerProps['onDropAddItem']
 }
 
 export const FlowDesigner: React.FC<FlowDesignerProps> = ({
@@ -29,6 +31,7 @@ export const FlowDesigner: React.FC<FlowDesignerProps> = ({
   fitView,
   className,
   addNodeRequest,
+  addItemRequest,
   onMoveEnd,
   onNodeDragStop,
   onSelectionChange,
@@ -62,6 +65,7 @@ export const FlowDesigner: React.FC<FlowDesignerProps> = ({
           graph$={flowDesignerStore.$.renderedRFGraph}
           viewport$={flowDesignerStore.$$.viewport}
           addNodeRequest={addNodeRequest}
+          addItemRequest={addItemRequest}
           onAddNode={flowDesignerStore.onAddNode}
           onBeforeDelete={flowDesignerStore.onBeforeDelete}
           onNodesChange={flowDesignerStore.handleNodesChange}

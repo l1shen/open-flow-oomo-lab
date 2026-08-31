@@ -34,6 +34,7 @@ export const OverviewNode: React.FC<OverviewNodeProps> = /* @__PURE__ */ memo(fu
 }) {
   const t = useTranslate()
   const designerStore = useDesignerStore()
+  const editable = useVal(designerStore.$.editable)
   const scale = useVal(designerStore.$.scale)
   const selected = useVal(nodeStore.$.selected)
   const displayTitle = useVal(nodeStore.display$.title)
@@ -78,6 +79,11 @@ export const OverviewNode: React.FC<OverviewNodeProps> = /* @__PURE__ */ memo(fu
   const indeterminate = running && progress == null
   const inputHandleProgress = showProgress && !indeterminate && progressWidth > 0
   const outputHandleProgress = inputHandleProgress && progressWidth == 100
+  const onHandlePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    designerStore.switchDisplayMode('detail')
+  }
 
   useEffect(() => {
     if (mounted.current) {
@@ -125,6 +131,7 @@ export const OverviewNode: React.FC<OverviewNodeProps> = /* @__PURE__ */ memo(fu
           active={inputConnected}
           disabled
           isConnectable={false}
+          onPointerDown={editable ? onHandlePointerDown : undefined}
           tabIndex={-1}
           ariaHidden
         />
@@ -158,6 +165,7 @@ export const OverviewNode: React.FC<OverviewNodeProps> = /* @__PURE__ */ memo(fu
           active={outputConnected}
           disabled
           isConnectable={false}
+          onPointerDown={editable ? onHandlePointerDown : undefined}
           tabIndex={-1}
           ariaHidden
         />

@@ -98,25 +98,16 @@
 }
 
 .floatBar {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translate(-50%, -8px);
-  transform-origin: left bottom;
-  display: none;
+  display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
   background-color: var(--node-background-color);
   border: 1px solid var(--node-border-color);
-  border-radius: var(--node-container-radius);
+  border-radius: 5px;
   padding: 0;
   overflow: hidden;
   --icon-font-size: 24px;
   --icon-size: 32px;
-
-  :global(.react-flow__node.selected) & {
-    display: flex;
-  }
 }
 
 .floatBarButton {

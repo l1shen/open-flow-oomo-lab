@@ -1,5 +1,6 @@
 import darkTheme from '../../styles/dark.module.scss'
 import lightTheme from '../../styles/light.module.scss'
+import nodeHeadStyles from '../Nodes/components/NodeHead.module.scss'
 import styles from './ReactFlowContainer.module.scss'
 import './ReactFlowContainer.scss'
 import type {
@@ -45,6 +46,7 @@ import {
   ControlButton,
   Controls,
   Handle,
+  NodeToolbar,
   ReactFlow,
   ReactFlowProvider,
   SelectionMode,
@@ -52,16 +54,17 @@ import {
   useReactFlow,
   useStore,
   useUpdateNodeInternals,
+  useViewport,
   ViewportPortal,
 } from '@xyflow/react'
 import { clsx } from 'clsx'
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useVal } from 'use-value-enhancer'
 import { I18nProvider, useTranslate } from 'val-i18n-react'
-import { derive } from 'value-enhancer'
+import { combine, derive } from 'value-enhancer'
 import { shallowPlainObjectEqual } from '../../../../base/common/equality.ts'
 import { buttonGroupVariants } from '../../../../ui/browser/button-group.tsx'
-import { buttonVariants } from '../../../../ui/browser/button.tsx'
+import { Button, buttonVariants } from '../../../../ui/browser/button.tsx'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../../../ui/browser/dropdown-menu.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../../ui/browser/popover.tsx'
 import { TooltipProvider } from '../../../../ui/browser/tooltip.tsx'
@@ -71,6 +74,7 @@ import { getScriptletType, getSharedBlockPath, getTriggerType, isWithCommentType
 import { makeConnection, toManifestHandleName, toManifestNodeId } from '../../base/rfHelpers.ts'
 import { coalesce, toTrue } from '../../base/trivial.ts'
 import { HandleContextProvider } from '../../components/handle.tsx'
+import { DesignerTooltip } from '../../components/tooltip.tsx'
 import { CommentNodeStore } from '../../stores/node/commentNode.store.ts'
 import { FITTING_VIEW_CLASSNAME, isPseudoNodeType, NODE_TYPE } from '../../stores/node/constants.ts'
 import { ThemeProvider } from '../../theme/index.ts'
@@ -96,8 +100,12 @@ const GRID_GAP: [number, number] = [20, 20]
 const PRO_OPTIONS = { hideAttribution: true }
 
 const DISPLAY_MODE_TRANSITION_DURATION = 200
+const DISPLAY_MODE_REFLOW_DELAY = DISPLAY_MODE_TRANSITION_DURATION + 100
 
-const GET_SIZE = (s: ReactFlowState): Dimensions => ({ width: s.width, height: s.height })
+const GET_SIZE = (s: ReactFlowState): Dimensions => ({
+  width: s.width,
+  height: s.height,
+})
 
 const isSizeEqual = (a: Dimensions, b: Dimensions) => a.width === b.width && a.height === b.height
 
@@ -126,7 +134,16 @@ export interface ReactFlowContainerProps {
   onNodeDragStop?: OnNodeDrag<RFNode<any>>
   onSelectionChange?: OnSelectionChangeFunc<RFNode<any>, RFEdge<any>>
   isValidConnection?: IsValidConnection<RFEdge<any>>
-  addNodeRequest?: { readonly position: XYPosition }
+  addNodeRequest?: {
+    readonly position: XYPosition
+    readonly screenPosition?: XYPosition
+  }
+  addItemRequest?: {
+    readonly itemId: string
+    readonly onComplete?: (nodeId: string | undefined) => void
+    readonly position: XYPosition
+    readonly screenPosition?: XYPosition
+  }
   duplicateNodes?: (manifestNodeIds?: NodeId[], offset?: XYPosition) => Promise<void>
   waitNode?: (nodeId: NodeId) => Promise<NodeStore | undefined>
   setupValueNode?: (nodeId: NodeId, connection: Pick<RFConnection, 'target' | 'targetHandle'>) => void
@@ -137,7 +154,7 @@ export interface ReactFlowContainerProps {
     position: { x: number; y: number },
     connection?: (nodeId: NodeId) => RFConnection,
   ) => Promise<NodeId | undefined>
-  onDropAddItem?: (itemId: string, position: XYPosition) => void
+  onDropAddItem?: (itemId: string, position: XYPosition) => Promise<string | undefined> | string | undefined
   onRelayout?: () => void
   onDisplayModeMeasured?: () => boolean | 'relayout'
   onFitView?: () => void
@@ -308,12 +325,28 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
   const rf = useReactFlow()
   const updateNodeInternals = useUpdateNodeInternals()
   const mounted = useRef(true)
+  const detailModeFrame = useRef(0)
+
+  const enterDetailMode = useCallback(
+    (action?: () => void) => {
+      if (!props.editable) return
+      if (props.displayMode$?.value != 'overview') {
+        action?.()
+        return
+      }
+      props.displayMode$.set('detail')
+      cancelAnimationFrame(detailModeFrame.current)
+      detailModeFrame.current = requestAnimationFrame(() => action?.())
+    },
+    [props.displayMode$, props.editable],
+  )
 
   useLayoutEffect(() => props.onInstance?.(rf), [rf, props.onInstance])
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
+      cancelAnimationFrame(detailModeFrame.current)
     }
   }, [])
   // https://github.com/xyflow/xyflow/issues/4263
@@ -346,6 +379,7 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
   )
 
   const [paneContextMenu, setPaneContextMenu] = useState<XYPosition | null>(null)
+  const paneContextMenuScreen = useRef<XYPosition | undefined>(undefined)
 
   const [blockQuickPickPanel, setBlockQuickPickPanel] = useState<BlockQuickPickPanelData | null>(null)
   const quickPickFrame = useRef(0)
@@ -358,13 +392,37 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
   )
 
   useEffect(() => {
-    setBlockQuickPickPanel(props.addNodeRequest == null ? null : { position: props.addNodeRequest.position })
-  }, [props.addNodeRequest])
+    const request = props.addNodeRequest
+    if (request == null) {
+      setBlockQuickPickPanel(null)
+      return
+    }
+    const open = () => {
+      const position = request.screenPosition == null ? request.position : rf.screenToFlowPosition(request.screenPosition)
+      setBlockQuickPickPanel({ position })
+    }
+    enterDetailMode(open)
+  }, [enterDetailMode, props.addNodeRequest, rf])
+
+  useEffect(() => {
+    const request = props.addItemRequest
+    if (request == null) return
+    enterDetailMode(() => {
+      const position = request.screenPosition == null ? request.position : rf.screenToFlowPosition(request.screenPosition)
+      Promise.resolve(props.onDropAddItem?.(request.itemId, position)).then(request.onComplete, (error) => {
+        console.error('Failed to add node.', error)
+        request.onComplete?.(undefined)
+      })
+    })
+  }, [enterDetailMode, props.addItemRequest, props.onDropAddItem, rf])
 
   const onConnectEnd: OnConnectEnd = useCallback(
     (event, state) => {
       if (props.onAddNode && props.provideAddNodeMenuItems && !state.isValid && state.from && state.fromNode && state.fromHandle?.id && 'clientX' in event) {
-        const position = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+        const position = rf.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        })
         if (tooShort(state.from, position)) {
           return
         }
@@ -419,6 +477,12 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
   const overview = useVal(props.displayMode$) == 'overview'
 
   const { nodes, edges: projectedEdges } = useVal(props.graph$)
+  const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes])
+  const deleteSelectedNodes = useCallback(async () => {
+    if (await props.onBeforeDelete({ nodes: selectedNodes, edges: [] })) {
+      props.onNodesChange(selectedNodes.map((node) => ({ type: 'remove', id: node.id })))
+    }
+  }, [props.onBeforeDelete, props.onNodesChange, selectedNodes])
   const edgeTopology = useMemo(
     () => JSON.stringify([overview, projectedEdges.map((edge) => [edge.id, edge.source, edge.sourceHandle, edge.target, edge.targetHandle])]),
     [overview, projectedEdges],
@@ -448,7 +512,7 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
         onBeforeFitView()
         fitTimer = setTimeout(() => {
           rf.fitView({ padding: 0.15, duration: 150, maxZoom: 1 })
-        }, 100)
+        }, DISPLAY_MODE_REFLOW_DELAY)
       }
     }
     const frame = requestAnimationFrame(() => {
@@ -476,6 +540,7 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
   const viewport = useVal(props.viewport$)
   const nonEmptyViewport = useRef(viewport)
   nonEmptyViewport.current = viewport || nonEmptyViewport.current
+  const reactFlowFitView = props.fitView || viewport == null
   const onViewportChange = useCallback(
     (nextViewport: Viewport) => {
       const current = props.viewport$.value
@@ -555,7 +620,8 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
       const itemId = getAddItemId(event.dataTransfer)
       if (itemId != '' && props.onDropAddItem != null) {
         event.preventDefault()
-        props.onDropAddItem(itemId, rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }))
+        const screenPosition = { x: event.clientX, y: event.clientY }
+        enterDetailMode(() => props.onDropAddItem?.(itemId, rf.screenToFlowPosition(screenPosition)))
         restoreFlowFocus(event)
         return
       }
@@ -581,16 +647,19 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
 
       event.preventDefault()
 
-      const zoom = rf.getZoom()
-      const position = rf.screenToFlowPosition({
-        x: event.clientX - 100 * zoom,
-        y: event.clientY - 10 * zoom,
-      })
+      const screenPosition = { x: event.clientX, y: event.clientY }
 
-      props.onAddNode(type, payload, position)
+      enterDetailMode(() => {
+        const zoom = rf.getZoom()
+        const position = rf.screenToFlowPosition({
+          x: screenPosition.x - 100 * zoom,
+          y: screenPosition.y - 10 * zoom,
+        })
+        props.onAddNode?.(type, payload, position)
+      })
       restoreFlowFocus(event)
     },
-    [rf, props.onAddNode, props.onDropAddItem],
+    [enterDetailMode, rf, props.onAddNode, props.onDropAddItem],
   )
 
   const queue = useMemo(() => new NodePlaceholderQueue(), [])
@@ -607,7 +676,11 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
             fittingView && FITTING_VIEW_CLASSNAME,
             switchingDisplayMode && styles.switchingDisplayMode,
           )}
-          style={{ '--display-mode-transition-duration': `${DISPLAY_MODE_TRANSITION_DURATION}ms` } as React.CSSProperties}
+          style={
+            {
+              '--display-mode-transition-duration': `${DISPLAY_MODE_TRANSITION_DURATION}ms`,
+            } as React.CSSProperties
+          }
           colorMode={props.dark ? 'dark' : 'light'}
           tabIndex={-1}
           proOptions={PRO_OPTIONS}
@@ -618,7 +691,7 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
           onBeforeDelete={props.onBeforeDelete}
           onNodesChange={onNodesChange}
           onEdgesChange={overview ? undefined : props.onEdgesChange}
-          fitView={props.fitView || !viewport}
+          fitView={reactFlowFitView}
           fitViewOptions={props.fitViewOptions}
           viewport={viewport}
           onViewportChange={onViewportChange}
@@ -626,8 +699,15 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
           minZoom={0.1}
           nodesConnectable={!overview && editable && props.onConnect != null}
           onEdgeContextMenu={overview ? undefined : (event, edge) => (event.preventDefault(), setEdgeContextMenu({ edge, event }))}
-          onSelectionContextMenu={(event, selectedNodes) => (event.preventDefault(), setSelectionContextMenu({ nodes: selectedNodes, event }))}
-          onPaneContextMenu={(event) => (event.preventDefault(), setPaneContextMenu(rf.screenToFlowPosition({ x: event.clientX, y: event.clientY })))}
+          onSelectionContextMenu={(event, selectionNodes) => (event.preventDefault(), setSelectionContextMenu({ nodes: selectionNodes, event }))}
+          onPaneContextMenu={(event) => {
+            event.preventDefault()
+            paneContextMenuScreen.current = {
+              x: event.clientX,
+              y: event.clientY,
+            }
+            setPaneContextMenu(rf.screenToFlowPosition(paneContextMenuScreen.current))
+          }}
           onConnectEnd={overview ? undefined : onConnectEnd}
           isValidConnection={isValidConnection}
           onConnect={!overview && editable ? props.onConnect : undefined}
@@ -653,6 +733,7 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
           connectionLineComponent={ConnectionLine}
           aria-readonly={!editable}
         >
+          {(props.canDeleteNodes ?? true) && <SelectionFloatBar nodes={selectedNodes} onDelete={deleteSelectedNodes} duplicateNodes={props.duplicateNodes} />}
           <FlowControls
             showSettings$={props.showSettings$}
             miniMapExpanded$={props.miniMapExpanded$}
@@ -681,8 +762,18 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
                 nodes={selectionContextMenu.nodes}
                 onClose={() => setSelectionContextMenu(null)}
                 onDelete={async () => {
-                  if (await props.onBeforeDelete({ nodes: selectionContextMenu.nodes, edges: [] })) {
-                    props.onNodesChange(selectionContextMenu.nodes.map((node) => ({ type: 'remove', id: node.id })))
+                  if (
+                    await props.onBeforeDelete({
+                      nodes: selectionContextMenu.nodes,
+                      edges: [],
+                    })
+                  ) {
+                    props.onNodesChange(
+                      selectionContextMenu.nodes.map((node) => ({
+                        type: 'remove',
+                        id: node.id,
+                      })),
+                    )
                   }
                 }}
                 duplicateNodes={props.duplicateNodes}
@@ -693,7 +784,17 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
                 position={paneContextMenu}
                 onClose={() => setPaneContextMenu(null)}
                 onPaste={props.onPaste}
-                onAddNode={props.provideAddNodeMenuItems && (() => setBlockQuickPickPanel({ position: paneContextMenu }))}
+                onAddNode={
+                  props.provideAddNodeMenuItems &&
+                  (() => {
+                    const screenPosition = paneContextMenuScreen.current
+                    enterDetailMode(() =>
+                      setBlockQuickPickPanel({
+                        position: screenPosition == null ? paneContextMenu : rf.screenToFlowPosition(screenPosition),
+                      }),
+                    )
+                  })
+                }
               />
             )}
             {blockQuickPickPanel && props.provideAddNodeMenuItems && props.onAddNode && (
@@ -742,7 +843,7 @@ interface ContextMenuItem {
   readonly disabled?: boolean
   readonly icon?: React.ReactNode
   readonly key: string
-  readonly label: React.ReactNode
+  readonly label: string
   readonly onClick?: () => void
 }
 
@@ -785,7 +886,14 @@ function EdgeContextMenu(props: EdgeContextMenuProps) {
 
   return (
     <ContextMenu
-      items={[{ label: t('nodeActions.delete'), key: '$delete', icon: <i className="i-codicon:trash" />, onClick: props.onDelete }]}
+      items={[
+        {
+          label: t('nodeActions.delete'),
+          key: '$delete',
+          icon: <i className="i-codicon:trash" />,
+          onClick: props.onDelete,
+        },
+      ]}
       onClose={props.onClose}
       position={props.position}
     />
@@ -803,10 +911,48 @@ interface SelectionContextMenuProps {
 const DEFAULT_DUPLICATE_NODE_OFFSET: XYPosition = { x: 50, y: 50 }
 
 function SelectionContextMenu(props: SelectionContextMenuProps) {
+  const items = useSelectionItems(props)
+
+  return <ContextMenu items={items} onClose={props.onClose} position={props.position} />
+}
+
+function SelectionFloatBar(props: Pick<SelectionContextMenuProps, 'nodes' | 'onDelete' | 'duplicateNodes'>) {
+  const items = useSelectionItems(props)
+  const { zoom } = useViewport()
+
+  if (props.nodes.length < 2) return null
+
+  return (
+    <NodeToolbar className={nodeHeadStyles.floatBar} isVisible nodeId={props.nodes.map((node) => node.id)} offset={4 - 8 * zoom}>
+      {items
+        .filter((item) => item.key != '$delete')
+        .map((item) => (
+          <DesignerTooltip key={item.key} placement="top" title={item.label}>
+            <Button
+              aria-label={item.label}
+              className={nodeHeadStyles.floatBarButton}
+              disabled={item.disabled}
+              onClick={item.onClick}
+              size="icon"
+              variant="ghost"
+            >
+              {item.icon}
+            </Button>
+          </DesignerTooltip>
+        ))}
+    </NodeToolbar>
+  )
+}
+
+function useSelectionItems(props: Pick<SelectionContextMenuProps, 'nodes' | 'onDelete' | 'duplicateNodes'>): ContextMenuItem[] {
   const t = useTranslate()
-  const nodes = props.nodes.filter((node) => node.data.store && !isPseudoNodeType(node.type as NodeType))
+  const nodes = useMemo(() => props.nodes.filter((node) => node.data.store && !isPseudoNodeType(node.type as NodeType)), [props.nodes])
   const hasDuplicate = nodes.every((node) => node.data.store?.duplicateNode)
-  const [hasSkip, skip] = getSkipState(nodes)
+  const skipState$ = useMemo(() => {
+    const ignore$ = nodes.flatMap((node) => (node.data.store?.display$ ? [node.data.store.display$.ignore] : []))
+    return combine(ignore$, (values): [boolean, boolean] => [values.length > 0, values.every(Boolean)])
+  }, [nodes])
+  const [hasSkip, skip] = useVal(skipState$)
 
   const duplicateNodes = useCallback(() => {
     const manifestNodeIds: NodeId[] = []
@@ -830,7 +976,7 @@ function SelectionContextMenu(props: SelectionContextMenuProps) {
     for (const commentNode of commentNodes) {
       commentNode.duplicateNode?.()
     }
-  }, [props.nodes, props.duplicateNodes])
+  }, [nodes, props.duplicateNodes])
 
   const toggleSkip = useCallback(() => {
     const newSkip = !skip
@@ -838,39 +984,28 @@ function SelectionContextMenu(props: SelectionContextMenuProps) {
       const node = rfNode.data.store
       node?.display$?.ignore.set(newSkip)
     }
-  }, [props.nodes, skip])
+  }, [nodes, skip])
 
-  return (
-    <ContextMenu
-      items={coalesce<ContextMenuItem>([
-        toTrue(hasDuplicate) && { label: t('nodeActions.duplicate'), key: '$duplicate', icon: <i className="i-codicon:copy" />, onClick: duplicateNodes },
-        toTrue(hasSkip) && {
-          label: skip ? t('nodeActions.skipDisableAll') : t('nodeActions.skipEnableAll'),
-          key: '$skip',
-          icon: <i className={skip ? 'i-codicon:check' : 'i-codicon:circle-slash'} />,
-          onClick: toggleSkip,
-        },
-        { label: t('nodeActions.delete'), key: '$delete', icon: <i className="i-codicon:trash" />, onClick: props.onDelete },
-      ])}
-      onClose={props.onClose}
-      position={props.position}
-    />
-  )
-}
-
-function getSkipState(nodes: RFNode<{ store: NodeStore | CommentNodeStore | null }>[]): [hasSkip: boolean, skip: boolean] {
-  let hasSkip = false
-  let skip = true
-  for (const rfNode of nodes) {
-    const node = rfNode.data.store
-    if (node?.display$?.ignore != null) {
-      hasSkip = true
-      if (!node.display$.ignore.value) {
-        skip = false
-      }
-    }
-  }
-  return [hasSkip, skip]
+  return coalesce<ContextMenuItem>([
+    toTrue(hasDuplicate) && {
+      label: t('nodeActions.duplicate'),
+      key: '$duplicate',
+      icon: <i className="i-codicon:copy" />,
+      onClick: duplicateNodes,
+    },
+    toTrue(hasSkip) && {
+      label: skip ? t('nodeActions.skipDisableAll') : t('nodeActions.skipEnableAll'),
+      key: '$skip',
+      icon: <i className={skip ? 'i-carbon:view-off' : 'i-carbon:view'} />,
+      onClick: toggleSkip,
+    },
+    {
+      label: t('nodeActions.delete'),
+      key: '$delete',
+      icon: <i className="i-codicon:trash" />,
+      onClick: props.onDelete,
+    },
+  ])
 }
 
 interface PaneContextMenuProps {
@@ -886,7 +1021,13 @@ function PaneContextMenu(props: PaneContextMenuProps) {
   return (
     <ContextMenu
       items={[
-        { label: t('contextMenu.addNode'), key: '$addNode', icon: <i className="i-codicon:add" />, disabled: !props.onAddNode, onClick: props.onAddNode },
+        {
+          label: t('contextMenu.addNode'),
+          key: '$addNode',
+          icon: <i className="i-codicon:add" />,
+          disabled: !props.onAddNode,
+          onClick: props.onAddNode,
+        },
         {
           label: t('contextMenu.paste'),
           key: '$paste',
@@ -963,7 +1104,18 @@ function BlockQuickPickPanelPopover(props: BlockQuickPickPanelPopoverProps) {
 
   return (
     <Popover open onOpenChange={(open) => !open && props.onClose()}>
-      <PopoverTrigger nativeButton={false} render={<div style={{ position: 'absolute', left: props.position.x, top: props.position.y }} />} />
+      <PopoverTrigger
+        nativeButton={false}
+        render={
+          <div
+            style={{
+              position: 'absolute',
+              left: props.position.x,
+              top: props.position.y,
+            }}
+          />
+        }
+      />
       <PopoverContent
         align="start"
         className={clsx(styles.contextMenu, styles.quickPickPopover)}

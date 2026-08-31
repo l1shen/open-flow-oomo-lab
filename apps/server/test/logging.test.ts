@@ -118,9 +118,10 @@ it('correlates an unknown HTTP failure without logging headers or request bodies
   expect(response.headers.get('x-request-id')).toBe('request-123')
   expect(captured.entries()).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ category: 'http.request.failed', method: 'POST', path: '/v1/flows', requestId: 'request-123' }),
+      expect.objectContaining({ category: 'http.request.failed', level: 50, method: 'POST', path: '/v1/flows', requestId: 'request-123' }),
       expect.objectContaining({
         category: 'http.request.completed',
+        level: 10,
         method: 'POST',
         path: '/v1/flows',
         requestId: 'request-123',
@@ -145,8 +146,8 @@ it('does not log callback endpoint identities', async () => {
 
   expect(captured.entries()).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ category: 'http.request.completed', path: '/v1/webhooks/:endpointId' }),
-      expect.objectContaining({ category: 'http.request.completed', path: '/v1/integrations/:endpointId' }),
+      expect.objectContaining({ category: 'http.request.completed', level: 10, path: '/v1/webhooks/:endpointId' }),
+      expect.objectContaining({ category: 'http.request.completed', level: 10, path: '/v1/integrations/:endpointId' }),
     ]),
   )
   expect(captured.output()).not.toContain(endpointId)

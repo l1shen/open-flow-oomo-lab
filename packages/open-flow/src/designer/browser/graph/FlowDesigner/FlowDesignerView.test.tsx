@@ -781,13 +781,14 @@ describe('FlowDesignerView model synchronization', () => {
     view.props.flowDesignerStore.dispose()
   })
 
-  it('forwards a generic dropped item at its Flow position without serializing the item', () => {
-    const onAddNode = vi.fn()
+  it('forwards a generic dropped item at its Flow position without serializing the item', async () => {
+    const onAddNode = vi.fn(() => Promise.resolve('created'))
     const view = FlowDesignerView(props(model([]), { onAddNode })) as React.ReactElement<FlowDesignerProps>
 
-    view.props.onDropAddItem?.('connector:github:create-issue', { x: 120, y: 80 })
+    const nodeId = await view.props.onDropAddItem?.('connector:github:create-issue', { x: 120, y: 80 })
 
     expect(onAddNode).toHaveBeenCalledWith('connector:github:create-issue', { x: 120, y: 80 })
+    expect(nodeId).toBe('created')
     view.props.flowDesignerStore.dispose()
   })
 
@@ -803,6 +804,16 @@ describe('FlowDesignerView model synchronization', () => {
 
     expect(view.props.flowDesignerStore.$.displayMode.value).toBe('overview')
     view.props.flowDesignerStore.dispose()
+  })
+
+  it('keeps overview mode when an external update adds a node', () => {
+    const initial = props(model([]))
+    const next = props(model([task([])]))
+    const store = update(initial, next)
+
+    expect(store.$.displayMode.value).toBe('overview')
+    expect(store.$.nodes.size).toBe(1)
+    store.dispose()
   })
 
   it('keeps the persisted detail viewport when overview has no saved layout', async () => {

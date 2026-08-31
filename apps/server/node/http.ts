@@ -90,8 +90,7 @@ export function createServerApp(service: ServerService, options: ServerAppOption
       requestId,
       status: context.res.status,
     }
-    if (context.req.path == '/healthz' || context.req.path == '/readyz') logger.debug(fields, 'HTTP request completed.')
-    else logger.info(fields, 'HTTP request completed.')
+    logger.trace(fields, 'HTTP request completed.')
   })
 
   app.route('/auth', createOperatorApp(operator, options.operatorLoginAttemptsPerMinute))

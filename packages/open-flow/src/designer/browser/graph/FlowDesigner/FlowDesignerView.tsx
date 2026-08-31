@@ -173,8 +173,16 @@ export interface FlowDesignerViewValueNode extends FlowDesignerViewNodeBase {
 }
 
 export type FlowDesignerViewTriggerSchedule =
-  | { readonly expression: string; readonly timezone: string; readonly type: 'cron' }
-  | { readonly type: 'every'; readonly unit: 'day' | 'hour' | 'minute' | 'month' | 'week'; readonly value: number }
+  | {
+      readonly expression: string
+      readonly timezone: string
+      readonly type: 'cron'
+    }
+  | {
+      readonly type: 'every'
+      readonly unit: 'day' | 'hour' | 'minute' | 'month' | 'week'
+      readonly value: number
+    }
 
 interface FlowDesignerViewTriggerFieldBase {
   readonly description?: string
@@ -185,16 +193,26 @@ interface FlowDesignerViewTriggerFieldBase {
 }
 
 export type FlowDesignerViewTriggerField =
-  | (FlowDesignerViewTriggerFieldBase & { readonly kind: 'boolean' | 'integer' | 'number' | 'string' })
+  | (FlowDesignerViewTriggerFieldBase & {
+      readonly kind: 'boolean' | 'integer' | 'number' | 'string'
+    })
   | (FlowDesignerViewTriggerFieldBase & { readonly kind: 'json' })
   | (FlowDesignerViewTriggerFieldBase & {
       readonly kind: 'multi-select'
-      readonly options: readonly { readonly label: string; readonly source: string; readonly value: unknown }[]
+      readonly options: readonly {
+        readonly label: string
+        readonly source: string
+        readonly value: unknown
+      }[]
       readonly selected: readonly string[]
     })
   | (FlowDesignerViewTriggerFieldBase & {
       readonly kind: 'select'
-      readonly options: readonly { readonly label: string; readonly source: string; readonly value: unknown }[]
+      readonly options: readonly {
+        readonly label: string
+        readonly source: string
+        readonly value: unknown
+      }[]
     })
 
 export interface FlowDesignerViewTriggerPresentation {
@@ -297,12 +315,24 @@ export interface FlowDesignerViewEdge {
 }
 
 export interface FlowDesignerViewProps {
-  readonly addNodeRequest?: { readonly position: FlowDesignerViewPosition }
+  readonly addNodeRequest?: {
+    readonly position: FlowDesignerViewPosition
+    readonly screenPosition?: FlowDesignerViewPosition
+  }
+  readonly addItemRequest?: {
+    readonly itemId: string
+    readonly onComplete?: (nodeId: string | undefined) => void
+    readonly position: FlowDesignerViewPosition
+    readonly screenPosition?: FlowDesignerViewPosition
+  }
   readonly addItems: readonly FlowDesignerViewAddItem[]
   readonly className?: string
   readonly dark?: boolean
   readonly editable: boolean
-  readonly focusNodeRequest?: { readonly nodeId: string; readonly requestId: number }
+  readonly focusNodeRequest?: {
+    readonly nodeId: string
+    readonly requestId: number
+  }
   readonly identity: string
   readonly isValidConnection?: (edge: Omit<FlowDesignerViewEdge, 'id'>) => boolean
   readonly language?: string
@@ -410,10 +440,22 @@ interface ViewCallbacks {
   readonly onOpenVariables: FlowDesignerViewProps['onOpenVariables']
 }
 
-function variableInputs(
-  nodes: readonly FlowDesignerViewNode[],
-): ReadonlyMap<string, { readonly compatible: boolean; readonly enabled?: false; readonly name?: string }> {
-  const inputs = new Map<string, { readonly compatible: boolean; readonly enabled?: false; readonly name?: string }>()
+function variableInputs(nodes: readonly FlowDesignerViewNode[]): ReadonlyMap<
+  string,
+  {
+    readonly compatible: boolean
+    readonly enabled?: false
+    readonly name?: string
+  }
+> {
+  const inputs = new Map<
+    string,
+    {
+      readonly compatible: boolean
+      readonly enabled?: false
+      readonly name?: string
+    }
+  >()
   for (const node of nodes) {
     if (node.kind == 'comment') continue
     for (const input of node.inputs) {
@@ -444,7 +486,16 @@ class FlowDesignerViewAdapter {
   #pendingDisconnects = new Map<string, FlowDesignerViewEdge>()
   #runStatus: Val<FlowRunStatus>
   #selectedNodeIds = new Set<string>()
-  #variableInputs: Val<ReadonlyMap<string, { readonly compatible: boolean; readonly enabled?: false; readonly name?: string }>>
+  #variableInputs: Val<
+    ReadonlyMap<
+      string,
+      {
+        readonly compatible: boolean
+        readonly enabled?: false
+        readonly name?: string
+      }
+    >
+  >
   #variableNames: Val<readonly string[]>
   #variableNamesLoaded: Val<boolean>
   #variableNamesLoading: Val<boolean>
@@ -455,14 +506,20 @@ class FlowDesignerViewAdapter {
     this.#language = val(language)
 
     const nodes = reactiveMap<NodeId, NodeStore>(null, { onDeleted: dispose })
-    const commentNodes = reactiveMap<NodeId, CommentNodeStore>(null, { onDeleted: dispose })
+    const commentNodes = reactiveMap<NodeId, CommentNodeStore>(null, {
+      onDeleted: dispose,
+    })
     const viewport = val<FlowDesignerViewViewport | undefined>(model.viewport)
     this.#runStatus = val<FlowRunStatus>(model.runStatus == 'running' ? FLOW_RUN_STATUS.Running : FLOW_RUN_STATUS.Idle)
     this.#variableInputs = val(variableInputs(model.nodes))
     this.#variableNames = val(model.variableNames ?? [])
     this.#variableNamesLoaded = val(model.variableNamesLoaded ?? false)
     this.#variableNamesLoading = val(model.variableNamesLoading ?? false)
-    const designerUIStore = new DesignerUIStoreImpl({ commentNodeStores: commentNodes, viewport, nodeStores: nodes })
+    const designerUIStore = new DesignerUIStoreImpl({
+      commentNodeStores: commentNodes,
+      viewport,
+      nodeStores: nodes,
+    })
     this.store = new FlowDesignerStore({
       readonly: !editable,
       displayMode: val<FlowDisplayMode>('detail'),
@@ -716,7 +773,9 @@ class FlowDesignerViewAdapter {
         }
         nextComments.set(node.id as NodeId, entry.store)
       } else if (entry == null) {
-        this.store.designerUIStore.setNodeUIData(node.id as NodeId, { rfNode: { position: createdPosition } })
+        this.store.designerUIStore.setNodeUIData(node.id as NodeId, {
+          rfNode: { position: createdPosition },
+        })
         entry = createNodeEntry(node, outputHandles, contentKey, this.store.designerUIStore, this.store, this.#callbacks)
         created = true
       } else {
@@ -777,7 +836,10 @@ function inputsFrom(node: FlowDesignerViewNode): HandleInputFrom[] {
   if (node.kind == 'comment') return []
   return node.inputs.flatMap((input) => {
     if (!('handle' in input)) return []
-    const fromNode = input.sources?.map((source) => ({ node_id: source.nodeId as NodeId, output_handle: source.output as HandleName }))
+    const fromNode = input.sources?.map((source) => ({
+      node_id: source.nodeId as NodeId,
+      output_handle: source.output as HandleName,
+    }))
     if (input.value === undefined && fromNode?.length == null) return []
     return [
       {
@@ -941,7 +1003,11 @@ function createCommentNodeEntry(
         width: '100%',
       })
       const input = () => content$.set(editor.value)
-      const save = () => callbacks.onChangeComment?.(node.id, { content: content$.value ?? '', title: store.$$.title.value ?? 'Comment' })
+      const save = () =>
+        callbacks.onChangeComment?.(node.id, {
+          content: content$.value ?? '',
+          title: store.$$.title.value ?? 'Comment',
+        })
       editor.addEventListener('input', input)
       editor.addEventListener('blur', save)
       container.append(editor)
@@ -954,13 +1020,22 @@ function createCommentNodeEntry(
     },
     preview,
   })
-  const entry: CommentNodeEntry = { contentKey, kind: 'comment', store, syncing: false }
+  const entry: CommentNodeEntry = {
+    contentKey,
+    kind: 'comment',
+    store,
+    syncing: false,
+  }
   const renderPreview = (content = '') => preview.set(<MarkdownPreview content={content} dark$={dark} draggable onDoubleClick={store.togglePreview} />)
   renderPreview(node.content)
   store.dispose.add(store.$.content.reaction(renderPreview))
   store.dispose.add(
     store.$$.title.reaction((title) => {
-      if (!entry.syncing) callbacks.onChangeComment?.(node.id, { content: store.$$.content.value ?? '', title: title ?? 'Comment' })
+      if (!entry.syncing)
+        callbacks.onChangeComment?.(node.id, {
+          content: store.$$.content.value ?? '',
+          title: title ?? 'Comment',
+        })
     }, true),
   )
   store.dispose.add([dark, preview])
@@ -1039,7 +1114,11 @@ function createNodeEntry(
   )
   const diagnosticSection = createDiagnosticSection(values.diagnostics)
   const duplicateNode = (offset?: FlowDesignerViewPosition) => designerStore.onDuplicate?.([node.id as NodeId], offset)
-  const manifest$ = { description: values.description, icon: values.rawIcon, title: values.rawTitle }
+  const manifest$ = {
+    description: values.description,
+    icon: values.rawIcon,
+    title: values.rawTitle,
+  }
   const metadataDisposables = [
     values.description.reaction((description) => {
       if (!values.syncingMetadata && designerStore.$.editable.value) callbacks.onChangeNodeDescription?.(node.id, description)
@@ -1095,7 +1174,10 @@ function createNodeEntry(
       }
       store = new ConditionNodeStore(node.id as NodeId, {
         changeDescription,
-        display$: { ...commonDisplay, sections: val([inputSection, conditionsSection, diagnosticSection]) },
+        display$: {
+          ...commonDisplay,
+          sections: val([inputSection, conditionsSection, diagnosticSection]),
+        },
         designerUIStore,
         duplicateNode,
         manifest$,
@@ -1146,7 +1228,10 @@ function createNodeEntry(
         },
         designerUIStore,
         duplicateNode,
-        manifest$: { ...manifest$, task: val<string | InlineTask | undefined>(node.reference) },
+        manifest$: {
+          ...manifest$,
+          task: val<string | InlineTask | undefined>(node.reference),
+        },
       })
       if (node.editablePorts) {
         const changePorts = () => {
@@ -1197,7 +1282,10 @@ function createNodeEntry(
           trigger: val(undefined),
         },
         designerUIStore,
-        manifest$: { ...manifest$, trigger: val<TriggerDescriptor | undefined>(undefined) },
+        manifest$: {
+          ...manifest$,
+          trigger: val<TriggerDescriptor | undefined>(undefined),
+        },
       })
       break
     }
@@ -1248,7 +1336,13 @@ function createNodeEntry(
   }
   store.dispose.add(metadataDisposables)
   store.dispose.add(values.outputsTo)
-  return { contentKey, editable: designerStore.$.editable.value, kind: node.kind, store, values }
+  return {
+    contentKey,
+    editable: designerStore.$.editable.value,
+    kind: node.kind,
+    store,
+    values,
+  }
 }
 
 function updateNodeEntry(
@@ -1384,9 +1478,7 @@ export function FlowDesignerView(props: FlowDesignerViewProps): ReactElement {
       }) ?? true
     )
   }, [])
-  const onDropAddItem = useCallback((itemId: string, position: FlowDesignerViewPosition) => {
-    void propsRef.current.onAddNode(itemId, position)
-  }, [])
+  const onDropAddItem = useCallback((itemId: string, position: FlowDesignerViewPosition) => propsRef.current.onAddNode(itemId, position), [])
 
   useEffect(() => adapter.mount(), [adapter])
   useLayoutEffect(() => adapter.setCallbacks(callbacksFromProps(props)))
@@ -1404,6 +1496,7 @@ export function FlowDesignerView(props: FlowDesignerViewProps): ReactElement {
 
   return (
     <FlowDesigner
+      addItemRequest={props.addItemRequest}
       addNodeRequest={props.addNodeRequest}
       className={props.className}
       dark={props.dark ?? false}

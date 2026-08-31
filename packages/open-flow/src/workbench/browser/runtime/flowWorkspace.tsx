@@ -206,14 +206,11 @@ function Editor({
   }
   const addFromBlocks = async (option: AddNodeOption): Promise<string | undefined> => {
     const offset = blockAddCount.current * 32
-    const position = {
-      x: (92 + offset - designer.viewport.x) / designer.viewport.zoom,
-      y: (92 + offset - designer.viewport.y) / designer.viewport.zoom,
-    }
+    const canvasPosition = { x: 92 + offset, y: 92 + offset }
     addingFromBlocks.current = true
     let waitForSelection = false
     try {
-      const nodeId = await store.addNode(option, position)
+      const nodeId = await designerRef.current?.addNode(option, canvasPosition)
       if (nodeId != null) {
         waitForSelection = true
         blockAddCount.current++
