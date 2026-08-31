@@ -58,12 +58,14 @@ function codeTaskPorts(
 
 function RunDrawerContainer({
   onClose,
+  onConfigureConnector,
   onToggle,
   open,
   store,
   visible,
 }: {
   readonly onClose: () => void
+  readonly onConfigureConnector?: (() => void) | undefined
   readonly onToggle: () => void
   readonly open: boolean
   readonly store: WorkbenchStore
@@ -90,6 +92,7 @@ function RunDrawerContainer({
       historyComplete={historyComplete}
       onCancel={() => void store.runs.cancel()}
       onClose={onClose}
+      onConfigureConnector={onConfigureConnector}
       onEventFilterChange={(filter) => store.runs.setEventFilter(filter)}
       onLocateEvent={(sequence) => store.locateRunEvent(sequence)}
       onRetryObservation={() => store.runs.retryObservation()}
@@ -106,6 +109,7 @@ function RunDrawerContainer({
 
 function Editor({
   onCloseRuns,
+  onConfigureConnector,
   onToggleRuns,
   runDrawerOpen,
   runDrawerVisible,
@@ -113,6 +117,7 @@ function Editor({
   theme,
 }: {
   readonly onCloseRuns: () => void
+  readonly onConfigureConnector?: (() => void) | undefined
   readonly onToggleRuns: () => void
   readonly runDrawerOpen: boolean
   readonly runDrawerVisible: boolean
@@ -322,7 +327,14 @@ function Editor({
           )}
         </ContextPanel>
       )}
-      <RunDrawerContainer onClose={onCloseRuns} onToggle={onToggleRuns} open={runDrawerOpen} store={store} visible={runDrawerVisible} />
+      <RunDrawerContainer
+        onClose={onCloseRuns}
+        onConfigureConnector={onConfigureConnector}
+        onToggle={onToggleRuns}
+        open={runDrawerOpen}
+        store={store}
+        visible={runDrawerVisible}
+      />
     </div>
   )
 }
@@ -332,6 +344,7 @@ export default function FlowWorkspace({
   hostTitle,
   hrefFor,
   navigation,
+  onConfigureConnector,
   onHostAction,
   store,
   theme,
@@ -340,6 +353,7 @@ export default function FlowWorkspace({
   readonly hostTitle?: string | undefined
   readonly hrefFor: (location: WorkbenchLocation) => string
   readonly navigation: NavigationStore
+  readonly onConfigureConnector?: (() => void) | undefined
   readonly onHostAction?: (() => void) | undefined
   readonly store: WorkbenchStore
   readonly theme: WorkbenchTheme
@@ -458,6 +472,7 @@ export default function FlowWorkspace({
         ) : view == 'design' ? (
           <Editor
             onCloseRuns={() => setRunDrawerVisible(false)}
+            onConfigureConnector={onConfigureConnector}
             onToggleRuns={() => setRunDrawerOpen(!runDrawerOpen)}
             runDrawerOpen={runDrawerOpen}
             runDrawerVisible={runDrawerVisible}
@@ -465,7 +480,7 @@ export default function FlowWorkspace({
             theme={theme}
           />
         ) : view == 'runs' ? (
-          <RunsView onLocateEvent={locateRunEvent} store={store} />
+          <RunsView onConfigureConnector={onConfigureConnector} onLocateEvent={locateRunEvent} store={store} />
         ) : (
           <PublicationsView store={store} />
         )}
