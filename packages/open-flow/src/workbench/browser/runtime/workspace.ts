@@ -561,11 +561,14 @@ function configSource(value: JsonValue | undefined): string {
   return value === undefined ? '' : typeof value == 'string' ? value : JSON.stringify(value)
 }
 
-function triggerConfigFields(trigger: TriggerNode): readonly FlowDesignerViewTriggerField[] {
+function triggerConfigFields(triggerId: string, trigger: TriggerNode, diagnostics: readonly Diagnostic[]): readonly FlowDesignerViewTriggerField[] {
   if (trigger.kind != 'integration' && trigger.kind != 'poll') return []
   const schema = record(trigger.definition.configSchema)
   const properties = record(schema?.properties)
   const required = new Set(Array.isArray(schema?.required) ? schema.required.filter((value): value is string => typeof value == 'string') : [])
+  const incomplete = diagnostics.some(
+    (diagnostic) => diagnostic.code == 'trigger.config-incomplete' && diagnostic.path == `/document/graph/nodes/${triggerId}/config`,
+  )
   const fields: FlowDesignerViewTriggerField[] = []
   for (const [name, candidate] of Object.entries(properties ?? {})) {
     const field = record(candidate)
@@ -573,6 +576,7 @@ function triggerConfigFields(trigger: TriggerNode): readonly FlowDesignerViewTri
     const value = Object.hasOwn(trigger.config, name) ? trigger.config[name] : field.default
     const base = {
       ...(typeof field.description == 'string' ? { description: field.description } : {}),
+      invalid: incomplete && required.has(name) && !Object.hasOwn(trigger.config, name),
       label: typeof field.title == 'string' ? field.title : name,
       name,
       required: required.has(name),
@@ -628,10 +632,15 @@ function triggerDesignerNode(triggerId: string, trigger: TriggerNode, position: 
       presentation = { kind: trigger.kind, schedules: trigger.cronTimes }
       break
     case 'integration':
-      presentation = { config: triggerConfigFields(trigger), kind: trigger.kind, schedules: [], source: trigger.definition.provider }
+      presentation = { config: triggerConfigFields(triggerId, trigger, diagnostics), kind: trigger.kind, schedules: [], source: trigger.definition.provider }
       break
     case 'poll':
-      presentation = { config: triggerConfigFields(trigger), kind: trigger.kind, schedules: trigger.pollTimes, source: trigger.definition.provider }
+      presentation = {
+        config: triggerConfigFields(triggerId, trigger, diagnostics),
+        kind: trigger.kind,
+        schedules: trigger.pollTimes,
+        source: trigger.definition.provider,
+      }
       break
     case 'webhook':
       presentation = {

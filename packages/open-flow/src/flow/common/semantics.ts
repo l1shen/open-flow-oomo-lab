@@ -17,6 +17,7 @@ import type { RuntimeProgram } from '../../execution/common/runtime.ts'
 
 import { parse } from '@babel/parser'
 import { findEngineContract } from '../../execution/common/engineContract.ts'
+import { compareJSONSchema } from '../../manifest/common/schemaCompare.ts'
 import { portsByHandle, validVariableName } from './change.ts'
 import { canonicalGraph, canonicalJsonBytes, canonicalModule, canonicalOutputs, canonicalPorts, canonicalTask, digestBytes } from './encoding.ts'
 
@@ -452,28 +453,20 @@ export function matchesSchema(value: JsonValue, schema: JsonValue): boolean {
   return true
 }
 
-function schemaAssignable(sourceSchema: JsonValue, targetSchema: JsonValue): boolean {
+function schemaAssignable(sourceSchema: JsonValue, targetSchema: JsonValue, sourceNullable = false, targetNullable = false): boolean {
   if (sourceSchema === true || targetSchema === true || jsonEqual(sourceSchema, {}) || jsonEqual(targetSchema, {})) return true
   if (sourceSchema === false || targetSchema === false) return false
-  if (jsonEqual(sourceSchema, targetSchema)) return true
   const source = schemaObject(sourceSchema)
   const target = schemaObject(targetSchema)
-  if (source == null || target == null || !jsonEqual(source.type ?? null, target.type ?? null)) return false
-  if (source.type != 'object') return false
-  const sourceProperties = schemaObject(source.properties ?? {})
-  const targetProperties = schemaObject(target.properties ?? {})
-  const sourceRequired = new Set((schemaList(source.required) ?? []).filter((key): key is string => typeof key == 'string'))
-  const targetRequired = (schemaList(target.required) ?? []).filter((key): key is string => typeof key == 'string')
-  if (sourceProperties == null || targetProperties == null || targetRequired.some((key) => !sourceRequired.has(key))) return false
-  for (const [key, property] of Object.entries(sourceProperties)) {
-    const targetProperty = targetProperties[key]
-    if (targetProperty != null) {
-      if (!schemaAssignable(property, targetProperty)) return false
-    } else if (target.additionalProperties === false) return false
-    else if (target.additionalProperties != null && target.additionalProperties !== true && !schemaAssignable(property, target.additionalProperties))
-      return false
-  }
-  return source.additionalProperties === false || target.additionalProperties !== false
+  if (source == null || target == null) return false
+  return (
+    compareJSONSchema({ nullable: sourceNullable, packageId: undefined, schema: source }, { nullable: targetNullable, packageId: undefined, schema: target })
+      .kind == 'compatible'
+  )
+}
+
+function portsAssignable(source: PortDefinition, target: PortDefinition): boolean {
+  return schemaAssignable(source.jsonSchema, target.jsonSchema, source.nullable, target.nullable)
 }
 
 export function variableInputCompatible(jsonSchema: JsonValue): boolean {
@@ -580,11 +573,11 @@ function checkSource(
   source: BindingSource | FlowSource | NodeSource,
   graph: Graph,
   document: FlowDocument,
-  flowInputs: ReadonlySet<string> | undefined,
+  flowInputs: Readonly<Record<string, InputPortDefinition>> | undefined,
   targetInput: InputPortDefinition | undefined,
   path: string,
   diagnostics: Diagnostic[],
-): void {
+): PortDefinition | undefined {
   switch (source.kind) {
     case 'binding':
       if (document.bindings[source.bindingId] == null) {
@@ -599,16 +592,24 @@ function checkSource(
         )
       }
       return
-    case 'flow':
-      if (flowInputs?.has(source.input) != true) {
+    case 'flow': {
+      const input = flowInputs != null && Object.hasOwn(flowInputs, source.input) ? flowInputs[source.input] : undefined
+      if (input == null) {
         diagnostics.push(
           graphDiagnostic('graph.source-missing', `Flow input "${source.input}" does not exist in this graph.`, path, {
             input: source.input,
             variant: 'flow-input',
           }),
         )
+      } else if (targetInput != null && !portsAssignable(input, targetInput)) {
+        diagnostics.push(
+          graphDiagnostic('graph.flow-input-incompatible', `Flow input "${source.input}" is not compatible with this input.`, path, {
+            input: source.input,
+          }),
+        )
       }
-      return
+      return input
+    }
     case 'node': {
       const upstream = graph.nodes[source.nodeId]
       if (upstream == null) {
@@ -629,11 +630,7 @@ function checkSource(
             variant: 'output',
           }),
         )
-      } else if (
-        targetInput != null &&
-        ((!jsonEqual(output.jsonSchema, {}) && output.jsonSchema !== true && output.nullable && !targetInput.nullable) ||
-          !schemaAssignable(output.jsonSchema, targetInput.jsonSchema))
-      ) {
+      } else if (targetInput != null && !portsAssignable(output, targetInput)) {
         diagnostics.push(
           graphDiagnostic(
             'graph.node-output-incompatible',
@@ -643,6 +640,7 @@ function checkSource(
           ),
         )
       }
+      return output
     }
   }
 }
@@ -676,7 +674,7 @@ function checkCycles(graph: Graph, path: string, diagnostics: Diagnostic[]): voi
 function validateGraph(
   graph: Graph,
   document: FlowDocument,
-  flowInputs: ReadonlySet<string> | undefined,
+  flowInputs: Readonly<Record<string, InputPortDefinition>> | undefined,
   allowTriggers: boolean,
   path: string,
   diagnostics: Diagnostic[],
@@ -798,11 +796,22 @@ function validateFlowGraph(revision: RevisionContent, closure: SemanticClosure):
     const subflow = revision.document.subflows[subflowId]
     if (subflow == null) continue
     const path = `/document/subflows/${subflowId}`
-    const inputs = new Set(subflow.inputs.map((input) => input.handle))
+    const inputs = portsByHandle(subflow.inputs)
     validateGraph(subflow.graph, revision.document, inputs, false, `${path}/graph`, diagnostics)
     for (const output of subflow.outputs) {
-      for (const source of output.sources)
-        checkSource(source, subflow.graph, revision.document, inputs, undefined, `${path}/outputs/${output.handle}/sources`, diagnostics)
+      for (const source of output.sources) {
+        const sourcePort = checkSource(source, subflow.graph, revision.document, inputs, undefined, `${path}/outputs/${output.handle}/sources`, diagnostics)
+        if (sourcePort != null && !portsAssignable(sourcePort, output)) {
+          diagnostics.push(
+            graphDiagnostic(
+              'graph.subflow-output-incompatible',
+              `A source is not compatible with Subflow output "${output.handle}".`,
+              `${path}/outputs/${output.handle}/sources`,
+              { output: output.handle },
+            ),
+          )
+        }
+      }
     }
   }
   validateSubflowCycles(revision.document, diagnostics)

@@ -15,6 +15,7 @@ interface Props {
   readonly checked: boolean
   readonly checking: boolean
   readonly items: readonly DiagnosticItem[]
+  readonly nodes: ReadonlyMap<string, { readonly title: string }>
   readonly onClose: () => void
   readonly onRefresh: () => void
   readonly onSelect: (item: DiagnosticItem) => void
@@ -24,7 +25,28 @@ function scopeLabel(scope: DiagnosticScope, t: TFunction): string {
   return t(`diagnostics.scope.${scope}`)
 }
 
-export function DiagnosticsPanel({ checked, checking, items, onClose, onRefresh, onSelect }: Props): ReactElement {
+function groupItems(items: readonly DiagnosticItem[]): readonly (readonly DiagnosticItem[])[] {
+  const groups: DiagnosticItem[][] = []
+  const nodes = new Map<string, DiagnosticItem[]>()
+  for (const item of items) {
+    const nodeId = item.location?.nodeId
+    if (nodeId == null) {
+      groups.push([item])
+      continue
+    }
+    const group = nodes.get(nodeId)
+    if (group == null) {
+      const next = [item]
+      nodes.set(nodeId, next)
+      groups.push(next)
+    } else {
+      group.push(item)
+    }
+  }
+  return groups
+}
+
+export function DiagnosticsPanel({ checked, checking, items, nodes, onClose, onRefresh, onSelect }: Props): ReactElement {
   const t = useTranslate()
   const panel = useRef<HTMLElement>(null)
 
@@ -83,35 +105,51 @@ export function DiagnosticsPanel({ checked, checking, items, onClose, onRefresh,
         )
       ) : (
         <ol className="diagnostics-list">
-          {items.map((item, index) => {
-            const message = diagnosticMessage(item.diagnostic, t)
-            const content = (
-              <>
-                <span className="diagnostic-row-heading">
-                  <Badge variant="secondary">{scopeLabel(item.scope, t)}</Badge>
-                  <code>{item.diagnostic.code}</code>
-                  {item.scope == 'code' && <span>{t('diagnostics.sourceLocation', { column: item.diagnostic.column + 1, line: item.diagnostic.line })}</span>}
-                </span>
-                <strong>{message}</strong>
-                <code className="diagnostic-path">{item.diagnostic.path}</code>
-                <span className="diagnostic-row-action">{t(item.location == null ? 'diagnostics.pathOnly' : 'diagnostics.locate')}</span>
-              </>
-            )
+          {groupItems(items).map((group, groupIndex) => {
+            const location = group[0]?.location
+            const title = location == null ? undefined : nodes.get(location.nodeId)?.title
             return (
-              <li key={`${item.diagnostic.path}:${item.diagnostic.line}:${item.diagnostic.column}:${item.diagnostic.code}:${index}`}>
-                {item.location == null ? (
-                  <div className="diagnostic-row unavailable">{content}</div>
-                ) : (
-                  <Button
-                    aria-label={t('diagnostics.locateIssue', { message })}
-                    className="diagnostic-row whitespace-normal"
-                    onClick={() => onSelect(item)}
-                    type="button"
-                    variant="ghost"
-                  >
-                    {content}
-                  </Button>
+              <li className="diagnostic-group" key={location == null ? `item:${groupIndex}` : `node:${location.nodeId}`}>
+                {location != null && (
+                  <div className="diagnostic-group-heading">
+                    {title != null && <strong>{title}</strong>}
+                    <span>{t('diagnostics.nodeId', { nodeId: location.nodeId })}</span>
+                  </div>
                 )}
+                <ol>
+                  {group.map((item, index) => {
+                    const message = diagnosticMessage(item.diagnostic, t)
+                    return (
+                      <li key={`${item.diagnostic.path}:${item.diagnostic.line}:${item.diagnostic.column}:${item.diagnostic.code}:${index}`}>
+                        <div className="diagnostic-row">
+                          <span className="diagnostic-row-heading">
+                            <Badge variant="secondary">{scopeLabel(item.scope, t)}</Badge>
+                            <code>{item.diagnostic.code}</code>
+                            {item.scope == 'code' && (
+                              <span>{t('diagnostics.sourceLocation', { column: item.diagnostic.column + 1, line: item.diagnostic.line })}</span>
+                            )}
+                          </span>
+                          <strong>{message}</strong>
+                          <code className="diagnostic-path">{item.diagnostic.path}</code>
+                          {item.location == null ? (
+                            <span className="diagnostic-row-note">{t('diagnostics.pathOnly')}</span>
+                          ) : (
+                            <Button
+                              aria-label={t('diagnostics.locateIssue', { message })}
+                              className="self-start"
+                              onClick={() => onSelect(item)}
+                              size="xs"
+                              type="button"
+                              variant="link"
+                            >
+                              {t('diagnostics.locate')}
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ol>
               </li>
             )
           })}

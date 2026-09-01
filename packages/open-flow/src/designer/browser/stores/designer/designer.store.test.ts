@@ -181,7 +181,7 @@ describe('DesignerStore display mode', () => {
     setup.dispose()
   })
 
-  it('keeps independent positions and viewports for overview and detail layouts', async () => {
+  it('keeps the current positions and viewport when switching display modes', async () => {
     const setup = createTestSetup()
     setup.store.designerUIStore.loadDesignerUIData(
       {
@@ -203,9 +203,12 @@ describe('DesignerStore display mode', () => {
 
     setup.store.$$.displayMode.set('overview')
     await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(first.$.position.value).toEqual({ x: 0, y: 0 })
+    expect(second.$.position.value).toEqual({ x: 150, y: 0 })
+    expect(setup.store.$.viewport.value).toEqual({ x: 10, y: 20, zoom: 0.8 })
     first.$$.rfNode.set({ ...first.$.rfNode.value, measured: { width: 200, height: 80 } })
     second.$$.rfNode.set({ ...second.$.rfNode.value, measured: { width: 200, height: 80 } })
-    expect(setup.store.completeDisplayModeLayout()).toBe('relayout')
+    expect(setup.store.completeDisplayModeLayout()).toBe(true)
 
     first.$$.position.set({ x: 40, y: 50 })
     second.$$.position.set({ x: 300, y: 50 })
@@ -214,17 +217,17 @@ describe('DesignerStore display mode', () => {
     setup.store.$$.displayMode.set('detail')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(first.$.position.value).toEqual({ x: 0, y: 0 })
-    expect(second.$.position.value).toEqual({ x: 150, y: 0 })
-    expect(setup.store.$.viewport.value).toEqual({ x: 10, y: 20, zoom: 0.8 })
+    expect(first.$.position.value).toEqual({ x: 40, y: 50 })
+    expect(second.$.position.value).toEqual({ x: 300, y: 50 })
+    expect(setup.store.$.viewport.value).toEqual({ x: 30, y: 40, zoom: 1.2 })
     expect(setup.store.designerUIStore.toUIData()?.layouts).toEqual({
       detail: {
         nodes: {
-          first: { x: 0, y: 0 },
-          second: { x: 150, y: 0 },
+          first: { x: 40, y: 50 },
+          second: { x: 300, y: 50 },
         },
         pseudoNodes: undefined,
-        viewport: { x: 10, y: 20, zoom: 0.8 },
+        viewport: { x: 30, y: 40, zoom: 1.2 },
       },
       overview: {
         nodes: {

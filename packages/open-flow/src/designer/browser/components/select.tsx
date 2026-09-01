@@ -56,6 +56,7 @@ export interface DesignerComboboxProps<
   Group extends DesignerOptionGroup<Option> = DesignerOptionGroup<Option>,
 > {
   id?: string
+  ariaInvalid?: boolean
   inputId?: string
   className?: string
   placeholder?: string
@@ -279,6 +280,7 @@ export const DesignerCombobox: <Option extends DesignerOption = DesignerOption, 
   return (
     <CssWrapper css={{ '--menu-width': `${menuWidth}px` }}>
       <ReactSelectEx
+        aria-invalid={props.ariaInvalid}
         id={props.id}
         inputId={props.inputId}
         ref={innerRef}

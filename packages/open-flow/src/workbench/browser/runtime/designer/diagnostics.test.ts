@@ -3,7 +3,7 @@ import type { Diagnostic } from '../api.ts'
 import { describe, expect, it } from 'vitest'
 import { createI18n } from '../i18n.ts'
 import { revisionView } from '../revisionView.ts'
-import { diagnosticItems, diagnosticMessage } from './diagnostics.ts'
+import { deriveInspectorDiagnostics, diagnosticItems, diagnosticMessage } from './diagnostics.ts'
 
 const base = {
   column: 0,
@@ -91,23 +91,25 @@ describe('Workbench Diagnostic messages', () => {
       path: '/document/graph/nodes/trigger/bindingId',
       values: { bindingId: 'binding' },
     }
+    const flowDiagnostic: Diagnostic = {
+      ...base,
+      code: 'graph.empty',
+      message: 'The Flow graph is empty.',
+    }
+    const check = {
+      closureDigest: 'closure',
+      diagnostics: [diagnostic, flowDiagnostic],
+      engineContract: 'open-flow-engine/v1',
+      flowId: 'flow',
+      modelVersion: 1,
+      revisionDigest: 'digest',
+      revisionId: 'revision',
+      valid: false,
+      version: 1 as const,
+    }
 
-    expect(
-      diagnosticItems(
-        revision,
-        { kind: 'flow' },
-        {
-          closureDigest: 'closure',
-          diagnostics: [diagnostic],
-          engineContract: 'open-flow-engine/v1',
-          flowId: 'flow',
-          modelVersion: 1,
-          revisionDigest: 'digest',
-          revisionId: 'revision',
-          valid: false,
-          version: 1,
-        },
-      ),
-    ).toMatchObject([{ location: { nodeId: 'trigger', section: 'account' } }])
+    expect(diagnosticItems(revision, { kind: 'flow' }, check)).toMatchObject([{ location: { nodeId: 'trigger', section: 'account' } }, { location: undefined }])
+    expect(deriveInspectorDiagnostics(revision, { kind: 'flow' }, check, undefined)).toEqual([flowDiagnostic])
+    expect(deriveInspectorDiagnostics(revision, { kind: 'flow' }, check, revision.selection({ kind: 'flow' }, 'trigger'))).toEqual([diagnostic])
   })
 })

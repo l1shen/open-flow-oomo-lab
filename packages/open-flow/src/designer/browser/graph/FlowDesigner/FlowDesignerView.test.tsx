@@ -816,7 +816,7 @@ describe('FlowDesignerView model synchronization', () => {
     store.dispose()
   })
 
-  it('keeps the persisted detail viewport when overview has no saved layout', async () => {
+  it('keeps the current viewport when switching from overview to detail', async () => {
     const value: FlowDesignerViewModel = {
       layouts: {
         detail: {
@@ -829,13 +829,13 @@ describe('FlowDesignerView model synchronization', () => {
     const view = FlowDesignerView(props(value)) as React.ReactElement<FlowDesignerProps>
     const store = view.props.flowDesignerStore
 
-    expect(store.completeDisplayModeLayout()).toBe(false)
+    expect(store.completeDisplayModeLayout()).toBe(true)
     await new Promise((resolve) => setTimeout(resolve, 0))
     store.$$.viewport.set({ x: 30, y: 40, zoom: 1.2 })
     store.$$.displayMode.set('detail')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(store.$.viewport.value).toEqual({ x: 10, y: 20, zoom: 0.8 })
+    expect(store.$.viewport.value).toEqual({ x: 30, y: 40, zoom: 1.2 })
     store.dispose()
   })
 })

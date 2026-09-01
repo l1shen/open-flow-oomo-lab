@@ -98,6 +98,39 @@ describe('TriggerNodeContent', () => {
     expect(markup).toContain('value="oomol/open-flow"')
   })
 
+  it('marks missing required Provider configuration fields as invalid', () => {
+    const markup = renderTrigger(
+      {
+        config: [
+          {
+            invalid: true,
+            kind: 'select',
+            label: 'Owner',
+            name: 'owner',
+            options: [],
+            required: true,
+            source: '',
+          },
+          {
+            invalid: true,
+            kind: 'string',
+            label: 'Repository',
+            name: 'repo',
+            required: true,
+            source: '',
+          },
+        ],
+        kind: 'integration',
+        schedules: [],
+        source: 'github',
+      },
+      'en',
+    )
+
+    expect(markup.match(/aria-invalid="true"/g)).toHaveLength(2)
+    expect(markup.match(/data-invalid="true"/g)).toHaveLength(2)
+  })
+
   it('renders Webhook payload and HTTP options directly in the Trigger node', () => {
     const markup = renderTrigger(
       {

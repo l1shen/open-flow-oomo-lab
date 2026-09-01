@@ -200,6 +200,13 @@ describe('json-subset-comparer', () => {
       ).toEqual({ isSubset: false })
     })
 
+    it('compares enum subsets directionally', () => {
+      expect(compare({ schema: { enum: ['a'] } }, { schema: { enum: ['a', 'b'] } })).toEqual({ isSubset: true })
+      expect(compare({ schema: { enum: ['a', 'b'] } }, { schema: { enum: ['a'] } })).toEqual({ isSubset: false })
+      expect(compare({ schema: { enum: ['a', 'b'] } }, { schema: { enum: ['b', 'c'] } })).toEqual({ isSubset: false })
+      expect(compare({ schema: { enum: ['a', 'b'] } }, { schema: { enum: ['b', 'a'] } })).toEqual({ isSubset: true })
+    })
+
     it('should return true if one is single select and other is string', () => {
       expect(
         compare(
@@ -264,6 +271,17 @@ describe('json-subset-comparer', () => {
           },
         ),
       ).toEqual({ isSubset: false })
+    })
+
+    it('compares unique enum array subsets directionally', () => {
+      const one = { type: 'array', uniqueItems: true, items: { enum: ['a'] } }
+      const two = { type: 'array', uniqueItems: true, items: { enum: ['a', 'b'] } }
+      const overlap = { type: 'array', uniqueItems: true, items: { enum: ['b', 'c'] } }
+
+      expect(compare({ schema: one }, { schema: two })).toEqual({ isSubset: true })
+      expect(compare({ schema: two }, { schema: one })).toEqual({ isSubset: false })
+      expect(compare({ schema: two }, { schema: overlap })).toEqual({ isSubset: false })
+      expect(compare({ schema: two }, { schema: { type: 'array', items: { type: 'string' } } })).toEqual({ isSubset: true })
     })
 
     it('should return true if one is multi select and other is array of string', () => {

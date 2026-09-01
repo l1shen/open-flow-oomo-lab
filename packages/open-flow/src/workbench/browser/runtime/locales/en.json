@@ -450,6 +450,7 @@
         "binding-invalid": "Binding \"{{bindingId}}\" must be a Variable.",
         "binding-missing": "Binding \"{{bindingId}}\" does not exist.",
         "cycle": "Graph contains a dependency cycle among nodes: {{nodes}}.",
+        "flow-input-incompatible": "Flow input \"{{input}}\" is not compatible with this input.",
         "input-missing": "Node \"{{nodeId}}\" does not expose input \"{{handle}}\".",
         "node-output-incompatible": "Upstream node \"{{nodeId}}\" output \"{{output}}\" is not compatible with this input.",
         "schema-unsupported": "Runtime Ref schemas are not supported.",
@@ -462,6 +463,7 @@
           "subflow": "Subflow \"{{subflowId}}\" does not exist.",
           "task": "Task \"{{taskId}}\" does not exist."
         },
+        "subflow-output-incompatible": "A source is not compatible with Subflow output \"{{output}}\".",
         "trigger-not-allowed": "Trigger nodes are only allowed in Flows.",
         "variable-incompatible": "Variable binding \"{{bindingId}}\" is not compatible with this input.",
         "variable-source-mixed": "A Variable must be the only source for an input."
@@ -507,6 +509,7 @@
     "notChecked": "Not checked",
     "notCheckedDescription": "Check the current Draft to find graph, Task, Connection, and JavaScript problems.",
     "notCheckedTitle": "Check this Draft",
+    "nodeId": "Node ID: {{nodeId}}",
     "open": "Open problems",
     "pathOnly": "Path only",
     "refresh": "Check again",

@@ -290,12 +290,14 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
       if (Object.keys(from).length == 0 || Object.keys(to).length == 0) return true
       const result = compareJSONSchema(
         {
+          nullable: output.nullable,
           packageId: undefined,
-          schema: output.nullable ? { anyOf: [from, { type: 'null' }] } : from,
+          schema: from,
         },
         {
+          nullable: input.nullable,
           packageId: undefined,
-          schema: input.nullable ? { anyOf: [to, { type: 'null' }] } : to,
+          schema: to,
         },
       )
       return result.kind != 'incompatible'

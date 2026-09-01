@@ -2,7 +2,7 @@ import type { JsonValue, RevisionContent as RevisionFixture } from '../src/flow/
 
 import { describe, expect, it } from 'vitest'
 import { currentEngineContract, findEngineContract } from '../src/execution/common/runtime.ts'
-import { createRuntimeProgram, prepareFlow, validateFlow, validateFlowInputs, validateModules } from '../src/flow/common/semantics.ts'
+import { createRuntimeProgram, matchesSchema, prepareFlow, validateFlow, validateFlowInputs, validateModules } from '../src/flow/common/semantics.ts'
 
 const engine = findEngineContract(currentEngineContract)!
 
@@ -51,6 +51,112 @@ function variableRevision(jsonSchema: JsonValue): RevisionFixture {
     },
   }
 }
+
+function triggerRevision(config: Readonly<Record<string, JsonValue>>, jsonSchema: Readonly<Record<string, JsonValue>>): RevisionFixture {
+  const source = revision('export default ({ input }) => ({ input })')
+  const task = source.document.graph.nodes.task
+  if (task?.kind != 'task' || task.task == null) throw new Error('Fixture inline Task is missing.')
+  return {
+    ...source,
+    document: {
+      ...source.document,
+      bindings: { trigger: { kind: 'connection', target: 'connection-1' } },
+      graph: {
+        nodes: {
+          trigger: {
+            bindingId: 'trigger',
+            config,
+            definition: {
+              configSchema: {
+                additionalProperties: false,
+                properties: { event: { enum: ['push'], type: 'string' } },
+                required: ['event'],
+                type: 'object',
+              },
+              definitionVersion: 1,
+              description: 'Runs when a repository changes.',
+              displayName: 'Repository event',
+              endpoint: {
+                body: { allowArray: false, allowEmpty: false, formats: ['json'] },
+                methods: ['POST'],
+                successStatus: 200,
+              },
+              key: 'github.on_repo_event',
+              name: 'on_repo_event',
+              payloadSchema: { description: 'Repository name.', type: 'string' },
+              provider: 'github',
+              type: 'integration',
+            },
+            kind: 'integration',
+            name: 'Repository event',
+          },
+          task: {
+            ...task,
+            inputs: { input: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'trigger', output: 'payload' }] } },
+            task: { ...task.task, inputs: [{ handle: 'input', jsonSchema, nullable: false }] },
+          },
+        },
+      },
+    },
+  }
+}
+
+describe('Schema value matching', () => {
+  it.each([
+    { expected: true, name: 'accepts a true schema', schema: true, value: null },
+    { expected: false, name: 'rejects a false schema', schema: false, value: null },
+    { expected: false, name: 'rejects a non-schema value', schema: null, value: null },
+    { expected: true, name: 'accepts matching allOf branches', schema: { allOf: [{ type: 'string' }, { minLength: 2 }] }, value: 'ok' },
+    { expected: false, name: 'rejects a failing allOf branch', schema: { allOf: [{ type: 'string' }, { minLength: 3 }] }, value: 'ok' },
+    { expected: true, name: 'accepts a matching anyOf branch', schema: { anyOf: [{ type: 'string' }, { type: 'number' }] }, value: 1 },
+    { expected: false, name: 'rejects when no anyOf branch matches', schema: { anyOf: [{ type: 'string' }, { type: 'number' }] }, value: false },
+    { expected: true, name: 'accepts exactly one oneOf branch', schema: { oneOf: [{ minimum: 0 }, { type: 'string' }] }, value: 1 },
+    { expected: false, name: 'rejects overlapping oneOf branches', schema: { oneOf: [{ minimum: 0 }, { type: 'number' }] }, value: 1 },
+    { expected: true, name: 'accepts a value outside not', schema: { not: { type: 'number' } }, value: 'ok' },
+    { expected: false, name: 'rejects a value inside not', schema: { not: { type: 'number' } }, value: 1 },
+    { expected: true, name: 'accepts a deep-equal const', schema: { const: { values: [1] } }, value: { values: [1] } },
+    { expected: false, name: 'rejects a different const', schema: { const: { values: [1] } }, value: { values: [2] } },
+    { expected: true, name: 'accepts an enum member', schema: { enum: ['push', 'pull'] }, value: 'push' },
+    { expected: false, name: 'rejects a value outside enum', schema: { enum: ['push', 'pull'] }, value: 'delete' },
+    { expected: true, name: 'accepts a member of a type union', schema: { type: ['string', 'null'] }, value: null },
+    { expected: true, name: 'accepts an integer', schema: { type: 'integer' }, value: 1 },
+    { expected: false, name: 'rejects a fractional integer', schema: { type: 'integer' }, value: 1.5 },
+    { expected: true, name: 'accepts string length and pattern constraints', schema: { maxLength: 4, minLength: 2, pattern: '^o' }, value: 'ok' },
+    { expected: false, name: 'rejects a short string', schema: { minLength: 3 }, value: 'ok' },
+    { expected: false, name: 'rejects a long string', schema: { maxLength: 1 }, value: 'ok' },
+    { expected: false, name: 'rejects a pattern mismatch', schema: { pattern: '^a' }, value: 'ok' },
+    { expected: false, name: 'rejects an invalid pattern', schema: { pattern: '[' }, value: 'ok' },
+    { expected: true, name: 'accepts inclusive number bounds', schema: { maximum: 2, minimum: 1 }, value: 1 },
+    { expected: false, name: 'rejects a number below minimum', schema: { minimum: 1 }, value: 0 },
+    { expected: false, name: 'rejects a number above maximum', schema: { maximum: 1 }, value: 2 },
+    { expected: false, name: 'rejects exclusive minimum equality', schema: { exclusiveMinimum: 1 }, value: 1 },
+    { expected: false, name: 'rejects exclusive maximum equality', schema: { exclusiveMaximum: 1 }, value: 1 },
+    { expected: true, name: 'accepts array length and item constraints', schema: { items: { type: 'number' }, maxItems: 2, minItems: 1 }, value: [1] },
+    { expected: false, name: 'rejects a short array', schema: { minItems: 1 }, value: [] },
+    { expected: false, name: 'rejects a long array', schema: { maxItems: 1 }, value: [1, 2] },
+    { expected: false, name: 'rejects an invalid array item', schema: { items: { type: 'number' } }, value: [1, 'two'] },
+    {
+      expected: true,
+      name: 'accepts required object properties',
+      schema: { properties: { id: { type: 'number' } }, required: ['id'], type: 'object' },
+      value: { id: 1 },
+    },
+    { expected: false, name: 'rejects a missing required property', schema: { required: ['id'], type: 'object' }, value: {} },
+    { expected: false, name: 'rejects a non-string required entry', schema: { required: [1], type: 'object' }, value: {} },
+    { expected: false, name: 'rejects an invalid object property', schema: { properties: { id: { type: 'number' } }, type: 'object' }, value: { id: 'one' } },
+    { expected: false, name: 'rejects a forbidden additional property', schema: { additionalProperties: false, type: 'object' }, value: { id: 1 } },
+    { expected: true, name: 'accepts an additional property schema', schema: { additionalProperties: { type: 'number' }, type: 'object' }, value: { id: 1 } },
+    {
+      expected: false,
+      name: 'rejects an invalid additional property',
+      schema: { additionalProperties: { type: 'number' }, type: 'object' },
+      value: { id: 'one' },
+    },
+    { expected: false, name: 'rejects invalid properties metadata', schema: { properties: [], type: 'object' }, value: {} },
+  ])('$name', ({ expected, schema, value }) => {
+    expect(matchesSchema(value as JsonValue, schema as JsonValue)).toBe(expected)
+  })
+})
 
 describe('Flow semantics', () => {
   it('accepts declared static Flow imports and the unprivileged Platform Library', () => {
@@ -228,6 +334,25 @@ export default () => value`,
     })
   })
 
+  it('validates provider Trigger config and payload connections', async () => {
+    await expect(validateFlow(triggerRevision({ event: 'push' }, { type: 'string' }), engine)).resolves.toMatchObject({ diagnostics: [], valid: true })
+
+    await expect(validateFlow(triggerRevision({ event: 'push' }, { type: 'number' }), engine)).resolves.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'graph.node-output-incompatible', path: '/document/graph/nodes/task/inputs/input' })],
+      valid: false,
+    })
+
+    await expect(validateFlow(triggerRevision({}, { type: 'string' }), engine)).resolves.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'trigger.config-incomplete', path: '/document/graph/nodes/trigger/config' })],
+      valid: false,
+    })
+
+    await expect(validateFlow(triggerRevision({ event: 'delete' }, { type: 'string' }), engine)).resolves.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'trigger.config-invalid', path: '/document/graph/nodes/trigger/config' })],
+      valid: false,
+    })
+  })
+
   it('reports unsupported Engine, invalid Flow, and invalid invocation inputs without platform errors', async () => {
     await expect(prepareFlow(revision('export default () => true'), 'unsupported')).resolves.toEqual({ kind: 'engine-unsupported' })
     await expect(prepareFlow(revision('export const value = true'), currentEngineContract)).resolves.toMatchObject({
@@ -296,6 +421,231 @@ export default () => value`,
     }
 
     await expect(validateFlow(valid, engine)).resolves.toMatchObject({ diagnostics: [], valid: true })
+  })
+
+  it('accepts an annotated string output for an unconstrained string input', async () => {
+    const source = revision('export default ({ input }) => ({ input })')
+    const task = source.document.graph.nodes.task
+    if (task?.kind != 'task' || task.task == null) throw new Error('Fixture inline Task is missing.')
+    const valid: RevisionFixture = {
+      ...source,
+      document: {
+        ...source.document,
+        graph: {
+          nodes: {
+            gmail: {
+              concurrency: 1,
+              inputs: {},
+              kind: 'value',
+              name: 'Gmail',
+              values: [
+                {
+                  handle: 'emailAddress',
+                  jsonSchema: { description: "The user's email address.", type: 'string' },
+                  nullable: false,
+                  value: 'user@example.com',
+                },
+              ],
+            },
+            task: {
+              ...task,
+              inputs: { input: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'gmail', output: 'emailAddress' }] } },
+              task: { ...task.task, inputs: [{ handle: 'input', jsonSchema: { type: 'string' }, nullable: false }] },
+            },
+          },
+        },
+      },
+    }
+
+    await expect(validateFlow(valid, engine)).resolves.toMatchObject({ diagnostics: [], valid: true })
+  })
+
+  it('accepts a schema-nullable output for a nullable input', async () => {
+    const source = revision('export default ({ input }) => ({ input })')
+    const task = source.document.graph.nodes.task
+    if (task?.kind != 'task' || task.task == null) throw new Error('Fixture inline Task is missing.')
+    const valid: RevisionFixture = {
+      ...source,
+      document: {
+        ...source.document,
+        graph: {
+          nodes: {
+            source: {
+              concurrency: 1,
+              inputs: {},
+              kind: 'value',
+              name: 'Source',
+              values: [{ handle: 'value', jsonSchema: { type: ['string', 'null'] }, nullable: true, value: null }],
+            },
+            task: {
+              ...task,
+              inputs: { input: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'source', output: 'value' }] } },
+              task: { ...task.task, inputs: [{ handle: 'input', jsonSchema: { type: 'string' }, nullable: true }] },
+            },
+          },
+        },
+      },
+    }
+
+    await expect(validateFlow(valid, engine)).resolves.toMatchObject({ diagnostics: [], valid: true })
+
+    const target = valid.document.graph.nodes.task
+    if (target?.kind != 'task' || target.task == null) throw new Error('Fixture inline Task is missing.')
+    const invalid: RevisionFixture = {
+      ...valid,
+      document: {
+        ...valid.document,
+        graph: {
+          nodes: {
+            ...valid.document.graph.nodes,
+            task: { ...target, task: { ...target.task, inputs: [{ handle: 'input', jsonSchema: { type: 'string' }, nullable: false }] } },
+          },
+        },
+      },
+    }
+    await expect(validateFlow(invalid, engine)).resolves.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'graph.node-output-incompatible' })],
+      valid: false,
+    })
+  })
+
+  it('rejects incompatible Subflow boundary sources', async () => {
+    const invalid: RevisionFixture = {
+      document: {
+        bindings: {},
+        graph: {
+          nodes: {
+            call: {
+              concurrency: 1,
+              inputs: { text: { kind: 'value', value: 'ok' } },
+              kind: 'subflow',
+              name: 'Subflow',
+              subflowId: 'subflow',
+            },
+          },
+        },
+        subflows: {
+          subflow: {
+            graph: {
+              nodes: {
+                check: {
+                  cases: [{ expressions: [{ input: 'value', operator: '>', value: 0 }], output: 'yes', relation: 'all' }],
+                  concurrency: 1,
+                  defaultOutput: 'no',
+                  input: { handle: 'value', jsonSchema: { type: 'number' }, nullable: false },
+                  inputs: { value: { kind: 'sources', sources: [{ input: 'text', kind: 'flow' }] } },
+                  kind: 'condition',
+                  name: 'Check',
+                },
+                number: {
+                  concurrency: 1,
+                  inputs: {},
+                  kind: 'value',
+                  name: 'Number',
+                  values: [{ handle: 'value', jsonSchema: { type: 'number' }, nullable: false, value: 1 }],
+                },
+              },
+            },
+            inputs: [{ handle: 'text', jsonSchema: { type: 'string' }, nullable: false }],
+            name: 'Subflow',
+            outputs: [
+              {
+                handle: 'result',
+                jsonSchema: { type: 'string' },
+                nullable: false,
+                sources: [{ kind: 'node', nodeId: 'number', output: 'value' }],
+              },
+            ],
+          },
+        },
+        tasks: {},
+      },
+      modelVersion: 1,
+      modules: {},
+    }
+
+    await expect(validateFlow(invalid, engine)).resolves.toMatchObject({
+      diagnostics: [
+        expect.objectContaining({ code: 'graph.flow-input-incompatible', path: '/document/subflows/subflow/graph/nodes/check/inputs/value' }),
+        expect.objectContaining({ code: 'graph.subflow-output-incompatible', path: '/document/subflows/subflow/outputs/result/sources' }),
+      ],
+      valid: false,
+    })
+  })
+
+  it('validates compatible Flow, Condition and Subflow output boundaries', async () => {
+    const source = revision('export default ({ input }) => ({ input })')
+    const task = source.document.graph.nodes.task
+    if (task?.kind != 'task' || task.task == null) throw new Error('Fixture inline Task is missing.')
+    const valid: RevisionFixture = {
+      ...source,
+      document: {
+        ...source.document,
+        graph: {
+          nodes: {
+            call: {
+              concurrency: 1,
+              inputs: { text: { kind: 'value', value: 'hello' } },
+              kind: 'subflow',
+              name: 'Subflow',
+              subflowId: 'subflow',
+            },
+            task: {
+              ...task,
+              inputs: { input: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'call', output: 'result' }] } },
+              task: { ...task.task, inputs: [{ handle: 'input', jsonSchema: { type: 'string' }, nullable: false }] },
+            },
+          },
+        },
+        subflows: {
+          subflow: {
+            graph: {
+              nodes: {
+                check: {
+                  cases: [{ expressions: [{ input: 'text', operator: '==', value: 'hello' }], output: 'yes', relation: 'all' }],
+                  concurrency: 1,
+                  input: { handle: 'text', jsonSchema: { type: 'string' }, nullable: false },
+                  inputs: { text: { kind: 'sources', sources: [{ input: 'text', kind: 'flow' }] } },
+                  kind: 'condition',
+                  name: 'Check',
+                },
+              },
+            },
+            inputs: [{ handle: 'text', jsonSchema: { type: 'string' }, nullable: false }],
+            name: 'Subflow',
+            outputs: [
+              {
+                handle: 'result',
+                jsonSchema: { type: 'string' },
+                nullable: false,
+                sources: [{ kind: 'node', nodeId: 'check', output: 'yes' }],
+              },
+            ],
+          },
+        },
+      },
+    }
+
+    await expect(validateFlow(valid, engine)).resolves.toMatchObject({ diagnostics: [], valid: true })
+
+    const target = valid.document.graph.nodes.task
+    if (target?.kind != 'task' || target.task == null) throw new Error('Fixture inline Task is missing.')
+    const invalid: RevisionFixture = {
+      ...valid,
+      document: {
+        ...valid.document,
+        graph: {
+          nodes: {
+            ...valid.document.graph.nodes,
+            task: { ...target, task: { ...target.task, inputs: [{ handle: 'input', jsonSchema: { type: 'number' }, nullable: false }] } },
+          },
+        },
+      },
+    }
+    await expect(validateFlow(invalid, engine)).resolves.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'graph.node-output-incompatible', path: '/document/graph/nodes/task/inputs/input' })],
+      valid: false,
+    })
   })
 
   it('rejects incomplete Connector Capability declarations on inline Tasks', async () => {

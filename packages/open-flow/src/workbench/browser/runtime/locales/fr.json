@@ -450,6 +450,7 @@
         "binding-invalid": "La liaison « {{bindingId}} » doit être une Variable.",
         "binding-missing": "La liaison « {{bindingId}} » n’existe pas.",
         "cycle": "Le graphe contient un cycle de dépendances entre les nœuds : {{nodes}}.",
+        "flow-input-incompatible": "L’entrée Flow « {{input}} » n’est pas compatible avec cette entrée.",
         "input-missing": "Le nœud « {{nodeId}} » n’expose pas l’entrée « {{handle}} ».",
         "node-output-incompatible": "La sortie « {{output}} » du nœud en amont « {{nodeId}} » n’est pas compatible avec cette entrée.",
         "schema-unsupported": "Les schémas Runtime Ref ne sont pas pris en charge.",
@@ -462,6 +463,7 @@
           "subflow": "Le Subflow « {{subflowId}} » n’existe pas.",
           "task": "La Task « {{taskId}} » n’existe pas."
         },
+        "subflow-output-incompatible": "Une source n’est pas compatible avec la sortie Subflow « {{output}} ».",
         "trigger-not-allowed": "Les nœuds Trigger sont uniquement autorisés dans les Flows.",
         "variable-incompatible": "La liaison Variable « {{bindingId}} » n’est pas compatible avec cette entrée.",
         "variable-source-mixed": "Une Variable doit être l’unique source d’une entrée."
@@ -507,6 +509,7 @@
     "notChecked": "Non vérifié",
     "notCheckedDescription": "Vérifiez le Brouillon actuel pour détecter les problèmes de graphe, de tâche, de Connection et de JavaScript.",
     "notCheckedTitle": "Vérifier ce Brouillon",
+    "nodeId": "ID du nœud : {{nodeId}}",
     "open": "Ouvrir les problèmes",
     "pathOnly": "Chemin uniquement",
     "refresh": "Vérifier à nouveau",
