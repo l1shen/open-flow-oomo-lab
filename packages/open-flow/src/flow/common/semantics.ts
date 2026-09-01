@@ -548,7 +548,7 @@ function nodeInputPorts(document: FlowDocument, node: GraphNode): Readonly<Recor
     case 'subflow':
       return portsByHandle(document.subflows[node.subflowId]?.inputs ?? [])
     case 'task':
-      return portsByHandle(node.task != null ? node.task.inputs : (document.tasks[node.taskId]?.inputs ?? []))
+      return portsByHandle([...(node.task != null ? node.task.inputs : (document.tasks[node.taskId]?.inputs ?? [])), ...(node.additionalInputs ?? [])])
     case 'cron':
     case 'integration':
     case 'poll':
@@ -716,6 +716,22 @@ function validateGraph(
       )
     }
     const inputPorts = nodeInputPorts(document, node)
+    if (node.kind == 'task') {
+      const ports = [...(node.task != null ? node.task.inputs : (document.tasks[node.taskId]?.inputs ?? [])), ...(node.additionalInputs ?? [])]
+      const handles = new Set<string>()
+      for (const port of ports) {
+        if (!('handle' in port)) continue
+        if (handles.has(port.handle)) {
+          diagnostics.push(
+            graphDiagnostic('graph.input-duplicate', `Node "${nodeId}" declares input "${port.handle}" more than once.`, nodePath, {
+              handle: port.handle,
+              nodeId,
+            }),
+          )
+        }
+        handles.add(port.handle)
+      }
+    }
     const ports = [...Object.values(inputPorts), ...Object.values(nodeOutputPorts(document, node))]
     if (ports.some((port) => hasRetiredRef(port.jsonSchema))) {
       diagnostics.push(graphDiagnostic('graph.schema-unsupported', 'Runtime Ref schemas are not supported.', nodePath))
