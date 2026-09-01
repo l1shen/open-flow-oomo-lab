@@ -89,6 +89,7 @@ export function DiagnosticsPanel({ checked, checking, items, onClose, onRefresh,
               <>
                 <span className="diagnostic-row-heading">
                   <Badge variant="secondary">{scopeLabel(item.scope, t)}</Badge>
+                  {item.location != null && <span>{t('diagnostics.nodeId', { nodeId: item.location.nodeId })}</span>}
                   <code>{item.diagnostic.code}</code>
                   {item.scope == 'code' && <span>{t('diagnostics.sourceLocation', { column: item.diagnostic.column + 1, line: item.diagnostic.line })}</span>}
                 </span>

@@ -509,6 +509,7 @@
     "notChecked": "Не проверено",
     "notCheckedDescription": "Проверьте текущий черновик, чтобы найти проблемы графа, задач, Connection и JavaScript.",
     "notCheckedTitle": "Проверить черновик",
+    "nodeId": "ID узла: {{nodeId}}",
     "open": "Открыть панель проблем",
     "pathOnly": "Только путь",
     "refresh": "Проверить снова",

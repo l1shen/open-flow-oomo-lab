@@ -509,6 +509,7 @@
     "notChecked": "Non vérifié",
     "notCheckedDescription": "Vérifiez le Brouillon actuel pour détecter les problèmes de graphe, de tâche, de Connection et de JavaScript.",
     "notCheckedTitle": "Vérifier ce Brouillon",
+    "nodeId": "ID du nœud : {{nodeId}}",
     "open": "Ouvrir les problèmes",
     "pathOnly": "Chemin uniquement",
     "refresh": "Vérifier à nouveau",

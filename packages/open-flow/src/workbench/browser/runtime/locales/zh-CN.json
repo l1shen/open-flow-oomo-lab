@@ -509,6 +509,7 @@
     "notChecked": "尚未检查",
     "notCheckedDescription": "检查当前草稿，查找图、Task、Connection 和 JavaScript 问题。",
     "notCheckedTitle": "检查当前草稿",
+    "nodeId": "节点 ID：{{nodeId}}",
     "open": "打开问题面板",
     "pathOnly": "仅显示路径",
     "refresh": "重新检查",

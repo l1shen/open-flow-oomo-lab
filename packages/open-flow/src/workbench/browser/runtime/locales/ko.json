@@ -509,6 +509,7 @@
     "notChecked": "검사 안 됨",
     "notCheckedDescription": "현재 초안을 검사해 그래프, 태스크, Connection, JavaScript 문제를 찾아보세요.",
     "notCheckedTitle": "이 초안 검사",
+    "nodeId": "노드 ID: {{nodeId}}",
     "open": "문제 패널 열기",
     "pathOnly": "경로만 표시",
     "refresh": "다시 검사",

@@ -509,6 +509,7 @@
     "notChecked": "尚未檢查",
     "notCheckedDescription": "檢查目前的草稿，找出流程圖、任務、Connection 和 JavaScript 的問題。",
     "notCheckedTitle": "檢查這份草稿",
+    "nodeId": "節點 ID：{{nodeId}}",
     "open": "開啟問題面板",
     "pathOnly": "僅路徑",
     "refresh": "重新檢查",

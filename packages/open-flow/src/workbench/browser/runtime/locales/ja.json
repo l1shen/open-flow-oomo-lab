@@ -509,6 +509,7 @@
     "notChecked": "未検査",
     "notCheckedDescription": "現在のドラフトを検査して、グラフ、タスク、Connection、JavaScript の問題を見つけます。",
     "notCheckedTitle": "このドラフトを検査",
+    "nodeId": "ノード ID：{{nodeId}}",
     "open": "問題パネルを開く",
     "pathOnly": "パスのみ表示",
     "refresh": "再検査",
