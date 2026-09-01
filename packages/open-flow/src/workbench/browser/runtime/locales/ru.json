@@ -450,6 +450,7 @@
         "binding-invalid": "Привязка «{{bindingId}}» должна быть Variable.",
         "binding-missing": "Привязка «{{bindingId}}» не существует.",
         "cycle": "Граф содержит цикл зависимостей между узлами: {{nodes}}.",
+        "flow-input-incompatible": "Вход Flow «{{input}}» несовместим с этим входом.",
         "input-missing": "Узел «{{nodeId}}» не предоставляет вход «{{handle}}».",
         "node-output-incompatible": "Выход «{{output}}» вышестоящего узла «{{nodeId}}» несовместим с этим входом.",
         "schema-unsupported": "Схемы Runtime Ref не поддерживаются.",
@@ -462,6 +463,7 @@
           "subflow": "Subflow «{{subflowId}}» не существует.",
           "task": "Task «{{taskId}}» не существует."
         },
+        "subflow-output-incompatible": "Источник несовместим с выходом Subflow «{{output}}».",
         "trigger-not-allowed": "Узлы Trigger разрешены только во Flow.",
         "variable-incompatible": "Привязка Variable «{{bindingId}}» несовместима с этим входом.",
         "variable-source-mixed": "Variable должна быть единственным источником входа."

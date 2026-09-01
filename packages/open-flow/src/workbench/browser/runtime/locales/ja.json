@@ -450,6 +450,7 @@
         "binding-invalid": "バインディング「{{bindingId}}」は Variable である必要があります。",
         "binding-missing": "バインディング「{{bindingId}}」は存在しません。",
         "cycle": "ノード間に依存関係の循環があります：{{nodes}}。",
+        "flow-input-incompatible": "Flow 入力「{{input}}」はこの入力と互換性がありません。",
         "input-missing": "ノード「{{nodeId}}」に入力「{{handle}}」はありません。",
         "node-output-incompatible": "上流ノード「{{nodeId}}」の出力「{{output}}」はこの入力と互換性がありません。",
         "schema-unsupported": "Runtime Ref スキーマはサポートされていません。",
@@ -462,6 +463,7 @@
           "subflow": "Subflow「{{subflowId}}」は存在しません。",
           "task": "Task「{{taskId}}」は存在しません。"
         },
+        "subflow-output-incompatible": "ソースが Subflow 出力「{{output}}」の宣言型と互換性がありません。",
         "trigger-not-allowed": "Trigger ノードは Flow 内でのみ使用できます。",
         "variable-incompatible": "Variable バインディング「{{bindingId}}」はこの入力と互換性がありません。",
         "variable-source-mixed": "Variable は入力の唯一のソースである必要があります。"

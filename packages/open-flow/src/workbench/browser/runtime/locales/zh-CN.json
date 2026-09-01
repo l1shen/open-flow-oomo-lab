@@ -450,6 +450,7 @@
         "binding-invalid": "绑定“{{bindingId}}”必须是 Variable。",
         "binding-missing": "绑定“{{bindingId}}”不存在。",
         "cycle": "节点之间存在依赖循环：{{nodes}}。",
+        "flow-input-incompatible": "Flow 输入“{{input}}”与此输入不兼容。",
         "input-missing": "节点“{{nodeId}}”没有输入“{{handle}}”。",
         "node-output-incompatible": "上游节点“{{nodeId}}”的输出“{{output}}”与此输入不兼容。",
         "schema-unsupported": "不支持 Runtime Ref schema。",
@@ -462,6 +463,7 @@
           "subflow": "Subflow“{{subflowId}}”不存在。",
           "task": "Task“{{taskId}}”不存在。"
         },
+        "subflow-output-incompatible": "有来源与 Subflow 输出“{{output}}”的声明类型不兼容。",
         "trigger-not-allowed": "Trigger 节点只能用于 Flow。",
         "variable-incompatible": "Variable 绑定“{{bindingId}}”与此输入不兼容。",
         "variable-source-mixed": "Variable 必须是一个输入的唯一来源。"

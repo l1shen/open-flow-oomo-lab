@@ -450,6 +450,7 @@
         "binding-invalid": "繫結「{{bindingId}}」必須是 Variable。",
         "binding-missing": "繫結「{{bindingId}}」不存在。",
         "cycle": "節點之間存在相依性循環：{{nodes}}。",
+        "flow-input-incompatible": "Flow 輸入「{{input}}」與此輸入不相容。",
         "input-missing": "節點「{{nodeId}}」沒有輸入「{{handle}}」。",
         "node-output-incompatible": "上游節點「{{nodeId}}」的輸出「{{output}}」與此輸入不相容。",
         "schema-unsupported": "不支援 Runtime Ref schema。",
@@ -462,6 +463,7 @@
           "subflow": "Subflow「{{subflowId}}」不存在。",
           "task": "Task「{{taskId}}」不存在。"
         },
+        "subflow-output-incompatible": "有來源與 Subflow 輸出「{{output}}」的宣告類型不相容。",
         "trigger-not-allowed": "Trigger 節點只能用於 Flow。",
         "variable-incompatible": "Variable 繫結「{{bindingId}}」與此輸入不相容。",
         "variable-source-mixed": "Variable 必須是輸入的唯一來源。"
