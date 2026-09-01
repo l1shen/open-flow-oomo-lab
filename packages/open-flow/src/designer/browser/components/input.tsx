@@ -10,6 +10,7 @@ import { DesignerTooltip } from './tooltip.tsx'
 
 export interface InputProps<Clear extends boolean = false> {
   id?: string
+  ariaInvalid?: boolean
   ariaLabel?: string
   className?: string
   style?: React.CSSProperties
@@ -168,6 +169,7 @@ export const Input: <Clear extends boolean = false>(props: InputProps<Clear> & R
       autoFocus: props.autoFocus,
     }
     sharedProps['aria-label'] = props.ariaLabel
+    sharedProps['aria-invalid'] = props.ariaInvalid
 
     const input = props.multiline ? <textarea ref={ref as React.Ref<HTMLTextAreaElement>} {...(sharedProps as any)} /> : <input ref={ref} {...sharedProps} />
 

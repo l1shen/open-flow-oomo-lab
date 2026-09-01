@@ -92,6 +92,7 @@ export function WorkspaceHeader({
   const checkLoading = useVal(store.workspace.$.checkLoading)
   const diagnostics = useVal(store.workspace.$.diagnostics)
   const diagnosticItems = useVal(store.workspace.$.diagnosticItems)
+  const designerNodes = useVal(store.$.designerNodeById)
   const draft = useVal(store.workspace.$.draft)
   const flow = useVal(store.workspace.$.flow)
   const live = useVal(store.workspace.$.live)
@@ -246,6 +247,7 @@ export function WorkspaceHeader({
           checked={diagnostics != null}
           checking={checkLoading}
           items={diagnosticItems}
+          nodes={designerNodes}
           onClose={() => {
             setDiagnosticsOpen(false)
             diagnosticsButton.current?.focus()

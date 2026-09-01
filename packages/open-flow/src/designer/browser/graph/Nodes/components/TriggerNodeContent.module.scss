@@ -90,6 +90,10 @@
   &[data-kind='multi-select'] {
     grid-column: 1 / -1;
   }
+
+  &[data-invalid='true'] .scheduleLabel {
+    color: var(--widget-font-danger-color);
+  }
 }
 
 .webhookEditor {

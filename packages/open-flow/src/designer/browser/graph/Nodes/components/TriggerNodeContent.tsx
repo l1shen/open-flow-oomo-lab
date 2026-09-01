@@ -217,6 +217,7 @@ function TriggerField({
   const t = useTranslate()
   const inputId = useId()
   const [warning, setWarning] = useState<string>()
+  const requiredWarning = field.invalid ? t('inputHandleEditor.connectionRequired') : undefined
   let control: ReactElement
 
   switch (field.kind) {
@@ -227,6 +228,7 @@ function TriggerField({
       ]
       control = (
         <Select<ConfigOption>
+          ariaInvalid={field.invalid}
           inputId={inputId}
           disabled={!editable}
           onChange={(option) => {
@@ -234,6 +236,7 @@ function TriggerField({
           }}
           options={options}
           value={options.find((option) => option.source == field.source)}
+          variant={field.invalid ? 'danger' : undefined}
         />
       )
       break
@@ -242,12 +245,14 @@ function TriggerField({
       const options: ConfigOption[] = field.options.map((option, index) => ({ ...option, configValue: option.value, value: `option-${index}` }))
       control = (
         <Select<ConfigOption, true>
+          ariaInvalid={field.invalid}
           inputId={inputId}
           disabled={!editable}
           isMulti
           onChange={(selected) => onChange(selected.length == 0 ? undefined : selected.map((option) => option.configValue))}
           options={options}
           value={options.filter((option) => field.selected.includes(option.source))}
+          variant={field.invalid ? 'danger' : undefined}
         />
       )
       break
@@ -260,6 +265,7 @@ function TriggerField({
       ]
       control = (
         <Select<ConfigOption>
+          ariaInvalid={field.invalid}
           inputId={inputId}
           disabled={!editable}
           onChange={(option) => {
@@ -267,6 +273,7 @@ function TriggerField({
           }}
           options={options}
           value={options.find((option) => option.source == field.source)}
+          variant={field.invalid ? 'danger' : undefined}
         />
       )
       break
@@ -275,6 +282,7 @@ function TriggerField({
     case 'number':
       control = (
         <Input
+          ariaInvalid={field.invalid}
           id={inputId}
           disabled={!editable}
           max={Number.MAX_VALUE}
@@ -297,25 +305,28 @@ function TriggerField({
           step={field.kind == 'integer' ? 1 : undefined}
           type="number"
           value={field.source}
-          warning={warning}
+          warning={warning ?? requiredWarning}
         />
       )
       break
     case 'string':
       control = (
         <Input
+          ariaInvalid={field.invalid}
           id={inputId}
           disabled={!editable}
           onBlur={(input) => {
             if (input.value != field.source) onChange(input.value == '' ? undefined : input.value)
           }}
           value={field.source}
+          warning={requiredWarning}
         />
       )
       break
     case 'json':
       control = (
         <Input
+          ariaInvalid={field.invalid}
           id={inputId}
           disabled={!editable}
           height={44}
@@ -338,14 +349,14 @@ function TriggerField({
           }}
           onFocus={() => setWarning(undefined)}
           value={field.source}
-          warning={warning}
+          warning={warning ?? requiredWarning}
         />
       )
       break
   }
 
   return (
-    <div className={`${styles.configField} nodrag`} data-kind={field.kind}>
+    <div className={`${styles.configField} nodrag`} data-invalid={field.invalid || undefined} data-kind={field.kind}>
       <label className={styles.scheduleLabel} htmlFor={inputId} title={field.description}>
         {field.label}
         {field.required ? ' *' : ''}

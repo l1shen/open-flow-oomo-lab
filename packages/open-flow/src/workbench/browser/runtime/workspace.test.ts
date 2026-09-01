@@ -108,6 +108,75 @@ describe('Designer port projection', () => {
     expect(publicNode).toMatchObject({ diagnostics: 0, executorName: 'connector' })
     expect(authenticatedNode).toMatchObject({ diagnostics: 1, executorName: 'connection required' })
   })
+
+  it('projects missing Trigger config diagnostics onto their fields', () => {
+    const draft: NonNullable<Parameters<typeof designerGraph>[0]> = {
+      actorId: 'actor',
+      content: {
+        document: {
+          bindings: {},
+          graph: {
+            nodes: {
+              trigger: {
+                bindingId: 'binding',
+                config: { repo: 'open-flow' },
+                definition: {
+                  configSchema: {
+                    properties: { owner: { type: 'string' }, repo: { type: 'string' } },
+                    required: ['owner', 'repo'],
+                    type: 'object',
+                  },
+                  definitionVersion: 1,
+                  description: '',
+                  displayName: 'Repository event',
+                  endpoint: {
+                    body: { allowArray: false, allowEmpty: false, formats: ['json'] },
+                    methods: ['POST'],
+                    successStatus: 200,
+                  },
+                  key: 'github.on_repo_event',
+                  name: 'on_repo_event',
+                  payloadSchema: { type: 'object' },
+                  provider: 'github',
+                  type: 'integration',
+                },
+                kind: 'integration',
+                name: 'Repository event',
+              },
+            },
+          },
+          subflows: {},
+          tasks: {},
+        },
+        modelVersion: 1,
+        modules: {},
+      },
+      createdAt: '2026-09-01T00:00:00.000Z',
+      digest: 'digest',
+      flowId: 'flow',
+      modelVersion: 1,
+      parentRevisionId: null,
+      revisionId: 'revision',
+      version: 1,
+    }
+    const node = designerGraph(draft, { kind: 'flow' }, {}, [
+      {
+        code: 'trigger.config-incomplete',
+        column: 0,
+        line: 1,
+        message: 'Complete the required Trigger config fields: owner.',
+        path: '/document/graph/nodes/trigger/config',
+        values: { fields: 'owner' },
+      },
+    ]).nodes[0]
+
+    expect(node).toMatchObject({
+      kind: 'trigger',
+      presentation: {
+        config: [expect.objectContaining({ invalid: true, name: 'owner' }), expect.objectContaining({ invalid: false, name: 'repo' })],
+      },
+    })
+  })
 })
 
 describe('Designer presentation layouts', () => {

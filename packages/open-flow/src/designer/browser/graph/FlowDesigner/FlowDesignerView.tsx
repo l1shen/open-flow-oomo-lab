@@ -186,6 +186,7 @@ export type FlowDesignerViewTriggerSchedule =
 
 interface FlowDesignerViewTriggerFieldBase {
   readonly description?: string
+  readonly invalid?: boolean
   readonly label: string
   readonly name: string
   readonly required: boolean

@@ -42,7 +42,8 @@ export function deriveInspectorDiagnostics(
   if (revision == null || target == null || diagnostics == null) return []
   if (selection != null) return diagnosticsForNode(target, selection, diagnostics.diagnostics)
   const targetPath = target.kind == 'flow' ? '/document/graph' : `/document/subflows/${target.id}`
-  return diagnostics.diagnostics.filter((diagnostic) => within(targetPath, diagnostic.path))
+  const nodePath = target.kind == 'flow' ? '/document/graph/nodes/' : `/document/subflows/${target.id}/graph/nodes/`
+  return diagnostics.diagnostics.filter((diagnostic) => within(targetPath, diagnostic.path) && !diagnostic.path.startsWith(nodePath))
 }
 
 function scope(path: string): DiagnosticScope {
