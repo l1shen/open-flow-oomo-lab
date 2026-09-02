@@ -85,12 +85,12 @@ function fullFlow(value = 2): RevisionContent {
       increment: {
         imports: [],
         name: 'Increment',
-        source: `export default (inputs, context) => {
+        source: `export default async (inputs, context) => {
   if (context.inputs !== inputs) throw new Error('Task context inputs must be the first argument.')
   if (context.blockId != 'increment' || typeof context.flowId != 'string' || typeof context.runId != 'string') throw new Error('Task identity is incomplete.')
   if (inputs.start != 'manual') throw new Error('Additional input was not passed to the Task.')
   context.signal.throwIfAborted()
-  return { value: inputs.value + 1 }
+  await context.outputs({ value: inputs.value + 1 })
 }`,
       },
     },
@@ -122,6 +122,30 @@ function hangingFlow(): RevisionContent {
         source:
           "export default async (_inputs, context) => await new Promise((_resolve, reject) => context.signal.addEventListener('abort', () => reject(context.signal.reason), { once: true }))",
       },
+    },
+  }
+}
+
+function oversizedOutputsFlow(): RevisionContent {
+  return {
+    document: {
+      bindings: {},
+      graph: {
+        nodes: {
+          task: {
+            concurrency: 1,
+            inputs: {},
+            kind: 'task',
+            task: { inputs: [], moduleId: 'main', name: 'Main', outputs: [{ ...port, handle: 'value' }] },
+          },
+        },
+      },
+      subflows: {},
+      tasks: {},
+    },
+    modelVersion: 1,
+    modules: {
+      main: { imports: [], name: 'Main', source: "export default async (_inputs, context) => context.outputs({ value: 'x'.repeat(2_000_000) })" },
     },
   }
 }
@@ -336,6 +360,26 @@ describe('Server application service', () => {
     })
     await expect(acceptRun(service, { flowId: 'main', idempotencyKey: 'full-flow', revision: fullFlow(4), revisionId: 'revision-b' })).resolves.toEqual({
       kind: 'conflict',
+    })
+    await closeService(service)
+  })
+
+  it('rejects context outputs larger than the Runtime result limit before delivery', async () => {
+    const service = await openService(await databaseFile())
+    await startService(service)
+    const accepted = await acceptRun(service, {
+      flowId: 'main',
+      idempotencyKey: 'oversized-outputs',
+      revision: oversizedOutputsFlow(),
+      revisionId: 'revision-oversized-outputs',
+    })
+    if (accepted.kind != 'accepted') throw new Error('Oversized outputs Run acceptance conflicted.')
+    await service.waitForIdle()
+
+    expect(service.run(accepted.runId)?.status).toBe('failed')
+    expect(service.events(accepted.runId).filter((event) => event.kind == 'node.output')).toHaveLength(0)
+    expect(service.events(accepted.runId).find((event) => event.kind == 'node.failed')).toMatchObject({
+      payload: { error: { code: 'node.failed', message: 'Runtime result exceeds the configured byte limit.' } },
     })
     await closeService(service)
   })
