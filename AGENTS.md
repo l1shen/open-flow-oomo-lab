@@ -43,10 +43,13 @@ implementation history in Git. Do not reference unavailable repositories.
 ## Checks
 
 ```bash
+bun run format
 bun run check
 bun run test
 bun run build
 ```
+
+Use `bun run format`, this project does NOT use Prettier.
 
 Do not use `bun test` at the repository root. It bypasses the workspace test scripts and incorrectly
 loads Vitest files with Bun's built-in test runner.

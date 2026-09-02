@@ -52,8 +52,15 @@ export class IsolatedVmError extends Error {
   }
 }
 
+type InvokeContext = {
+  readonly blockId: string | undefined
+  readonly flowId: string | undefined
+  readonly runId: string | undefined
+}
+
 type InvokeRequest =
   | {
+      readonly context?: InvokeContext
       readonly executionId: number
       readonly input: JsonValue
       readonly invocationId: string
@@ -505,6 +512,51 @@ delete globalThis.__openFlowEncodeText
 delete globalThis.__openFlowNow
 delete globalThis.__openFlowSetTimeout
 delete globalThis.__openFlowTimeOrigin
+const abortSignals = new WeakMap()
+globalThis.AbortSignal = class AbortSignal {
+  #aborted = false
+  #listeners = new Set()
+  #reason
+  onabort = null
+  constructor() {
+    abortSignals.set(this, (reason) => {
+      if (this.#aborted) return
+      this.#aborted = true
+      this.#reason = reason
+      const event = Object.freeze({ currentTarget: this, target: this, type: 'abort' })
+      if (typeof this.onabort == 'function') this.onabort.call(this, event)
+      for (const listener of this.#listeners) {
+        if (typeof listener == 'function') listener.call(this, event)
+        else listener.handleEvent(event)
+      }
+      this.#listeners.clear()
+    })
+  }
+  get aborted() {
+    return this.#aborted
+  }
+  get reason() {
+    return this.#reason
+  }
+  addEventListener(type, listener) {
+    if (type == 'abort') this.#listeners.add(listener)
+  }
+  removeEventListener(type, listener) {
+    if (type == 'abort') this.#listeners.delete(listener)
+  }
+  throwIfAborted() {
+    if (this.#aborted) throw this.#reason
+  }
+}
+globalThis.AbortController = class AbortController {
+  #signal = new AbortSignal()
+  get signal() {
+    return this.#signal
+  }
+  abort(reason = new Error('This operation was aborted.')) {
+    abortSignals.get(this.#signal)(reason)
+  }
+}
 let nextTimerId = 0
 const activeTimers = new Set()
 const schedule = (callback, delay, args, repeat) => {
@@ -696,6 +748,7 @@ async function compileProgram(
   program: RuntimeProgram,
   contract: NonNullable<ReturnType<typeof findEngineContract>>,
   cpuMs: number,
+  taskContext: InvokeContext | undefined,
 ): Promise<IsolatedVM.Module> {
   const capabilityModule = await isolate.compileModule(capabilitySource, { filename: 'open-flow:engine/capability.mjs' })
   await capabilityModule.instantiate(context, () => {
@@ -721,28 +774,20 @@ async function compileProgram(
   const mainModule = await isolate.compileModule(
     `import task from '../user/${program.entryModuleId}.mjs'
 import { capability } from './capability.mjs'
+const cancellation = new AbortController()
+export function cancelTask() {
+  cancellation.abort(new Error('Task invocation was canceled.'))
+}
 export async function invoke(source) {
   try {
-    const value = JSON.parse(source)
-    const wrapped = value != null && typeof value == 'object' && Object.hasOwn(value, 'additionalInputs') && Object.hasOwn(value, 'input')
-    const inputs = wrapped ? value.input : value
-    const additionalInputs = wrapped ? value.additionalInputs : {}
-    const context = Object.freeze({
-      ...capability,
-      additionalInputs,
-      blockId: wrapped ? value.blockId : undefined,
-      flowId: wrapped ? value.flowId : undefined,
+    const inputs = JSON.parse(source)
+    const context = Object.freeze(Object.assign({}, capability, {
+      blockId: ${JSON.stringify(taskContext?.blockId)},
+      flowId: ${JSON.stringify(taskContext?.flowId)},
+      runId: ${JSON.stringify(taskContext?.runId)},
       inputs,
-      runId: wrapped ? value.runId : undefined,
-      signal: Object.freeze({
-        aborted: false,
-        addEventListener() {},
-        onabort: null,
-        reason: undefined,
-        removeEventListener() {},
-        throwIfAborted() {},
-      }),
-    })
+      signal: cancellation.signal,
+    }))
     const result = await task(inputs, context)
     return JSON.stringify({ engineDigest: ${JSON.stringify(program.engineDigest)}, ok: true, value: result })
   } catch (error) {
@@ -830,7 +875,20 @@ async function execute(
       if (isolate != null && !isolate.isDisposed) isolate.dispose()
     }
     canceled.addEventListener('abort', abort, { once: true })
-    const mainModule = await compileProgram(isolate, context, program, contract, request.limits.cpuMs)
+    const mainModule = await compileProgram(isolate, context, program, contract, request.limits.cpuMs, request.context)
+    const cancelTask = (await mainModule.namespace.get('cancelTask', { reference: true })) as IsolatedVM.Reference<() => void>
+    canceled.removeEventListener('abort', abort)
+    abort = (): void => {
+      if (!globals?.close()) return
+      try {
+        cancelTask.applySync(undefined, [], { arguments: { copy: true } })
+      } finally {
+        cancelTask.release()
+        if (isolate != null && !isolate.isDisposed) isolate.dispose()
+      }
+    }
+    canceled.addEventListener('abort', abort, { once: true })
+    if (canceled.aborted) abort()
     const source = await invokeProgram(mainModule, request.input, request.limits.cpuMs)
     const result = readResult(source, program, request.limits.maxResultBytes, preserveCapabilityFailure, globals.failure())
     globals.close()
@@ -906,17 +964,13 @@ function executeFlow(
         if ('moduleId' in invocation) {
           const program = createRuntimeProgram(flow.prepared, invocation.moduleId, isolatedVmEngineDigest)
           if (program == null) return yield* Effect.fail(new IsolatedVmError('invalid-program', 'Task Module is not part of the fixed Flow closure.'))
+          const input = Object.assign({}, invocation.additionalInputs, invocation.input)
           return yield* Effect.scoped(
             executeEffect(
               {
+                context: { blockId: invocation.blockId, flowId: invocation.flowId, runId: invocation.runId },
                 executionId: request.executionId,
-                input: {
-                  additionalInputs: invocation.additionalInputs ?? {},
-                  blockId: invocation.blockId,
-                  flowId: invocation.flowId,
-                  input: invocation.input,
-                  runId: invocation.runId,
-                },
+                input,
                 invocationId: invocation.invocationId,
                 limits: request.limits,
                 program,

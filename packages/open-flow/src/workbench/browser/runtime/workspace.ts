@@ -731,6 +731,11 @@ function semanticDesignerNode(nodeId: string, resolved: ResolvedNode, ports: Nod
     case 'task':
       return {
         ...common,
+        additionalInputs: node.additionalInputs?.flatMap((port) => {
+          const input = inputs.find((item) => 'handle' in item && item.handle == port.handle)
+          return input == null || 'group' in input ? [] : [input]
+        }),
+        editableAdditionalInputs: node.task == null,
         editablePorts: node.task != null,
         kind: node.kind,
         executorName: executorName(task, connectionRequired, context.t),

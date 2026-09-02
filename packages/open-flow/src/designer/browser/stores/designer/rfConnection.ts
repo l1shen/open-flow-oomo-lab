@@ -52,7 +52,10 @@ export function decodeRFSourceHandle(
     if (sourceNode.nodeType === NODE_TYPE.InputNode) {
       return { type: 'from_flow', source: { input_handle: handle } }
     } else {
-      return { type: 'from_node', source: { node_id: sourceNodeId, output_handle: handle } }
+      return {
+        type: 'from_node',
+        source: { node_id: sourceNodeId, output_handle: handle },
+      }
     }
   }
 }
@@ -88,7 +91,10 @@ export function decodeRFTargetHandle(
     if (targetNode.nodeType === NODE_TYPE.OutputNode) {
       return { type: 'to_flow', target: { output_handle: handle } }
     } else {
-      return { type: 'to_node', target: { node_id: targetNodeId, input_handle: handle } }
+      return {
+        type: 'to_node',
+        target: { node_id: targetNodeId, input_handle: handle },
+      }
     }
   }
 }

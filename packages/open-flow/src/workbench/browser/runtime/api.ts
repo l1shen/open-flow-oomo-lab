@@ -52,6 +52,7 @@ export type {
   GraphTarget,
   Group,
   InputMapping,
+  InputPort,
   InputPortDefinition,
   JsonValue,
   PortDefinition,

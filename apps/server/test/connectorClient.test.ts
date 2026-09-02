@@ -583,7 +583,7 @@ describe('Server Connector client', () => {
     ])
   })
 
-  it('rejects a Connector Action without a stable id', async () => {
+  it('uses service and name as the Connector Action search identity', async () => {
     const origin = await startConnector((request, response) => {
       if (request.url == '/v1/providers') {
         return send(response, 200, { data: [{ authTypes: ['no_auth'], displayName: 'Example', service: 'example' }], success: true })
@@ -602,9 +602,12 @@ describe('Server Connector client', () => {
         success: true,
       })
     })
-    const connector = new ConnectorClient(origin, 'runtime-token')
+    const captured = captureLogger()
+    const connector = new ConnectorClient(origin, 'runtime-token', 30_000, captured.logger)
 
-    await expect(connector.searchActions('echo')).rejects.toMatchObject({ code: 'connector.unavailable' })
+    await expect(connector.searchActions('echo')).resolves.toEqual([expect.objectContaining({ actionId: 'example.echo', name: 'echo', serviceId: 'example' })])
+    expect(captured.output()).not.toContain('"failure":"response-invalid"')
+    expect(captured.output()).not.toContain('Echo one message.')
   })
 
   it('maps malformed Connector Action schemas to the stable unavailable error', async () => {
@@ -653,6 +656,8 @@ describe('Server Connector client', () => {
     expect(captured.output()).toContain('"category":"connector.request.failed"')
     expect(captured.output()).toContain('"failure":"response-invalid"')
     expect(captured.output()).toContain('"operation":"actions.list"')
+    expect(captured.output()).toContain('"errorMessage":')
+    expect(captured.output()).not.toContain('The Connector request could not be completed.')
     expect(captured.output()).not.toContain('Invalid schema.')
   })
 

@@ -88,7 +88,7 @@ export interface SubflowRunResult {
 }
 
 interface TaskInvocationBase {
-  readonly additionalInputs?: Readonly<Record<string, JsonValue>>
+  readonly additionalInputs: Readonly<Record<string, JsonValue>>
   readonly blockId: string
   readonly flowId: string
   readonly input: Readonly<Record<string, JsonValue>>

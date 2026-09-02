@@ -226,7 +226,6 @@ export function SettingsPage({
   const t = useTranslate()
 
   const load = useCallback(async (): Promise<void> => {
-    setLoading(true)
     try {
       const response = await fetch('/config', { credentials: 'same-origin' })
       if (response.status == 401) {
@@ -264,7 +263,14 @@ export function SettingsPage({
             <div className="settings-state" role={failed ? 'alert' : undefined}>
               <span>{t(failed ? 'settings.loadFailed' : 'settings.loading')}</span>
               {failed && (
-                <button className="server-button server-button-outline" onClick={() => void load()} type="button">
+                <button
+                  className="server-button server-button-outline"
+                  onClick={() => {
+                    setLoading(true)
+                    void load()
+                  }}
+                  type="button"
+                >
                   {t('settings.retry')}
                 </button>
               )}

@@ -30,7 +30,7 @@ import type { InlineTask } from '../../stores/node/taskNode.store.ts'
 import { dispose } from '@wopjs/disposable'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { unstable_batchedUpdates } from 'react-dom'
-import { derive, val } from 'value-enhancer'
+import { combine, derive, val } from 'value-enhancer'
 import { reactiveMap } from 'value-enhancer/collections'
 import { toManifestHandleName, toManifestNodeId } from '../../base/rfHelpers.ts'
 import { MarkdownPreview } from '../../preview/markdownPreview.tsx'
@@ -150,6 +150,8 @@ interface FlowDesignerViewNodeBase {
 }
 
 export interface FlowDesignerViewTaskNode extends FlowDesignerViewNodeBase {
+  readonly additionalInputs?: readonly FlowDesignerViewInput[]
+  readonly editableAdditionalInputs?: boolean
   readonly editablePorts?: boolean
   readonly executorName?: string
   readonly kind: 'task'
@@ -351,6 +353,7 @@ export interface FlowDesignerViewProps {
   readonly onChangeNodeTitle?: (nodeId: string, title: string | undefined) => void
   readonly onChangeInput?: (nodeId: string, handle: string, value: unknown) => void
   readonly onChangeInputVariable?: (nodeId: string, handle: string, name: string | undefined) => void
+  readonly onChangeTaskAdditionalInputs?: (nodeId: string, inputs: readonly FlowDesignerViewInput[]) => void
   readonly onChangeTaskPorts?: (
     nodeId: string,
     inputs: readonly (FlowDesignerViewInput | GroupDividerDef)[],
@@ -381,6 +384,7 @@ interface NodeValues {
   readonly executorName: Val<string | undefined>
   readonly icon: Val<string | undefined>
   readonly inputDefs: Val<(InputHandleDef | GroupDividerDef)[]>
+  readonly additionalInputDefs: Val<InputHandleDef[] | undefined>
   readonly inputsFrom: Val<readonly HandleInputFrom[] | undefined>
   readonly outputDefs: Val<(OutputHandleDef | GroupDividerDef)[]>
   readonly outputsTo: Val<HandleName[]>
@@ -428,6 +432,7 @@ interface ViewCallbacks {
   readonly onChangeNodeTitle: FlowDesignerViewProps['onChangeNodeTitle']
   readonly onChangeInput: FlowDesignerViewProps['onChangeInput']
   readonly onChangeInputVariable: FlowDesignerViewProps['onChangeInputVariable']
+  readonly onChangeTaskAdditionalInputs: FlowDesignerViewProps['onChangeTaskAdditionalInputs']
   readonly onChangeTaskPorts: FlowDesignerViewProps['onChangeTaskPorts']
   readonly onChangeTriggerConfig: FlowDesignerViewProps['onChangeTriggerConfig']
   readonly onChangeTriggerSchedule: FlowDesignerViewProps['onChangeTriggerSchedule']
@@ -820,17 +825,34 @@ function connectedOutputs(nodes: readonly FlowDesignerViewNode[]): ReadonlyMap<s
 
 function inputDefs(node: FlowDesignerViewNode): (InputHandleDef | GroupDividerDef)[] {
   if (node.kind == 'comment') return []
-  return node.inputs.map((input) =>
-    'group' in input
-      ? input
-      : {
-          handle: input.handle as HandleName,
-          description: input.description,
-          json_schema: input.jsonSchema,
-          nullable: input.nullable,
-          value: input.defaultValue,
-        },
-  )
+  const additional = new Set(node.kind == 'task' ? node.additionalInputs?.map((input) => input.handle) : [])
+  return node.inputs.filter((input) => 'group' in input || !additional.has(input.handle)).map(inputDef)
+}
+
+function additionalInputDefs(node: FlowDesignerViewSemanticNode): InputHandleDef[] {
+  return node.kind == 'task'
+    ? (node.additionalInputs ?? []).map((input) => ({
+        handle: input.handle as HandleName,
+        description: input.description,
+        json_schema: input.jsonSchema,
+        nullable: input.nullable,
+        value: input.defaultValue,
+      }))
+    : []
+}
+
+function inputDef(input: FlowDesignerViewInput): InputHandleDef
+function inputDef(input: FlowDesignerViewInput | GroupDividerDef): InputHandleDef | GroupDividerDef
+function inputDef(input: FlowDesignerViewInput | GroupDividerDef): InputHandleDef | GroupDividerDef {
+  return 'group' in input
+    ? input
+    : {
+        handle: input.handle as HandleName,
+        description: input.description,
+        json_schema: input.jsonSchema,
+        nullable: input.nullable,
+        value: input.defaultValue,
+      }
 }
 
 function inputsFrom(node: FlowDesignerViewNode): HandleInputFrom[] {
@@ -882,6 +904,16 @@ function taskInputs(defs: readonly (InputHandleDef | GroupDividerDef)[]): (FlowD
     })
   }
   return inputs
+}
+
+function taskAdditionalInputs(defs: readonly InputHandleDef[]): FlowDesignerViewInput[] {
+  return defs.map((input) => ({
+    ...(Object.hasOwn(input, 'value') ? { defaultValue: input.value } : {}),
+    description: input.description,
+    handle: input.handle,
+    jsonSchema: input.json_schema,
+    nullable: input.nullable,
+  }))
 }
 
 function taskOutputs(defs: readonly (OutputHandleDef | GroupDividerDef)[]): (FlowDesignerViewOutput | GroupDividerDef)[] {
@@ -1069,6 +1101,7 @@ function createNodeEntry(
     return handles
   })
   const values: NodeValues = {
+    additionalInputDefs: val<InputHandleDef[] | undefined>(additionalInputDefs(node)),
     concurrency: val(node.concurrency),
     description: val(node.description),
     diagnostics: val((node.diagnostics ?? 0) > 0),
@@ -1096,6 +1129,8 @@ function createNodeEntry(
     boundHandles,
     handleInputsFrom: values.inputsFrom,
     inputHandleDefs: values.inputDefs,
+    additionalInputs: node.kind == 'task' && node.editableAdditionalInputs ? val(true) : undefined,
+    additionalInputDefs: node.kind == 'task' && node.editableAdditionalInputs ? values.additionalInputDefs : undefined,
     showSettings,
     createSchemaEditor: () => undefined,
   })
@@ -1148,7 +1183,9 @@ function createNodeEntry(
     progress: values.progress,
     successCount: values.successCount,
     showSettings,
-    inputs_def: values.inputDefs,
+    inputs_def: combine([values.inputDefs, values.additionalInputDefs], ([inputs, additionalInputs]) =>
+      additionalInputs == null ? inputs : [...inputs, ...additionalInputs],
+    ),
     outputs_def: values.outputDefs,
     inputs_from: values.inputsFrom,
     ignore: val<boolean | undefined>(),
@@ -1241,6 +1278,14 @@ function createNodeEntry(
         }
         store.dispose.add(values.inputDefs.reaction(changePorts, true))
         store.dispose.add(values.outputDefs.reaction(changePorts, true))
+      }
+      if (node.editableAdditionalInputs) {
+        store.dispose.add(
+          values.additionalInputDefs.reaction((inputs) => {
+            if (values.syncingPorts || !designerStore.$.editable.value) return
+            callbacks.onChangeTaskAdditionalInputs?.(node.id, taskAdditionalInputs(inputs ?? []))
+          }, true),
+        )
       }
       break
     }
@@ -1362,9 +1407,13 @@ function updateNodeEntry(
   entry.values.rawIcon.set(node.rawIcon)
   entry.values.rawTitle.set(node.rawTitle)
   const nextInputDefs = inputDefs(node)
+  const nextAdditionalInputDefs = additionalInputDefs(node)
   const nextOutputDefs = outputDefs(node)
   entry.values.syncingPorts = true
   if (JSON.stringify(entry.values.inputDefs.value) != JSON.stringify(nextInputDefs)) entry.values.inputDefs.set(nextInputDefs)
+  if (JSON.stringify(entry.values.additionalInputDefs.value) != JSON.stringify(nextAdditionalInputDefs)) {
+    entry.values.additionalInputDefs.set(nextAdditionalInputDefs)
+  }
   entry.values.syncingInput = true
   entry.values.inputsFrom.set(inputsFrom(node))
   entry.values.syncingInput = false
@@ -1412,6 +1461,7 @@ function callbacksFromProps(props: FlowDesignerViewProps): ViewCallbacks {
     onChangeNodeTitle: props.onChangeNodeTitle,
     onChangeInput: props.onChangeInput,
     onChangeInputVariable: props.onChangeInputVariable,
+    onChangeTaskAdditionalInputs: props.onChangeTaskAdditionalInputs,
     onChangeTaskPorts: props.onChangeTaskPorts,
     onChangeTriggerConfig: props.onChangeTriggerConfig,
     onChangeTriggerSchedule: props.onChangeTriggerSchedule,

@@ -1,7 +1,7 @@
 import type { I18n } from 'val-i18n'
 import type { FlowDisplayMode } from '../../../../designer/common/flowDisplay.ts'
 import type { Settings as NodeSettings, TriggerSettings } from '../../../../flow/common/nodeChanges.ts'
-import type { WorkbenchClient, Draft, DraftSync, Flow, JsonValue, Live, TriggerSchedule } from '../api.ts'
+import type { WorkbenchClient, Draft, DraftSync, Flow, InputPort, JsonValue, Live, TriggerSchedule } from '../api.ts'
 import type { FlowChangeEvent } from '../contract.ts'
 import type { AddNodeOption } from '../designer/addNodeOptions.ts'
 import type { DiagnosticItem } from '../designer/diagnostics.ts'
@@ -46,6 +46,7 @@ import {
   setInputValue as changeInputValue,
   updateCondition,
   updateCodeTaskPorts,
+  updateTaskAdditionalInputs,
   updateNodeDescription,
   updateNodeIcon,
   updateNodeSettings,
@@ -574,6 +575,14 @@ export class WorkspaceStore {
     const target = this.#model.value.target
     if (revision == null || target == null) return false
     const changes = updateCodeTaskPorts(revision, target, nodeId, ports)
+    return changes != null && (await this.#changeDraft(changes)) != null
+  }
+
+  public async saveTaskAdditionalInputs(nodeId: string, inputs: readonly InputPort[]): Promise<boolean> {
+    const revision = this.$.revision.value
+    const target = this.#model.value.target
+    if (revision == null || target == null) return false
+    const changes = updateTaskAdditionalInputs(revision, target, nodeId, inputs)
     return changes != null && (await this.#changeDraft(changes)) != null
   }
 

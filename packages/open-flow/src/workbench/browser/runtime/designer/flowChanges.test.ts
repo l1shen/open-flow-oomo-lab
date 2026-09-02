@@ -3,7 +3,16 @@ import type { Draft } from '../api.ts'
 import { describe, expect, it } from 'vitest'
 import { setTriggerConnection } from '../../../../flow/common/nodeChanges.ts'
 import { revisionView } from '../revisionView.ts'
-import { addNode, applyFlowChanges, copyNodes, pasteNodes, setInputValue, setInputVariable, updateCodeTaskPorts } from './flowChanges.ts'
+import {
+  addNode,
+  applyFlowChanges,
+  copyNodes,
+  pasteNodes,
+  setInputValue,
+  setInputVariable,
+  updateCodeTaskPorts,
+  updateTaskAdditionalInputs,
+} from './flowChanges.ts'
 
 function draft(source: string): Draft {
   return {
@@ -40,6 +49,41 @@ function draft(source: string): Draft {
     parentRevisionId: null,
     revisionId: 'revision',
     version: 1,
+  }
+}
+
+function managedDraft(): Draft {
+  const base = draft('export default () => ({})\n')
+  return {
+    ...base,
+    content: {
+      ...base.content,
+      document: {
+        ...base.content.document,
+        graph: {
+          nodes: {
+            task: {
+              additionalInputs: [{ handle: 'start', jsonSchema: {}, nullable: false }],
+              concurrency: 1,
+              inputs: {
+                message: { kind: 'value', value: 'Hello' },
+                start: { kind: 'value', value: 'manual' },
+              },
+              kind: 'task',
+              taskId: 'connector',
+            },
+          },
+        },
+        tasks: {
+          connector: {
+            executor: { action: 'send', kind: 'connector' },
+            inputs: [{ handle: 'message', jsonSchema: {}, nullable: false }],
+            name: 'Send',
+            outputs: [],
+          },
+        },
+      },
+    },
   }
 }
 
@@ -103,6 +147,29 @@ describe('Code task port changes', () => {
 
     if (changes == null) throw new Error('Expected code task port changes.')
     expect(applyFlowChanges(current, changes).content.modules.module?.source).toBe(current.content.modules.module?.source)
+  })
+})
+
+describe('Managed task additional input changes', () => {
+  it('renames and removes only node-local input mappings', () => {
+    const current = managedDraft()
+
+    const renamed = updateTaskAdditionalInputs(revisionView(current), { kind: 'flow' }, 'task', [{ handle: 'trigger', jsonSchema: {}, nullable: false }])
+    if (renamed == null) throw new Error('Expected additional input changes.')
+    const changed = applyFlowChanges(current, renamed)
+    expect(changed.content.document.graph.nodes.task).toMatchObject({
+      additionalInputs: [{ handle: 'trigger' }],
+      inputs: { message: { value: 'Hello' }, trigger: { value: 'manual' } },
+    })
+
+    const removed = updateTaskAdditionalInputs(revisionView(changed), { kind: 'flow' }, 'task', [])
+    if (removed == null) throw new Error('Expected additional input removal.')
+    expect(applyFlowChanges(changed, removed).content.document.graph.nodes.task).toEqual({
+      concurrency: 1,
+      inputs: { message: { kind: 'value', value: 'Hello' } },
+      kind: 'task',
+      taskId: 'connector',
+    })
   })
 })
 

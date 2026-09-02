@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import type { FlowDesignerViewInput, FlowDesignerViewOutput } from '../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import type { GroupDividerDef } from '../../../schema/index.ts'
-import type { JsonValue } from './api.ts'
+import type { InputPort, JsonValue } from './api.ts'
 import type { WorkbenchLocation, WorkbenchTheme } from './contract.ts'
 import type { AddNodeOption } from './designer/addNodeOptions.ts'
 import type { CodeTaskPorts } from './designer/flowChanges.ts'
@@ -54,6 +54,20 @@ function codeTaskPorts(
           ),
     ),
   }
+}
+
+function additionalTaskInputs(inputs: readonly FlowDesignerViewInput[]): readonly InputPort[] {
+  return inputs.map((input) =>
+    Object.assign(
+      {
+        handle: input.handle,
+        jsonSchema: (input.jsonSchema ?? {}) as JsonValue,
+        nullable: input.nullable ?? false,
+      },
+      input.description == null ? {} : { description: input.description },
+      input.defaultValue === undefined ? {} : { value: input.defaultValue as JsonValue },
+    ),
+  )
 }
 
 function RunDrawerContainer({
@@ -256,6 +270,7 @@ function Editor({
         onChangeNodeTitle={(nodeId, title) => void store.workspace.saveNodeTitle(nodeId, title)}
         onChangeInput={(nodeId, handle, value) => void store.workspace.setInputValue(nodeId, handle, value)}
         onChangeInputVariable={(nodeId, handle, name) => void store.workspace.setInputVariable(nodeId, handle, name)}
+        onChangeTaskAdditionalInputs={(nodeId, inputs) => void store.workspace.saveTaskAdditionalInputs(nodeId, additionalTaskInputs(inputs))}
         onChangeTaskPorts={(nodeId, inputs, outputs) => void store.workspace.saveCodeTaskPorts(nodeId, codeTaskPorts(inputs, outputs))}
         onChangeTriggerConfig={(triggerId, name, value) => void store.workspace.saveTriggerConfig(triggerId, name, value)}
         onChangeTriggerSchedule={(triggerId, schedule) => void store.workspace.saveTriggerSchedule(triggerId, schedule)}

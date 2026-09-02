@@ -6,6 +6,7 @@ import type {
   ConnectorAction,
   Draft,
   GraphNode,
+  InputPort,
   InputMapping,
   JsonValue,
   TaskDefinition,
@@ -460,6 +461,33 @@ export function updateCodeTaskPorts(revision: RevisionView, target: DesignerTarg
   const changes = replaceCodeTaskPorts(revision, target, nodeId, { ...selection.node.task, ...ports })
   if (changes == null) return
   return cleanVariableBindings(revision.revision.content, changes)
+}
+
+export function updateTaskAdditionalInputs(
+  revision: RevisionView,
+  target: DesignerTarget,
+  nodeId: string,
+  additionalInputs: readonly InputPort[],
+): FlowChanges | undefined {
+  const selection = revision.node(target, nodeId)
+  if (selection?.kind != 'task' || selection.node.task != null || selection.definition == null) return
+  const current = selection.node
+  if (dequal(current.additionalInputs ?? [], additionalInputs)) return
+  const rename = renamedPort(current.additionalInputs ?? [], additionalInputs)
+  const handles = new Set(
+    selection.definition.inputs.flatMap((port) => ('handle' in port ? [port.handle] : [])).concat(additionalInputs.map((port) => port.handle)),
+  )
+  const inputs: Record<string, InputMapping> = Object.assign({}, current.inputs)
+  if (rename != null && Object.hasOwn(inputs, rename[0])) {
+    inputs[rename[1]] = inputs[rename[0]]!
+    delete inputs[rename[0]]
+  }
+  for (const handle of Object.keys(inputs)) {
+    if (!handles.has(handle)) delete inputs[handle]
+  }
+  const { additionalInputs: _, ...node } = current
+  const replacement: GraphNode = additionalInputs.length == 0 ? { ...node, inputs } : { ...node, additionalInputs, inputs }
+  return cleanVariableBindings(revision.revision.content, replaceNode(target, nodeId, replacement))
 }
 
 export function updateWebhook(

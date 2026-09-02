@@ -1,5 +1,5 @@
 {
-  "[typescript][typescriptreact]": {
+  "[typescript]": {
     "editor.defaultFormatter": "oxc.oxc-vscode",
     "editor.formatOnSave": true,
     "editor.formatOnSaveMode": "file",

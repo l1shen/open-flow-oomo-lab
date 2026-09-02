@@ -1012,7 +1012,7 @@ export class ServerService {
         let result
         try {
           result = await llm({
-            input: invocation.input,
+            input: Object.assign({}, invocation.additionalInputs, invocation.input),
             invocationId: invocation.invocationId,
             mode: executor.mode,
             signal: invocation.signal,

@@ -43,8 +43,12 @@ function fullFlow(value = 2): RevisionContent {
             values: [{ ...port, handle: 'value', value }],
           },
           increment: {
+            additionalInputs: [{ ...port, handle: 'start' }],
             concurrency: 1,
-            inputs: { value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'value', output: 'value' }] } },
+            inputs: {
+              start: { kind: 'value', value: 'manual' },
+              value: { kind: 'sources', sources: [{ kind: 'node', nodeId: 'value', output: 'value' }] },
+            },
             kind: 'task',
             task: { inputs: [{ ...port, handle: 'value' }], moduleId: 'increment', name: 'Increment', outputs: [{ ...port, handle: 'value' }] },
           },
@@ -78,7 +82,17 @@ function fullFlow(value = 2): RevisionContent {
     modelVersion: 1,
     modules: {
       double: { imports: [], name: 'Double', source: 'export default ({ value }) => ({ value: value * 2 })' },
-      increment: { imports: [], name: 'Increment', source: 'export default ({ value }) => ({ value: value + 1 })' },
+      increment: {
+        imports: [],
+        name: 'Increment',
+        source: `export default (inputs, context) => {
+  if (context.inputs !== inputs) throw new Error('Task context inputs must be the first argument.')
+  if (context.blockId != 'increment' || typeof context.flowId != 'string' || typeof context.runId != 'string') throw new Error('Task identity is incomplete.')
+  if (inputs.start != 'manual') throw new Error('Additional input was not passed to the Task.')
+  context.signal.throwIfAborted()
+  return { value: inputs.value + 1 }
+}`,
+      },
     },
   }
 }
@@ -101,7 +115,14 @@ function hangingFlow(): RevisionContent {
       tasks: {},
     },
     modelVersion: 1,
-    modules: { main: { imports: [], name: 'Main', source: 'export default async () => await new Promise(() => {})' } },
+    modules: {
+      main: {
+        imports: [],
+        name: 'Main',
+        source:
+          "export default async (_inputs, context) => await new Promise((_resolve, reject) => context.signal.addEventListener('abort', () => reject(context.signal.reason), { once: true }))",
+      },
+    },
   }
 }
 
@@ -139,8 +160,9 @@ function llmFlow(): RevisionContent {
       graph: {
         nodes: {
           llm: {
+            additionalInputs: [{ ...port, handle: 'topic' }],
             concurrency: 1,
-            inputs: { prompt: { kind: 'value', value: 'Hello' } },
+            inputs: { prompt: { kind: 'value', value: 'Hello' }, topic: { kind: 'value', value: 'Open Flow' } },
             kind: 'task',
             taskId: 'llm',
           },
@@ -153,6 +175,36 @@ function llmFlow(): RevisionContent {
           inputs: [{ ...port, handle: 'prompt' }],
           name: 'Generate',
           outputs: [{ ...port, handle: 'answer' }],
+        },
+      },
+    },
+    modelVersion: 1,
+    modules: {},
+  }
+}
+
+function connectorFlow(): RevisionContent {
+  return {
+    document: {
+      bindings: {},
+      graph: {
+        nodes: {
+          connector: {
+            additionalInputs: [{ ...port, handle: 'start' }],
+            concurrency: 1,
+            inputs: { message: { kind: 'value', value: 'Hello' }, start: { kind: 'value', value: 'manual' } },
+            kind: 'task',
+            taskId: 'connector',
+          },
+        },
+      },
+      subflows: {},
+      tasks: {
+        connector: {
+          executor: { action: 'send', kind: 'connector' },
+          inputs: [{ ...port, handle: 'message' }],
+          name: 'Send',
+          outputs: [{ ...port, handle: 'sent' }],
         },
       },
     },
@@ -554,7 +606,7 @@ describe('Server application service', () => {
     if (completed.kind != 'accepted') throw new Error('LLM Run acceptance conflicted.')
     await configured.waitForIdle()
 
-    expect(invocations).toEqual([{ input: { prompt: 'Hello' }, mode: 'json' }])
+    expect(invocations).toEqual([{ input: { prompt: 'Hello', topic: 'Open Flow' }, mode: 'json' }])
     expect(configured.run(completed.runId)).toMatchObject({
       result: { kind: 'node-results', nodes: [{ jobs: [{ outputs: { answer: 'Hello back' } }], nodeId: 'llm' }] },
       status: 'completed',
@@ -586,6 +638,29 @@ describe('Server application service', () => {
     })
     expect(JSON.stringify(transport.events(rejected.runId))).not.toContain('provider-secret-detail')
     await closeService(transport)
+  })
+
+  it('uses additional Connector inputs for readiness without sending them to the Connector host', async () => {
+    const inputs: unknown[] = []
+    const connector = createConnectorHost({
+      execute: async (_action, _connectionId, input) => {
+        inputs.push(input)
+        return { sent: true }
+      },
+    })
+    const service = await openService(await databaseFile(), connector)
+    await startService(service)
+    const accepted = await acceptRun(service, {
+      flowId: 'main',
+      idempotencyKey: 'connector-additional-input',
+      revision: connectorFlow(),
+      revisionId: 'revision-connector-additional-input',
+    })
+    if (accepted.kind != 'accepted') throw new Error('Connector Run acceptance conflicted.')
+    await service.waitForIdle()
+
+    expect(inputs).toEqual([{ message: 'Hello' }])
+    expect(service.run(accepted.runId)).toMatchObject({ status: 'completed' })
   })
 
   it('reports LLM Tasks when the deployment has no LLM host', async () => {

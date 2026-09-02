@@ -61,7 +61,6 @@ export interface TaskLogger {
 }
 
 export interface TaskContext<Outputs extends object = Record<string, unknown>> {
-  readonly additionalInputs: Readonly<Record<string, unknown>>
   readonly signal: AbortSignal
   readonly flowId: string
   readonly inputs: Readonly<Record<string, unknown>>

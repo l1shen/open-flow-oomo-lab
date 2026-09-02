@@ -244,7 +244,15 @@ describe('FlowDesignerView model synchronization', () => {
   })
 
   it('does not publish unchanged Variable projections while mounting', () => {
-    const value = model([task([{ handle: 'value', jsonSchema: { type: 'string' }, variableCompatible: true }])])
+    const value = model([
+      task([
+        {
+          handle: 'value',
+          jsonSchema: { type: 'string' },
+          variableCompatible: true,
+        },
+      ]),
+    ])
     const view = FlowDesignerView(props(value)) as React.ReactElement<FlowDesignerProps>
     const store = view.props.flowDesignerStore
     const inputs = store.$.variableInputs.value
@@ -260,7 +268,13 @@ describe('FlowDesignerView model synchronization', () => {
   it('does not clear an input value after the model replaces it with a connection', async () => {
     const onChangeInput = vi.fn()
     const initial = task([{ handle: 'value', jsonSchema: {}, value: null }])
-    const connected = task([{ handle: 'value', jsonSchema: {}, sources: [{ nodeId: 'source', output: 'result' }] }])
+    const connected = task([
+      {
+        handle: 'value',
+        jsonSchema: {},
+        sources: [{ nodeId: 'source', output: 'result' }],
+      },
+    ])
     const store = update(props(model([source, initial]), { onChangeInput }), props(model([source, connected]), { onChangeInput }))
 
     await Promise.resolve()
@@ -273,7 +287,14 @@ describe('FlowDesignerView model synchronization', () => {
     const onChangeInput = vi.fn()
     const onChangeTaskPorts = vi.fn()
     const connected = {
-      ...task([{ handle: 'value', jsonSchema: {}, nullable: false, sources: [{ nodeId: 'source', output: 'result' }] }]),
+      ...task([
+        {
+          handle: 'value',
+          jsonSchema: {},
+          nullable: false,
+          sources: [{ nodeId: 'source', output: 'result' }],
+        },
+      ]),
       editablePorts: true,
     }
     const view = FlowDesignerView(props(model([source, connected]), { onChangeInput, onChangeTaskPorts })) as React.ReactElement<FlowDesignerProps>
@@ -335,7 +356,16 @@ describe('FlowDesignerView model synchronization', () => {
     const onChangeInputVariable = vi.fn()
     const onOpenVariables = vi.fn()
     const value: FlowDesignerViewModel = {
-      nodes: [task([{ handle: 'value', jsonSchema: { type: 'string' }, variable: 'API_TOKEN', variableCompatible: true }])],
+      nodes: [
+        task([
+          {
+            handle: 'value',
+            jsonSchema: { type: 'string' },
+            variable: 'API_TOKEN',
+            variableCompatible: true,
+          },
+        ]),
+      ],
       variableNames: ['API_TOKEN', 'ENDPOINT'],
       variableNamesLoaded: true,
       variableNamesLoading: false,
@@ -344,7 +374,10 @@ describe('FlowDesignerView model synchronization', () => {
     const view = FlowDesignerView(props(value, { onChangeInputVariable, onOpenVariables })) as React.ReactElement<FlowDesignerProps>
     const store = view.props.flowDesignerStore
 
-    expect(store.$.variableInputs.value.get('target\0value')).toEqual({ compatible: true, name: 'API_TOKEN' })
+    expect(store.$.variableInputs.value.get('target\0value')).toEqual({
+      compatible: true,
+      name: 'API_TOKEN',
+    })
     expect(store.$.variableNames.value).toEqual(['API_TOKEN', 'ENDPOINT'])
     expect(store.$.variableNamesLoaded.value).toBe(true)
     store.onOpenVariables?.()
@@ -356,8 +389,27 @@ describe('FlowDesignerView model synchronization', () => {
   })
 
   it('hides disabled Variable inputs while preserving existing bindings for clearing', () => {
-    const unbound = model([task([{ handle: 'value', jsonSchema: { type: 'string' }, variableCompatible: true, variableEnabled: false }])])
-    const bound = model([task([{ handle: 'value', jsonSchema: { type: 'string' }, variable: 'API_TOKEN', variableCompatible: true, variableEnabled: false }])])
+    const unbound = model([
+      task([
+        {
+          handle: 'value',
+          jsonSchema: { type: 'string' },
+          variableCompatible: true,
+          variableEnabled: false,
+        },
+      ]),
+    ])
+    const bound = model([
+      task([
+        {
+          handle: 'value',
+          jsonSchema: { type: 'string' },
+          variable: 'API_TOKEN',
+          variableCompatible: true,
+          variableEnabled: false,
+        },
+      ]),
+    ])
     const view = FlowDesignerView(props(unbound)) as React.ReactElement<FlowDesignerProps>
     const store = view.props.flowDesignerStore
 
@@ -365,14 +417,27 @@ describe('FlowDesignerView model synchronization', () => {
 
     FlowDesignerView(props(bound))
 
-    expect(store.$.variableInputs.value.get('target\0value')).toEqual({ compatible: true, enabled: false, name: 'API_TOKEN' })
+    expect(store.$.variableInputs.value.get('target\0value')).toEqual({
+      compatible: true,
+      enabled: false,
+      name: 'API_TOKEN',
+    })
     store.dispose()
   })
 
   it('treats a valid Variable binding as an input source', () => {
     const validate = captureIdleValidation()
     const value: FlowDesignerViewModel = {
-      nodes: [task([{ handle: 'value', jsonSchema: { type: 'string' }, variable: 'API_TOKEN', variableCompatible: true }])],
+      nodes: [
+        task([
+          {
+            handle: 'value',
+            jsonSchema: { type: 'string' },
+            variable: 'API_TOKEN',
+            variableCompatible: true,
+          },
+        ]),
+      ],
       variableNames: ['API_TOKEN'],
       variableNamesLoaded: true,
       variableNamesLoading: false,
@@ -393,7 +458,16 @@ describe('FlowDesignerView model synchronization', () => {
   it('restores literal validation after clearing a Variable binding', async () => {
     const validate = captureIdleValidation()
     const bound: FlowDesignerViewModel = {
-      nodes: [task([{ handle: 'value', jsonSchema: { type: 'string' }, variable: 'API_TOKEN', variableCompatible: true }])],
+      nodes: [
+        task([
+          {
+            handle: 'value',
+            jsonSchema: { type: 'string' },
+            variable: 'API_TOKEN',
+            variableCompatible: true,
+          },
+        ]),
+      ],
       variableNames: ['API_TOKEN'],
       variableNamesLoaded: true,
       variableNamesLoading: false,
@@ -401,7 +475,15 @@ describe('FlowDesignerView model synchronization', () => {
     }
     const cleared: FlowDesignerViewModel = {
       ...bound,
-      nodes: [task([{ handle: 'value', jsonSchema: { type: 'string' }, variableCompatible: true }])],
+      nodes: [
+        task([
+          {
+            handle: 'value',
+            jsonSchema: { type: 'string' },
+            variableCompatible: true,
+          },
+        ]),
+      ],
     }
     const view = FlowDesignerView(props(bound)) as React.ReactElement<FlowDesignerProps>
     const { node, row, section } = firstInput(view.props.flowDesignerStore)
@@ -419,7 +501,16 @@ describe('FlowDesignerView model synchronization', () => {
   it('keeps a missing Variable binding separate from literal validation', () => {
     const validate = captureIdleValidation()
     const bound: FlowDesignerViewModel = {
-      nodes: [task([{ handle: 'value', jsonSchema: { type: 'string' }, variable: 'API_TOKEN', variableCompatible: true }])],
+      nodes: [
+        task([
+          {
+            handle: 'value',
+            jsonSchema: { type: 'string' },
+            variable: 'API_TOKEN',
+            variableCompatible: true,
+          },
+        ]),
+      ],
       variableNames: ['API_TOKEN'],
       variableNamesLoaded: true,
       variableNamesLoading: false,
@@ -443,11 +534,23 @@ describe('FlowDesignerView model synchronization', () => {
 
   it('keeps an incompatible Variable binding available for clearing', () => {
     const onChangeInputVariable = vi.fn()
-    const value = model([task([{ handle: 'value', jsonSchema: { type: 'number' }, variable: 'OLD_TOKEN', variableCompatible: false }])])
+    const value = model([
+      task([
+        {
+          handle: 'value',
+          jsonSchema: { type: 'number' },
+          variable: 'OLD_TOKEN',
+          variableCompatible: false,
+        },
+      ]),
+    ])
     const view = FlowDesignerView(props(value, { onChangeInputVariable })) as React.ReactElement<FlowDesignerProps>
     const store = view.props.flowDesignerStore
 
-    expect(store.$.variableInputs.value.get('target\0value')).toEqual({ compatible: false, name: 'OLD_TOKEN' })
+    expect(store.$.variableInputs.value.get('target\0value')).toEqual({
+      compatible: false,
+      name: 'OLD_TOKEN',
+    })
     store.onChangeInputVariable?.('target', 'value', undefined)
 
     expect(onChangeInputVariable).toHaveBeenCalledWith('target', 'value', undefined)
@@ -456,7 +559,10 @@ describe('FlowDesignerView model synchronization', () => {
 
   it('restores editable handle controls for inline code Tasks only', async () => {
     const onChangeTaskPorts = vi.fn()
-    const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }
+    const editable = {
+      ...task([{ handle: 'value', jsonSchema: {} }]),
+      editablePorts: true,
+    }
     const view = FlowDesignerView(props(model([editable]), { onChangeTaskPorts })) as React.ReactElement<FlowDesignerProps>
     const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
     const inputSection = node.findSection<InputSectionStore>(InputSectionStore.TYPE)!
@@ -481,6 +587,70 @@ describe('FlowDesignerView model synchronization', () => {
       [expect.objectContaining({ handle: 'message' }), expect.objectContaining({ handle: 'input' })],
       [],
     )
+    view.props.flowDesignerStore.dispose()
+  })
+
+  it('keeps managed Task inputs readonly while allowing node-local inputs', async () => {
+    const onConnect = vi.fn()
+    const onChangeTaskAdditionalInputs = vi.fn()
+    const managed: FlowDesignerViewTaskNode = {
+      ...task([
+        { handle: 'message', jsonSchema: {} },
+        { handle: 'start', jsonSchema: {} },
+      ]),
+      additionalInputs: [{ handle: 'start', jsonSchema: {} }],
+      editableAdditionalInputs: true,
+    }
+    const view = FlowDesignerView(
+      props(model([source, managed]), {
+        onConnect,
+        onChangeTaskAdditionalInputs,
+      }),
+    ) as React.ReactElement<FlowDesignerProps>
+    const node = [...view.props.flowDesignerStore.$.nodes.values()].find((candidate) => candidate.nodeId == 'target')!
+    const inputSection = node.findSection<InputSectionStore>(InputSectionStore.TYPE)!
+
+    expect(inputSection.role).toBe('user')
+    expect(inputSection.$.inputHandleDefs.value).toEqual([expect.objectContaining({ handle: 'message' })])
+    expect(inputSection.$.additionalInputDefs?.value).toEqual([expect.objectContaining({ handle: 'start' })])
+    expect(node.display$.inputs_def.value).toEqual([expect.objectContaining({ handle: 'message' }), expect.objectContaining({ handle: 'start' })])
+    expect(inputSection.renameHandle('message' as HandleName, 'body' as HandleName)).toBe(true)
+    expect(inputSection.$.inputHandleDefs.value).toEqual([expect.objectContaining({ handle: 'message' })])
+    expect(inputSection.renameHandle('start' as HandleName, 'trigger' as HandleName)).toBe(true)
+    await Promise.resolve()
+
+    expect(onChangeTaskAdditionalInputs).toHaveBeenLastCalledWith('target', [expect.objectContaining({ handle: 'trigger' })])
+
+    view.props.flowDesignerStore.onRFConnect({
+      source: 'm:source',
+      sourceHandle: 'h:result',
+      target: 'm:target',
+      targetHandle: 'h:trigger',
+    })
+    expect(onConnect).toHaveBeenCalledWith({
+      source: 'source',
+      sourceHandle: 'result',
+      target: 'target',
+      targetHandle: 'trigger',
+    })
+
+    FlowDesignerView(
+      props(
+        model([
+          source,
+          {
+            ...managed,
+            additionalInputs: [{ handle: 'trigger', jsonSchema: {}, sources: [{ nodeId: 'source', output: 'result' }] }],
+            inputs: [
+              { handle: 'message', jsonSchema: {} },
+              { handle: 'trigger', jsonSchema: {}, sources: [{ nodeId: 'source', output: 'result' }] },
+            ],
+          },
+        ]),
+        { onConnect, onChangeTaskAdditionalInputs },
+      ),
+    )
+    expect(view.props.flowDesignerStore.$.renderedRFEdges.value).toHaveLength(1)
     view.props.flowDesignerStore.dispose()
   })
 
@@ -510,7 +680,10 @@ describe('FlowDesignerView model synchronization', () => {
 
   it('reports group dividers for inline code Task ports', async () => {
     const onChangeTaskPorts = vi.fn()
-    const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }
+    const editable = {
+      ...task([{ handle: 'value', jsonSchema: {} }]),
+      editablePorts: true,
+    }
     const view = FlowDesignerView(props(model([editable]), { onChangeTaskPorts })) as React.ReactElement<FlowDesignerProps>
     const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
     const inputSection = node.findSection<InputSectionStore>(InputSectionStore.TYPE)!
@@ -528,7 +701,10 @@ describe('FlowDesignerView model synchronization', () => {
 
   it('persists inline code Task schema changes', async () => {
     const onChangeTaskPorts = vi.fn()
-    const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }
+    const editable = {
+      ...task([{ handle: 'value', jsonSchema: {} }]),
+      editablePorts: true,
+    }
     const view = FlowDesignerView(props(model([editable]), { onChangeTaskPorts })) as React.ReactElement<FlowDesignerProps>
     const node = [...view.props.flowDesignerStore.$.nodes.values()][0]!
     const inputSection = node.findSection<InputSectionStore>(InputSectionStore.TYPE)!
@@ -539,7 +715,12 @@ describe('FlowDesignerView model synchronization', () => {
 
     expect(onChangeTaskPorts).toHaveBeenLastCalledWith(
       'target',
-      [expect.objectContaining({ handle: 'value', jsonSchema: { type: 'number' } })],
+      [
+        expect.objectContaining({
+          handle: 'value',
+          jsonSchema: { type: 'number' },
+        }),
+      ],
       [expect.objectContaining({ handle: 'result' })],
     )
     view.props.flowDesignerStore.dispose()
@@ -554,7 +735,9 @@ describe('FlowDesignerView model synchronization', () => {
 
     await node.duplicateNode?.()
 
-    expect(onDuplicate).toHaveBeenCalledWith(['target'], undefined, { target: { x: 320, y: 180 } })
+    expect(onDuplicate).toHaveBeenCalledWith(['target'], undefined, {
+      target: { x: 320, y: 180 },
+    })
     view.props.flowDesignerStore.dispose()
   })
 
@@ -574,7 +757,10 @@ describe('FlowDesignerView model synchronization', () => {
   })
 
   it('restores editable handle controls when a read-only view becomes editable', () => {
-    const editable = { ...task([{ handle: 'value', jsonSchema: {} }]), editablePorts: true }
+    const editable = {
+      ...task([{ handle: 'value', jsonSchema: {} }]),
+      editablePorts: true,
+    }
     const store = update(props(model([editable]), { editable: false }), props(model([editable]), { editable: true }))
     const node = [...store.$.nodes.values()][0]!
 
@@ -620,7 +806,12 @@ describe('FlowDesignerView model synchronization', () => {
         },
       ],
       defaultOutput: 'fallback',
-      input: { description: undefined, handle: 'value', jsonSchema: { type: 'boolean' }, nullable: false },
+      input: {
+        description: undefined,
+        handle: 'value',
+        jsonSchema: { type: 'boolean' },
+        nullable: false,
+      },
     })
     view.props.flowDesignerStore.dispose()
   })
@@ -637,8 +828,14 @@ describe('FlowDesignerView model synchronization', () => {
     const onChangeComment = vi.fn()
     const onChangeValue = vi.fn()
     const store = update(
-      props(model([valueNode('before'), commentNode('Before')]), { onChangeComment, onChangeValue }),
-      props(model([valueNode('after'), commentNode('After')]), { onChangeComment, onChangeValue }),
+      props(model([valueNode('before'), commentNode('Before')]), {
+        onChangeComment,
+        onChangeValue,
+      }),
+      props(model([valueNode('after'), commentNode('After')]), {
+        onChangeComment,
+        onChangeValue,
+      }),
     )
 
     await Promise.resolve()
@@ -666,18 +863,26 @@ describe('FlowDesignerView model synchronization', () => {
   it('does not echo an unchanged controlled selection in React Flow order', () => {
     const onSelectionChange = vi.fn()
     const view = FlowDesignerView(
-      props(model([source, task([])]), { onSelectionChange, selectedNodeIds: ['source', 'target'] }),
+      props(model([source, task([])]), {
+        onSelectionChange,
+        selectedNodeIds: ['source', 'target'],
+      }),
     ) as React.ReactElement<FlowDesignerProps>
     const nodes = [...view.props.flowDesignerStore.$.nodes.values()]
 
-    view.props.onSelectionChange?.({ edges: [], nodes: nodes.toReversed().map((node) => ({ data: { store: node } }) as never) })
+    view.props.onSelectionChange?.({
+      edges: [],
+      nodes: nodes.toReversed().map((node) => ({ data: { store: node } }) as never),
+    })
 
     expect(onSelectionChange).not.toHaveBeenCalled()
     view.props.flowDesignerStore.dispose()
   })
 
   it('batches a controlled selection replacement', () => {
-    const initial = props(model([source, task([])]), { selectedNodeIds: ['source'] })
+    const initial = props(model([source, task([])]), {
+      selectedNodeIds: ['source'],
+    })
     const view = FlowDesignerView(initial) as React.ReactElement<FlowDesignerProps>
     const stores = [...view.props.flowDesignerStore.$.nodes.values()]
     const sourceStore = stores.find((node) => node.nodeId == 'source')
@@ -707,7 +912,13 @@ describe('FlowDesignerView model synchronization', () => {
     const setPosition = vi.spyOn(node.$$.position, 'set')
     const setViewport = vi.spyOn(view.props.flowDesignerStore.$$.viewport, 'set')
 
-    FlowDesignerView(props({ ...value, nodes: value.nodes.map((item) => ({ ...item })), viewport: { ...value.viewport } }))
+    FlowDesignerView(
+      props({
+        ...value,
+        nodes: value.nodes.map((item) => ({ ...item })),
+        viewport: { ...value.viewport },
+      }),
+    )
 
     expect(replaceNodes).not.toHaveBeenCalled()
     expect(replaceComments).not.toHaveBeenCalled()
@@ -739,7 +950,10 @@ describe('FlowDesignerView model synchronization', () => {
     const view = FlowDesignerView(initial) as React.ReactElement<FlowDesignerProps>
     const send = vi.spyOn(view.props.flowDesignerStore.rfCommand, 'send')
     const focusNodeRequest = { nodeId: 'target', requestId: 1 }
-    const focused = props(model([task([])]), { focusNodeRequest, onSelectionChange })
+    const focused = props(model([task([])]), {
+      focusNodeRequest,
+      onSelectionChange,
+    })
     vi.stubGlobal('window', { matchMedia: () => ({ matches: true }) })
     try {
       FlowDesignerView(focused)
@@ -766,13 +980,24 @@ describe('FlowDesignerView model synchronization', () => {
         targetHandle: 'h:value',
       }),
     ).toBe(false)
-    expect(isValidConnection).toHaveBeenCalledWith({ source: 'source', sourceHandle: 'result', target: 'target', targetHandle: 'value' })
+    expect(isValidConnection).toHaveBeenCalledWith({
+      source: 'source',
+      sourceHandle: 'result',
+      target: 'target',
+      targetHandle: 'value',
+    })
     view.props.flowDesignerStore.dispose()
   })
 
   it('does not project a connection until both handles exist', () => {
     const missingOutput = { ...source, outputs: [] }
-    const connected = task([{ handle: 'value', jsonSchema: {}, sources: [{ nodeId: 'source', output: 'result' }] }])
+    const connected = task([
+      {
+        handle: 'value',
+        jsonSchema: {},
+        sources: [{ nodeId: 'source', output: 'result' }],
+      },
+    ])
     const view = FlowDesignerView(props(model([missingOutput, connected]))) as React.ReactElement<FlowDesignerProps>
 
     expect(view.props.flowDesignerStore.$.renderedRFEdges.value).toEqual([])
@@ -787,7 +1012,10 @@ describe('FlowDesignerView model synchronization', () => {
 
     const nodeId = await view.props.onDropAddItem?.('connector:github:create-issue', { x: 120, y: 80 })
 
-    expect(onAddNode).toHaveBeenCalledWith('connector:github:create-issue', { x: 120, y: 80 })
+    expect(onAddNode).toHaveBeenCalledWith('connector:github:create-issue', {
+      x: 120,
+      y: 80,
+    })
     expect(nodeId).toBe('created')
     view.props.flowDesignerStore.dispose()
   })

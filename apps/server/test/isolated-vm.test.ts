@@ -55,13 +55,60 @@ describe('isolated-vm runtime conformance', () => {
   it('does not expose Node or network globals to the user realm', async () => {
     await expect(
       invoke(`export default () => ({
+        AbortController: typeof AbortController,
+        AbortSignal: typeof AbortSignal,
         Buffer: typeof Buffer,
         fetch: typeof fetch,
         process: typeof process,
         require: typeof require,
         WebSocket: typeof WebSocket,
       })`),
-    ).resolves.toEqual({ Buffer: 'undefined', fetch: 'undefined', process: 'undefined', require: 'undefined', WebSocket: 'undefined' })
+    ).resolves.toEqual({
+      AbortController: 'function',
+      AbortSignal: 'function',
+      Buffer: 'undefined',
+      fetch: 'undefined',
+      process: 'undefined',
+      require: 'undefined',
+      WebSocket: 'undefined',
+    })
+  })
+
+  it('provides invocation-local cancellation primitives', async () => {
+    await expect(
+      invoke(`export default () => {
+  const controller = new AbortController()
+  let calls = 0
+  let eventType
+  const listener = (event) => {
+    calls += 1
+    eventType = event.type
+  }
+  controller.signal.addEventListener('abort', listener)
+  controller.abort('stop')
+  controller.abort('ignored')
+  let thrown
+  try {
+    controller.signal.throwIfAborted()
+  } catch (error) {
+    thrown = error
+  }
+  controller.signal.removeEventListener('abort', listener)
+  return { aborted: controller.signal.aborted, calls, eventType, reason: controller.signal.reason, thrown }
+}`),
+    ).resolves.toEqual({ aborted: true, calls: 1, eventType: 'abort', reason: 'stop', thrown: 'stop' })
+  })
+
+  it('provides one context shape without Flow identity for direct programs', async () => {
+    await expect(
+      invoke(`export default (inputs, context) => ({
+  blockId: Object.hasOwn(context, 'blockId') && context.blockId === undefined,
+  flowId: Object.hasOwn(context, 'flowId') && context.flowId === undefined,
+  inputs: context.inputs === inputs,
+  runId: Object.hasOwn(context, 'runId') && context.runId === undefined,
+  signal: context.signal instanceof AbortSignal,
+})`),
+    ).resolves.toEqual({ blockId: true, flowId: true, inputs: true, runId: true, signal: true })
   })
 
   it('provides invocation-scoped timers', async () => {

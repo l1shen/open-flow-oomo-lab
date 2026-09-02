@@ -47,6 +47,7 @@ interface Props {
   readonly onChangeNodeTitle: (nodeId: string, title: string | undefined) => void
   readonly onChangeInput: (nodeId: string, handle: string, value: JsonValue | undefined) => void
   readonly onChangeInputVariable: (nodeId: string, handle: string, name: string | undefined) => void
+  readonly onChangeTaskAdditionalInputs: (nodeId: string, inputs: readonly FlowDesignerViewInput[]) => void
   readonly onChangeTaskPorts: (
     nodeId: string,
     inputs: readonly (FlowDesignerViewInput | GroupDividerDef)[],
@@ -192,6 +193,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
     onChangeNodeTitle,
     onChangeInput,
     onChangeInputVariable,
+    onChangeTaskAdditionalInputs,
     onChangeTaskPorts,
     onChangeTriggerConfig,
     onChangeTriggerSchedule,
@@ -435,6 +437,7 @@ export const WorkbenchDesigner = forwardRef<WorkbenchDesignerHandle, Props>(func
         onChangeNodeTitle={onChangeNodeTitle}
         onChangeInput={(nodeId, handle, value) => onChangeInput(nodeId, handle, value as JsonValue | undefined)}
         onChangeInputVariable={onChangeInputVariable}
+        onChangeTaskAdditionalInputs={onChangeTaskAdditionalInputs}
         onChangeTaskPorts={onChangeTaskPorts}
         onChangeTriggerConfig={(triggerId, name, value) => onChangeTriggerConfig(triggerId, name, value as JsonValue | undefined)}
         onChangeTriggerSchedule={onChangeTriggerSchedule}

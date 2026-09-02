@@ -68,7 +68,17 @@ describe('Designer port projection', () => {
       content: {
         document: {
           bindings: {},
-          graph: { nodes: { news: { concurrency: 1, inputs: {}, kind: 'task', taskId: 'news' } } },
+          graph: {
+            nodes: {
+              news: {
+                additionalInputs: [{ handle: 'start', jsonSchema: {}, nullable: false }],
+                concurrency: 1,
+                inputs: { start: { kind: 'value', value: 'manual' } },
+                kind: 'task',
+                taskId: 'news',
+              },
+            },
+          },
           subflows: {},
           tasks: {
             news: {
@@ -119,7 +129,12 @@ describe('Designer port projection', () => {
       { [action.actionId]: { ...action, authenticated: true } },
     ).nodes[0]
 
-    expect(publicNode).toMatchObject({ diagnostics: 0, executorName: 'connector' })
+    expect(publicNode).toMatchObject({
+      additionalInputs: [{ handle: 'start', value: 'manual' }],
+      diagnostics: 0,
+      editableAdditionalInputs: true,
+      executorName: 'connector',
+    })
     expect(authenticatedNode).toMatchObject({ diagnostics: 1, executorName: 'connection required' })
   })
 

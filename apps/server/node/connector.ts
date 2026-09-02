@@ -300,7 +300,9 @@ export class ConnectorClient implements ConnectorHost {
       teamId,
     })
     if (!response.ok) throw unavailable()
-    return this.#decode(search ? 'actions.search' : 'actions.list', fields, () => runtimeList(runtimeData(response.value), runtimeAction))
+    return this.#decode(search ? 'actions.search' : 'actions.list', fields, () =>
+      runtimeList(runtimeData(response.value), (value) => runtimeAction(value, search)),
+    )
   }
 
   async #connections(serviceId?: string, signal?: AbortSignal, teamId?: string): Promise<readonly ConnectorConnection[]> {
@@ -323,7 +325,14 @@ export class ConnectorClient implements ConnectorHost {
       return decode()
     } catch (error) {
       this.#logger.warn(
-        { category: 'connector.request.failed', failure: 'response-invalid', operation, ...fields, ...errorKind(error) },
+        {
+          category: 'connector.request.failed',
+          errorMessage: error instanceof Error ? error.message : String(error),
+          failure: 'response-invalid',
+          operation,
+          ...fields,
+          ...errorKind(error),
+        },
         'Connector response was invalid.',
       )
       if (error instanceof ConnectorTaskError) throw error
@@ -410,6 +419,7 @@ export class ConnectorClient implements ConnectorHost {
           category: 'connector.request.failed',
           durationMs: Math.round(performance.now() - startedAt),
           failure,
+          errorMessage: error instanceof Error ? error.message : String(error),
           method: init.method ?? 'GET',
           operation,
           ...(status == null ? {} : { status }),
@@ -478,75 +488,81 @@ async function readJson(
   }
   try {
     return JSON.parse(Buffer.concat(chunks, bytes).toString('utf8')) as unknown
-  } catch {
-    throw unavailable()
+  } catch (error) {
+    throw unavailable(error instanceof Error ? error.message : String(error))
   }
 }
 
-function string(value: unknown): string {
-  if (typeof value != 'string' || value.length == 0) throw unavailable()
+function string(value: unknown, field: string): string {
+  if (typeof value != 'string' || value.length == 0) throw unavailable(`Connector response field "${field}" must be a non-empty string.`)
   return value
 }
 
 function runtimeData(value: unknown): unknown {
   const source = record(value) ? value : undefined
-  if (source == null || source.success !== true || !Object.hasOwn(source, 'data')) throw unavailable()
+  if (source == null || source.success !== true || !Object.hasOwn(source, 'data')) {
+    throw unavailable('Connector response must contain successful data.')
+  }
   return source.data
 }
 
 function runtimeList<Value>(value: unknown, decode: (value: unknown) => Value): readonly Value[] {
-  if (!Array.isArray(value)) throw unavailable()
+  if (!Array.isArray(value)) throw unavailable('Connector response data must be an array.')
   return value.map(decode)
 }
 
 function runtimeProvider(value: unknown) {
   const source = record(value) ? value : undefined
-  if (source == null) throw unavailable()
-  if (!Array.isArray(source.authTypes) || source.authTypes.some((authType) => typeof authType != 'string')) throw unavailable()
-  if (source.homepageUrl != null && typeof source.homepageUrl != 'string') throw unavailable()
-  if (source.iconUrl != null && typeof source.iconUrl != 'string') throw unavailable()
+  if (source == null) throw unavailable('Connector Provider must be an object.')
+  if (!Array.isArray(source.authTypes) || source.authTypes.some((authType) => typeof authType != 'string')) {
+    throw unavailable('Connector Provider authTypes must be an array of strings.')
+  }
+  if (source.homepageUrl != null && typeof source.homepageUrl != 'string') throw unavailable('Connector Provider homepageUrl must be a string.')
+  if (source.iconUrl != null && typeof source.iconUrl != 'string') throw unavailable('Connector Provider iconUrl must be a string.')
   return {
     authenticated: !source.authTypes.includes('no_auth'),
     ...(source.homepageUrl == null || source.homepageUrl.length == 0 ? {} : { homepageUrl: source.homepageUrl }),
     ...(source.iconUrl == null || source.iconUrl.length == 0 ? {} : { icon: source.iconUrl }),
-    serviceId: string(source.service),
-    serviceName: string(source.displayName),
+    serviceId: string(source.service, 'provider.service'),
+    serviceName: string(source.displayName, 'provider.displayName'),
   }
 }
 
-function runtimeAction(value: unknown): RuntimeAction {
+function runtimeAction(value: unknown, search = false): RuntimeAction {
   const source = record(value) ? value : undefined
-  if (source == null) throw unavailable()
-  if (typeof source.description != 'string') throw unavailable()
+  if (source == null) throw unavailable('Connector Action must be an object.')
+  if (typeof source.description != 'string') throw unavailable('Connector Action description must be a string.')
+  const name = string(source.name, 'action.name')
+  const service = string(source.service, 'action.service')
   return {
     description: source.description,
-    id: string(source.id),
+    id: search ? `${service}.${name}` : string(source.id, 'action.id'),
     inputSchema: source.inputSchema as JsonValue,
-    name: string(source.name),
+    name,
     outputSchema: source.outputSchema as JsonValue,
-    service: string(source.service),
+    service,
   }
 }
 
 function runtimeConnection(value: unknown): ConnectorConnection {
   const source = record(value) ? value : undefined
-  if (source == null) throw unavailable()
+  if (source == null) throw unavailable('Connector Connection must be an object.')
   const status = connectionStatus(source.status)
-  if (typeof source.isDefault != 'boolean') throw unavailable()
+  if (typeof source.isDefault != 'boolean') throw unavailable('Connector Connection isDefault must be a boolean.')
   return {
-    connectionId: string(source.id),
-    displayName: string(source.displayName),
+    connectionId: string(source.id, 'connection.id'),
+    displayName: string(source.displayName, 'connection.displayName'),
     isDefault: source.isDefault,
-    serviceId: string(source.service),
+    serviceId: string(source.service, 'connection.service'),
     status,
   }
 }
 
 function runtimeTeam(value: unknown): { readonly id: string; readonly name: string; readonly systemCreated: boolean } {
-  if (!record(value)) throw unavailable()
+  if (!record(value)) throw unavailable('Connector Team must be an object.')
   return {
-    id: string(value.id),
-    name: string(value.name),
+    id: string(value.id, 'team.id'),
+    name: string(value.name, 'team.name'),
     systemCreated: value.system_created === true,
   }
 }
@@ -558,7 +574,7 @@ function connectionStatus(value: unknown): 'active' | 'disconnected' {
     case 'disconnected':
       return 'disconnected'
     default:
-      throw unavailable()
+      throw unavailable('Connector Connection status was invalid.')
   }
 }
 
@@ -576,7 +592,7 @@ function mapAction(
   connections: readonly ConnectorConnection[],
 ): ConnectorAction {
   const provider = providers.find((candidate) => candidate.serviceId == action.service)
-  if (provider == null) throw unavailable()
+  if (provider == null) throw unavailable('Connector Action referenced an unknown service.')
   const active = connections.filter((connection) => connection.serviceId == action.service && connection.status == 'active')
   const defaultConnection = provider.authenticated
     ? (active.find((connection) => connection.isDefault) ?? (active.length == 1 ? active[0] : undefined))
@@ -584,8 +600,8 @@ function mapAction(
   let ports: ReturnType<typeof connectorActionPorts>
   try {
     ports = connectorActionPorts(action.inputSchema, action.outputSchema)
-  } catch {
-    throw unavailable()
+  } catch (error) {
+    throw unavailable(error instanceof Error ? error.message : String(error))
   }
   return {
     actionId: action.id,
@@ -596,7 +612,7 @@ function mapAction(
     ...(provider.icon == null ? {} : { icon: provider.icon }),
     inputs: Object.fromEntries(
       ports.inputs.map((port) => {
-        if (port.nullable == null) throw unavailable()
+        if (port.nullable == null) throw unavailable('Connector Action input schema did not declare nullability.')
         return [
           port.handle,
           {
@@ -611,7 +627,7 @@ function mapAction(
     name: action.name,
     outputs: Object.fromEntries(
       ports.outputs.map((port) => {
-        if (port.nullable == null) throw unavailable()
+        if (port.nullable == null) throw unavailable('Connector Action output schema did not declare nullability.')
         return [
           port.handle,
           {
@@ -627,6 +643,6 @@ function mapAction(
   }
 }
 
-function unavailable(): ConnectorTaskError {
-  return new ConnectorTaskError('connector.unavailable', 'The Connector request could not be completed.')
+function unavailable(message = 'The Connector request could not be completed.'): ConnectorTaskError {
+  return new ConnectorTaskError('connector.unavailable', message)
 }
