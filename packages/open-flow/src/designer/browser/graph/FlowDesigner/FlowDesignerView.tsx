@@ -19,6 +19,7 @@ import type {
 } from '../../../../schema/index.ts'
 import type { FlowDisplayMode } from '../../../common/flowDisplay.ts'
 import type { RFHandleName, RFNodeId } from '../../base/rfHelpers.ts'
+import type { CreateSchemaEditorFn } from '../../services/designerService.ts'
 import type { IAddNodeMenuItem, IFromSource } from '../../stores/designer/designer.store.ts'
 import type { InteractiveMode } from '../../stores/designer/designer.store.ts'
 import type { DesignerUILayout, DesignerUIStore } from '../../stores/designer/designerUI.store.ts'
@@ -330,6 +331,7 @@ export interface FlowDesignerViewProps {
   }
   readonly addItems: readonly FlowDesignerViewAddItem[]
   readonly className?: string
+  readonly createSchemaEditor: CreateSchemaEditorFn
   readonly dark?: boolean
   readonly editable: boolean
   readonly focusNodeRequest?: {
@@ -396,12 +398,8 @@ interface NodeValues {
   readonly successCount: Val<number | undefined>
   readonly timeout: Val<number | undefined>
   readonly title: Val<string>
-  syncingCondition?: boolean
-  syncingPorts?: boolean
+  applyingModel?: boolean
   triggerPresentation?: Val<FlowDesignerViewTriggerPresentation | undefined>
-  syncingInput?: boolean
-  syncingMetadata?: boolean
-  syncingValue?: boolean
   valueDefs?: Val<ValueHandleDef[] | undefined>
 }
 
@@ -483,6 +481,7 @@ class FlowDesignerViewAdapter {
 
   #addItems: readonly FlowDesignerViewAddItem[]
   readonly #callbacks: ViewCallbacks
+  readonly #createSchemaEditor: CreateSchemaEditorFn
   #disconnectTimer: ReturnType<typeof setTimeout> | undefined
   #disposeTimer: ReturnType<typeof setTimeout> | undefined
   #entries = new Map<string, NodeEntry>()
@@ -506,9 +505,17 @@ class FlowDesignerViewAdapter {
   #variableNamesLoaded: Val<boolean>
   #variableNamesLoading: Val<boolean>
 
-  constructor(model: FlowDesignerViewModel, editable: boolean, language: string, addItems: readonly FlowDesignerViewAddItem[], callbacks: ViewCallbacks) {
+  constructor(
+    model: FlowDesignerViewModel,
+    editable: boolean,
+    language: string,
+    addItems: readonly FlowDesignerViewAddItem[],
+    callbacks: ViewCallbacks,
+    createSchemaEditor: CreateSchemaEditorFn,
+  ) {
     this.#addItems = addItems
     this.#callbacks = callbacks
+    this.#createSchemaEditor = createSchemaEditor
     this.#language = val(language)
 
     const nodes = reactiveMap<NodeId, NodeStore>(null, { onDeleted: dispose })
@@ -782,7 +789,7 @@ class FlowDesignerViewAdapter {
         this.store.designerUIStore.setNodeUIData(node.id as NodeId, {
           rfNode: { position: createdPosition },
         })
-        entry = createNodeEntry(node, outputHandles, contentKey, this.store.designerUIStore, this.store, this.#callbacks)
+        entry = createNodeEntry(node, outputHandles, contentKey, this.store.designerUIStore, this.store, this.#callbacks, this.#createSchemaEditor)
         created = true
       } else {
         if (entry.kind == 'comment') throw new Error('Unexpected Comment node entry.')
@@ -1090,6 +1097,7 @@ function createNodeEntry(
   designerUIStore: DesignerUIStore,
   designerStore: FlowDesignerStore,
   callbacks: ViewCallbacks,
+  createSchemaEditor: CreateSchemaEditorFn,
 ): SemanticNodeEntry {
   const nodeInputsFrom = inputsFrom(node)
   const variablePrefix = `${node.id}\0`
@@ -1132,14 +1140,14 @@ function createNodeEntry(
     additionalInputs: node.kind == 'task' && node.editableAdditionalInputs ? val(true) : undefined,
     additionalInputDefs: node.kind == 'task' && node.editableAdditionalInputs ? values.additionalInputDefs : undefined,
     showSettings,
-    createSchemaEditor: () => undefined,
+    createSchemaEditor,
   })
   inputSection.dispose.add(boundHandles)
   let previousInputValues = new Map(nodeInputsFrom.flatMap((input) => (Object.hasOwn(input, 'value') ? [[input.handle, input.value] as const] : [])))
   inputSection.dispose.add(
     values.inputsFrom.reaction((inputs) => {
       const inputValues = new Map((inputs ?? []).flatMap((input) => (Object.hasOwn(input, 'value') ? [[input.handle, input.value] as const] : [])))
-      if (!values.syncingInput && designerStore.$.editable.value) {
+      if (!values.applyingModel && designerStore.$.editable.value) {
         for (const handle of new Set([...previousInputValues.keys(), ...inputValues.keys()])) {
           if (previousInputValues.has(handle) == inputValues.has(handle) && Object.is(previousInputValues.get(handle), inputValues.get(handle))) continue
           callbacks.onChangeInput?.(node.id, handle, inputValues.get(handle))
@@ -1157,13 +1165,13 @@ function createNodeEntry(
   }
   const metadataDisposables = [
     values.description.reaction((description) => {
-      if (!values.syncingMetadata && designerStore.$.editable.value) callbacks.onChangeNodeDescription?.(node.id, description)
+      if (!values.applyingModel && designerStore.$.editable.value) callbacks.onChangeNodeDescription?.(node.id, description)
     }),
     values.rawIcon.reaction((icon) => {
-      if (!values.syncingMetadata && designerStore.$.editable.value) callbacks.onChangeNodeIcon?.(node.id, icon)
+      if (!values.applyingModel && designerStore.$.editable.value) callbacks.onChangeNodeIcon?.(node.id, icon)
     }),
     values.rawTitle.reaction((title) => {
-      if (!values.syncingMetadata && designerStore.$.editable.value) callbacks.onChangeNodeTitle?.(node.id, title)
+      if (!values.applyingModel && designerStore.$.editable.value) callbacks.onChangeNodeTitle?.(node.id, title)
     }),
   ]
   const changeDescription =
@@ -1207,7 +1215,7 @@ function createNodeEntry(
         showSettings,
       })
       const notifyChange = () => {
-        if (values.syncingCondition || !designerStore.$.editable.value) return
+        if (values.applyingModel || !designerStore.$.editable.value) return
         callbacks.onChangeCondition?.(node.id, conditionChange(values))
       }
       store = new ConditionNodeStore(node.id as NodeId, {
@@ -1232,7 +1240,7 @@ function createNodeEntry(
         handleOutputsTo: values.outputsTo,
         outputHandleDefs: values.outputDefs,
         showSettings,
-        createSchemaEditor: () => undefined,
+        createSchemaEditor,
       })
       store = new SubflowNodeStore(node.id as NodeId, {
         changeDescription,
@@ -1254,7 +1262,7 @@ function createNodeEntry(
         handleOutputsTo: values.outputsTo,
         outputHandleDefs: values.outputDefs,
         showSettings,
-        createSchemaEditor: () => undefined,
+        createSchemaEditor,
       })
       store = new TaskNodeStore(node.id as NodeId, {
         changeDescription,
@@ -1273,7 +1281,7 @@ function createNodeEntry(
       })
       if (node.editablePorts) {
         const changePorts = () => {
-          if (values.syncingPorts || !designerStore.$.editable.value) return
+          if (values.applyingModel || !designerStore.$.editable.value) return
           callbacks.onChangeTaskPorts?.(node.id, taskInputs(values.inputDefs.value), taskOutputs(values.outputDefs.value))
         }
         store.dispose.add(values.inputDefs.reaction(changePorts, true))
@@ -1282,7 +1290,7 @@ function createNodeEntry(
       if (node.editableAdditionalInputs) {
         store.dispose.add(
           values.additionalInputDefs.reaction((inputs) => {
-            if (values.syncingPorts || !designerStore.$.editable.value) return
+            if (values.applyingModel || !designerStore.$.editable.value) return
             callbacks.onChangeTaskAdditionalInputs?.(node.id, taskAdditionalInputs(inputs ?? []))
           }, true),
         )
@@ -1298,7 +1306,7 @@ function createNodeEntry(
         handleOutputsTo: values.outputsTo,
         outputHandleDefs: values.outputDefs,
         showSettings,
-        createSchemaEditor: () => undefined,
+        createSchemaEditor,
       })
       store = new TriggerNodeStore(node.id as NodeId, {
         changeDescription,
@@ -1306,19 +1314,19 @@ function createNodeEntry(
           callbacks.onChangeTriggerConfig == null
             ? undefined
             : (name, value) => {
-                if (designerStore.$.editable.value) callbacks.onChangeTriggerConfig?.(node.id, name, value)
+                if (!values.applyingModel && designerStore.$.editable.value) callbacks.onChangeTriggerConfig?.(node.id, name, value)
               },
         changeSchedule:
           callbacks.onChangeTriggerSchedule == null
             ? undefined
             : (schedule) => {
-                if (designerStore.$.editable.value) callbacks.onChangeTriggerSchedule?.(node.id, schedule)
+                if (!values.applyingModel && designerStore.$.editable.value) callbacks.onChangeTriggerSchedule?.(node.id, schedule)
               },
         changeWebhook:
           callbacks.onChangeWebhook == null
             ? undefined
             : (webhook) => {
-                if (designerStore.$.editable.value) callbacks.onChangeWebhook?.(node.id, webhook)
+                if (!values.applyingModel && designerStore.$.editable.value) callbacks.onChangeWebhook?.(node.id, webhook)
               },
         display$: {
           ...commonDisplay,
@@ -1343,7 +1351,7 @@ function createNodeEntry(
         handleOutputsTo: values.outputsTo,
         valueHandleDefs: defs,
         showSettings,
-        createSchemaEditor: () => undefined,
+        createSchemaEditor,
       })
       store = new ValueNodeStore(node.id as NodeId, {
         changeDescription,
@@ -1359,7 +1367,7 @@ function createNodeEntry(
       })
       store.dispose.add(
         valueSection.$.valueHandleDefs.reaction((nextDefs) => {
-          if (values.syncingValue || !designerStore.$.editable.value) return
+          if (values.applyingModel || !designerStore.$.editable.value) return
           callbacks.onChangeValue?.(
             node.id,
             (nextDefs ?? []).map((def) =>
@@ -1397,8 +1405,7 @@ function updateNodeEntry(
   connected: readonly HandleName[],
   contentKey: string,
 ): SemanticNodeEntry {
-  if (node.kind == 'condition') entry.values.syncingCondition = true
-  entry.values.syncingMetadata = true
+  entry.values.applyingModel = true
   entry.values.description.set(node.description)
   entry.values.diagnostics.set((node.diagnostics ?? 0) > 0)
   entry.values.concurrency.set(node.concurrency)
@@ -1409,16 +1416,12 @@ function updateNodeEntry(
   const nextInputDefs = inputDefs(node)
   const nextAdditionalInputDefs = additionalInputDefs(node)
   const nextOutputDefs = outputDefs(node)
-  entry.values.syncingPorts = true
   if (JSON.stringify(entry.values.inputDefs.value) != JSON.stringify(nextInputDefs)) entry.values.inputDefs.set(nextInputDefs)
   if (JSON.stringify(entry.values.additionalInputDefs.value) != JSON.stringify(nextAdditionalInputDefs)) {
     entry.values.additionalInputDefs.set(nextAdditionalInputDefs)
   }
-  entry.values.syncingInput = true
   entry.values.inputsFrom.set(inputsFrom(node))
-  entry.values.syncingInput = false
   if (JSON.stringify(entry.values.outputDefs.value) != JSON.stringify(nextOutputDefs)) entry.values.outputDefs.set(nextOutputDefs)
-  entry.values.syncingPorts = false
   entry.values.outputsTo.set([...connected])
   entry.values.progress.set(node.run?.progress)
   entry.values.reference.set(node.kind == 'task' || node.kind == 'subflow' ? node.reference : undefined)
@@ -1426,18 +1429,15 @@ function updateNodeEntry(
   entry.values.successCount.set(node.run?.successCount)
   entry.values.timeout.set(node.timeoutSeconds)
   entry.values.title.set(node.title)
-  entry.values.syncingMetadata = false
   if (node.kind == 'condition') {
     entry.values.conditionCases!.set(conditionCases(node))
     entry.values.defaultCondition!.set(node.defaultOutput == null ? undefined : { handle: node.defaultOutput as HandleName })
-    entry.values.syncingCondition = false
   }
   if (node.kind == 'value') {
-    entry.values.syncingValue = true
     entry.values.valueDefs!.set(valueDefs(node))
-    entry.values.syncingValue = false
   }
   if (node.kind == 'trigger') entry.values.triggerPresentation!.set(node.presentation)
+  entry.values.applyingModel = false
   return { ...entry, contentKey }
 }
 
@@ -1479,7 +1479,7 @@ function callbacksFromProps(props: FlowDesignerViewProps): ViewCallbacks {
 
 export function FlowDesignerView(props: FlowDesignerViewProps): ReactElement {
   const adapter = useMemo(
-    () => new FlowDesignerViewAdapter(props.model, props.editable, props.language ?? 'en', props.addItems, callbacksFromProps(props)),
+    () => new FlowDesignerViewAdapter(props.model, props.editable, props.language ?? 'en', props.addItems, callbacksFromProps(props), props.createSchemaEditor),
     [props.identity],
   )
   const propsRef = useRef(props)
