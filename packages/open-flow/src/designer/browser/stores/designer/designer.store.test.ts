@@ -136,21 +136,6 @@ describe('DesignerStore.nodeMiniMapPhase', () => {
 })
 
 describe('DesignerStore graph projection', () => {
-  it('publishes nodes and edges through one snapshot', () => {
-    const setup = createTestSetup()
-    const initial = setup.store.$.renderedRFGraph.value
-    const node = setup.createNode('node' as NodeId)
-
-    setup.nodes.set(node.nodeId, node)
-    const next = setup.store.$.renderedRFGraph.value
-
-    expect(next).not.toBe(initial)
-    expect(next.nodes).toBe(setup.store.$.rfNodes.value)
-    expect(next.edges).toBe(setup.store.$.renderedRFEdges.value)
-    expect(next.nodes).toEqual([node.$.rfNode.value])
-    setup.dispose()
-  })
-
   it('does not republish nodes for an unchanged measurement', async () => {
     const setup = createTestSetup()
     const node = setup.createNode('node' as NodeId)
@@ -158,11 +143,11 @@ describe('DesignerStore graph projection', () => {
     const change = { dimensions: { height: 120, width: 240 }, id: node.rfNodeId, type: 'dimensions' as const }
 
     await setup.store.handleNodesChange([change])
-    const measured = setup.store.$.renderedRFGraph.value
-    expect(measured.nodes[0]?.measured).toEqual(change.dimensions)
+    const measured = setup.store.$.rfNodes.value
+    expect(measured[0]?.measured).toEqual(change.dimensions)
     await setup.store.handleNodesChange([change])
 
-    expect(setup.store.$.renderedRFGraph.value).toBe(measured)
+    expect(setup.store.$.rfNodes.value).toBe(measured)
     setup.dispose()
   })
 
@@ -170,11 +155,11 @@ describe('DesignerStore graph projection', () => {
     const setup = createTestSetup()
     const node = setup.createNode('node' as NodeId)
     setup.nodes.set(node.nodeId, node)
-    const graph = setup.store.$.renderedRFGraph.value
+    const nodes = setup.store.$.rfNodes.value
 
     await setup.store.handleNodesChange([{ id: node.rfNodeId, position: { ...node.$.position.value }, type: 'position' }])
 
-    expect(setup.store.$.renderedRFGraph.value).toBe(graph)
+    expect(setup.store.$.rfNodes.value).toBe(nodes)
     setup.dispose()
   })
 })

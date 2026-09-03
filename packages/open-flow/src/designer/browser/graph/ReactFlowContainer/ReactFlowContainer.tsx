@@ -121,7 +121,8 @@ export interface ReactFlowContainerProps {
   editable: boolean
   nodeTypes?: NodeTypes
   edgeTypes?: EdgeTypes
-  graph$: ReadonlyVal<RFGraph>
+  nodes$: ReadonlyVal<RFGraph['nodes']>
+  edges$: ReadonlyVal<RFGraph['edges']>
   viewport$: Val<Viewport | undefined>
   focused$?: ReadonlyVal<boolean>
   canDeleteNodes?: boolean
@@ -475,7 +476,8 @@ const ReactFlowContainerInner = (props: ReactFlowContainerProps) => {
   const isMouse = interactiveMode === 'mouse'
   const overview = useVal(props.displayMode$) == 'overview'
 
-  const { nodes, edges: projectedEdges } = useVal(props.graph$)
+  const nodes = useVal(props.nodes$)
+  const projectedEdges = useVal(props.edges$)
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes])
   const deleteSelectedNodes = useCallback(async () => {
     if (await props.onBeforeDelete({ nodes: selectedNodes, edges: [] })) {

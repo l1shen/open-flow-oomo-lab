@@ -19,7 +19,6 @@ import type { NodeEntry } from './node.tsx'
 
 import { dispose } from '@wopjs/disposable'
 import { isEqual } from 'radash'
-import { unstable_batchedUpdates } from 'react-dom'
 import { arrayShallowEqual, val } from 'value-enhancer'
 import { reactiveMap } from 'value-enhancer/collections'
 import { isSameViewport } from '../../base/compare.ts'
@@ -91,7 +90,6 @@ export class FlowDesignerViewAdapter {
   #modelViewport: FlowDesignerViewViewport | undefined
   #pendingDisconnects = new Map<string, FlowDesignerViewEdge>()
   #runStatus: Val<FlowRunStatus>
-  #selectedNodeIds = new Set<string>()
   #variableInputs: Val<
     ReadonlyMap<
       string,
@@ -157,7 +155,7 @@ export class FlowDesignerViewAdapter {
       },
       showConfirmDialog: async () => true,
       onAddNode: async (_type, itemId, position, connection) =>
-        (await this.#callbacks.onAddNode(
+        (await this.addNode(
           itemId,
           position,
           connection == null
@@ -257,6 +255,23 @@ export class FlowDesignerViewAdapter {
     this.store.rfCommand.send('focusNode', nodeId as NodeId, { duration })
   }
 
+  async addNode(
+    itemId: string,
+    position: FlowDesignerViewPosition,
+    connection?: (nodeId: string) => Omit<FlowDesignerViewEdge, 'id'>,
+  ): Promise<string | undefined> {
+    const nodeId = await (connection == null ? this.#callbacks.onAddNode(itemId, position) : this.#callbacks.onAddNode(itemId, position, connection))
+    if (nodeId == null) return
+    void this.#selectNode(nodeId)
+    return nodeId
+  }
+
+  async #selectNode(nodeId: string): Promise<void> {
+    const node = await this.store.waitNode(nodeId as NodeId)
+    if (node == null) return
+    for (const entry of this.#entries.values()) entry.store.$$.selected.set(entry.store === node)
+  }
+
   #flushDisconnects(): void {
     this.#disconnectTimer = undefined
     const edges = [...this.#pendingDisconnects.values()]
@@ -270,21 +285,6 @@ export class FlowDesignerViewAdapter {
     if (editableChanged) this.store.$$.editable.set(editable)
     if (this.#language.value != language) this.#language.set(language)
     this.#syncModel(model)
-  }
-
-  setSelection(selectedNodeIds: readonly string[]): void {
-    const selected = new Set(selectedNodeIds)
-    const selectionChanged = selected.size != this.#selectedNodeIds.size || [...selected].some((nodeId) => !this.#selectedNodeIds.has(nodeId))
-    this.#selectedNodeIds = selected
-    if (selectionChanged) {
-      // Keep React Flow from observing and echoing an intermediate selection while nodes are updated.
-      unstable_batchedUpdates(() => {
-        for (const [nodeId, entry] of this.#entries) {
-          const value = selected.has(nodeId)
-          if (entry.store.$.selected.value != value) entry.store.$$.selected.set(value)
-        }
-      })
-    }
   }
 
   #menuItems(fromSource?: IFromSource): IAddNodeMenuItem[] {
@@ -356,7 +356,6 @@ export class FlowDesignerViewAdapter {
       const contentKey = JSON.stringify([content, outputHandles])
       let entry = this.#entries.get(node.id)
       let createdPosition = position
-      let created = false
       if (entry?.kind != node.kind) entry = undefined
       if (entry != null && entry.kind != 'comment' && entry.editable != this.store.$.editable.value) {
         const previousPosition = this.#modelPositions.get(node.id)
@@ -366,7 +365,6 @@ export class FlowDesignerViewAdapter {
       if (node.kind == 'comment') {
         if (entry?.kind != 'comment') {
           entry = createCommentNodeEntry(node, contentKey, this.store.designerUIStore, this.store, this.#callbacks)
-          created = true
         } else {
           if (entry.contentKey != contentKey) entry = updateCommentNodeEntry(entry, node, contentKey)
           const previousPosition = this.#modelPositions.get(node.id)
@@ -378,14 +376,12 @@ export class FlowDesignerViewAdapter {
           rfNode: { position: createdPosition },
         })
         entry = createNodeEntry(node, outputHandles, contentKey, this.store.designerUIStore, this.store, this.#callbacks, this.#createSchemaEditor)
-        created = true
       } else {
         if (entry.kind == 'comment') throw new Error('Unexpected Comment node entry.')
         if (entry.contentKey != contentKey) entry = updateNodeEntry(entry, node, outputHandles, contentKey)
         const previousPosition = this.#modelPositions.get(node.id)
         if (previousPosition == null || previousPosition.x != position.x || previousPosition.y != position.y) entry.store.$$.position.set(position)
       }
-      if (created && this.#selectedNodeIds.has(node.id)) entry.store.$$.selected.set(true)
       nextEntries.set(node.id, entry)
       if (entry.kind != 'comment') nextStores.set(node.id as NodeId, entry.store)
       nextPositions.set(node.id, position)
