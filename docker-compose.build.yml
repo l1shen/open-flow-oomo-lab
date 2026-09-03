@@ -1,0 +1,12 @@
+# Build overlay for local development.
+#
+# Builds the image from apps/server/Dockerfile instead of pulling the published
+# one, and tags it with the image name from docker-compose.yml.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+services:
+  open-flow:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
