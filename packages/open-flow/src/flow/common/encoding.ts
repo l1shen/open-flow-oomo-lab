@@ -127,6 +127,23 @@ function canonicalNode(value: GraphNode): JsonValue {
     }
     case 'value':
       return { ...common, kind: value.kind, values: canonicalPorts(value.values) }
+    case 'wait':
+      return {
+        ...common,
+        actions: value.actions,
+        input: { handle: value.input.handle, ...canonicalPort(value.input) },
+        kind: value.kind,
+        ...(value.notification == null
+          ? {}
+          : {
+              notification: {
+                inputs: canonicalInputs(value.notification.inputs),
+                messageHandle: value.notification.messageHandle,
+                taskId: value.notification.taskId,
+              },
+            }),
+        prompt: value.prompt,
+      }
   }
 }
 

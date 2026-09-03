@@ -6,6 +6,7 @@ import type { InteractiveMode } from './designer.store.ts'
 import { val } from 'value-enhancer'
 import { reactiveMap } from 'value-enhancer/collections'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { CommentNodeStore } from '../node/commentNode.store.ts'
 import { NODE_STATUS, NODE_TYPE } from '../node/constants.ts'
 import { NodeStore } from '../node/node.store.ts'
 import { DesignerStore } from './designer.store.ts'
@@ -164,9 +165,46 @@ describe('DesignerStore graph projection', () => {
     expect(setup.store.$.renderedRFGraph.value).toBe(measured)
     setup.dispose()
   })
+
+  it('does not republish nodes for an unchanged position', async () => {
+    const setup = createTestSetup()
+    const node = setup.createNode('node' as NodeId)
+    setup.nodes.set(node.nodeId, node)
+    const graph = setup.store.$.renderedRFGraph.value
+
+    await setup.store.handleNodesChange([{ id: node.rfNodeId, position: { ...node.$.position.value }, type: 'position' }])
+
+    expect(setup.store.$.renderedRFGraph.value).toBe(graph)
+    setup.dispose()
+  })
 })
 
 describe('DesignerStore display mode', () => {
+  it('keeps comment positions independent across layouts', () => {
+    const nodes = reactiveMap<NodeId, NodeStore>()
+    const comments = reactiveMap<NodeId, CommentNodeStore>()
+    const viewport = val<{ x: number; y: number; zoom: number } | undefined>()
+    const ui = new DesignerUIStore({ commentNodeStores: comments, nodeStores: nodes, viewport })
+    ui.loadDesignerUIData({ commentNodes: { note: { rfNode: { position: { x: 10, y: 20 } } } } }, 'detail')
+    const note = new CommentNodeStore('note' as NodeId, {
+      designerUIStore: ui,
+      lang: val('en'),
+      mountCodeEditor: () => undefined,
+      preview: val(null),
+    })
+    comments.set(note.nodeId, note)
+
+    ui.switchDisplayMode('detail', 'overview')
+    note.$$.position.set({ x: 100, y: 200 })
+    ui.switchDisplayMode('overview', 'detail')
+
+    expect(note.$.position.value).toEqual({ x: 10, y: 20 })
+    expect(ui.toUIData()?.layouts?.detail?.commentNodes).toEqual({ note: { x: 10, y: 20 } })
+    expect(ui.toUIData()?.layouts?.overview?.commentNodes).toEqual({ note: { x: 100, y: 200 } })
+    note.dispose()
+    ui.dispose()
+  })
+
   it('does not persist session display changes in project UI data', () => {
     const setup = createTestSetup()
     const onUIChanged = vi.fn()

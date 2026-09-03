@@ -10,7 +10,20 @@ import type {
   FlowDesignerViewTriggerNode,
 } from '../../../designer/browser/graph/FlowDesigner/FlowDesignerView.tsx'
 import type { FlowDisplayMode } from '../../../designer/common/flowDisplay.ts'
-import type { ConnectorAction, ConnectorConnection, Diagnostic, Draft, GraphNode, Group, JsonValue, Run, RunEvent, TaskDefinition, TriggerNode } from './api.ts'
+import type {
+  ConnectorAction,
+  ConnectorConnection,
+  Diagnostic,
+  Draft,
+  GraphNode,
+  Group,
+  JsonValue,
+  Run,
+  RunDetails,
+  RunEvent,
+  TaskDefinition,
+  TriggerNode,
+} from './api.ts'
 import type { DesignerTarget } from './designer/flowChanges.ts'
 import type { ResolvedNode, ResolvedSelection, RevisionView } from './revisionView.ts'
 
@@ -109,6 +122,8 @@ function nodeTitle(node: ResolvedNode, t?: TFunction): string {
       return t?.('addNode.condition') ?? 'Condition'
     case 'value':
       return t?.('addNode.value') ?? 'Value'
+    case 'wait':
+      return 'Wait'
     case 'subflow':
       return node.definition?.name ?? node.node.subflowId
     case 'task':
@@ -262,6 +277,14 @@ function nodePorts(node: ResolvedSelection): NodePorts {
       }
       break
     }
+    case 'wait': {
+      const input = node.node.input
+      inputs.set(input.handle, { defaultValue: input.value, description: input.description, jsonSchema: input.jsonSchema, nullable: input.nullable })
+      for (const action of node.node.actions) {
+        outputs.set(action, { description: input.description, jsonSchema: input.jsonSchema, nullable: input.nullable })
+      }
+      break
+    }
     case 'subflow': {
       const definition = node.definition
       for (const port of definition?.inputs ?? []) {
@@ -352,12 +375,15 @@ function nodeDiagnosticCount(target: DesignerTarget, node: ResolvedNode, diagnos
 function runProjection(
   revision: RevisionView,
   target: DesignerTarget,
-  run: Run | undefined,
+  run: Run | RunDetails | undefined,
   events: readonly RunEvent[],
 ): { readonly nodes: ReadonlyMap<string, FlowDesignerViewNodeRun>; readonly status?: 'idle' | 'running' } {
   if (target.kind != 'flow' || run?.flowId != revision.revision.flowId || run.revisionId != revision.revision.revisionId) return { nodes: new Map() }
-  const active = run.status == 'queued' || run.status == 'starting' || run.status == 'running'
+  const active = run.status == 'queued' || run.status == 'starting' || run.status == 'running' || run.status == 'waiting'
   const nodes = new Map<string, FlowDesignerViewNodeRun>()
+  if (run.status == 'waiting' && 'waiting' in run && run.waiting != null) {
+    nodes.set(run.waiting.nodeId, { status: 'waiting' })
+  }
   const rootScopeId = events.find((event) => event.kind == 'run.started' && event.payload.flowId == revision.revision.flowId)?.payload.scopeId
   if (typeof rootScopeId != 'string') return { nodes, status: active ? 'running' : 'idle' }
   for (const event of events) {
@@ -746,6 +772,24 @@ function semanticDesignerNode(nodeId: string, resolved: ResolvedNode, ports: Nod
       }
     case 'value':
       return { ...common, kind: node.kind, values: node.values.map((port) => Object.assign({}, port)) }
+    case 'wait': {
+      const noticeTask = node.notification == null ? undefined : context.revision.task(node.notification.taskId)
+      const action = noticeTask?.executor.kind == 'connector' ? context.connectorActions[noticeTask.executor.action] : undefined
+      const name = (action?.name ?? noticeTask?.name)?.replaceAll('_', ' ')
+      const target = name == null ? undefined : action == null ? name : `${action.serviceName} · ${name}`
+      return {
+        ...common,
+        kind: node.kind,
+        ...(target == null
+          ? {}
+          : {
+              notice: {
+                ...(action == null ? {} : { icon: providerIcon(action) }),
+                text: `${context.t?.('inspector.wait.notificationTask') ?? 'Notification'} · ${target}`,
+              },
+            }),
+      }
+    }
   }
 }
 
@@ -757,7 +801,7 @@ export function designerGraph(
   connectorActions: Readonly<Record<string, ConnectorAction>> = {},
   connectionCatalogs: Readonly<Record<string, ConnectionCatalog>> = {},
   t?: TFunction,
-  run?: Run,
+  run?: Run | RunDetails,
   runEvents: readonly RunEvent[] = [],
   variableNames: readonly string[] = [],
   variableNamesLoaded = false,

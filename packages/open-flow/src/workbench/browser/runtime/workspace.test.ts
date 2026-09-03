@@ -138,6 +138,91 @@ describe('Designer port projection', () => {
     expect(authenticatedNode).toMatchObject({ diagnostics: 1, executorName: 'connection required' })
   })
 
+  it('projects a Wait notification summary from its Connector Action', () => {
+    const draft: NonNullable<Parameters<typeof designerGraph>[0]> = {
+      actorId: 'actor',
+      content: {
+        document: {
+          bindings: {},
+          graph: {
+            nodes: {
+              wait: {
+                actions: ['approve', 'reject'],
+                concurrency: 1,
+                input: { handle: 'value', jsonSchema: {}, nullable: true, value: null },
+                inputs: {},
+                kind: 'wait',
+                notification: { inputs: {}, messageHandle: 'text', taskId: 'notify' },
+                prompt: 'Review this request.',
+              },
+            },
+          },
+          subflows: {},
+          tasks: {
+            notify: {
+              executor: { action: 'feishu.send-text-message', kind: 'connector' },
+              inputs: [{ handle: 'text', jsonSchema: { type: 'string' }, nullable: false }],
+              name: 'send_text_message',
+              outputs: [],
+            },
+          },
+        },
+        modelVersion: 1,
+        modules: {},
+      },
+      createdAt: '2026-09-02T00:00:00.000Z',
+      digest: 'digest',
+      flowId: 'flow',
+      modelVersion: 1,
+      parentRevisionId: null,
+      revisionId: 'revision',
+      version: 1,
+    }
+    const action = {
+      actionId: 'feishu.send-text-message',
+      authenticated: true,
+      description: 'Send a text message.',
+      inputs: {},
+      name: 'Send text message',
+      outputs: {},
+      serviceId: 'feishu-custom-bot',
+      serviceName: 'Feishu Custom Bot',
+    }
+
+    expect(designerGraph(draft, { kind: 'flow' }).nodes[0]).toMatchObject({ notice: { text: 'Notification · send text message' } })
+    expect(designerGraph(draft, { kind: 'flow' }, {}, [], { [action.actionId]: action }).nodes[0]).toMatchObject({
+      notice: {
+        icon: providerIcon(action),
+        text: 'Notification · Feishu Custom Bot · Send text message',
+      },
+    })
+
+    const waiting = {
+      closureDigest: 'closure',
+      createdAt: '2026-09-02T00:00:00.000Z',
+      engineContract: 'open-flow-engine/v1',
+      engineDigest: 'sha256:engine',
+      flowId: draft.flowId,
+      modelVersion: 1,
+      revisionDigest: draft.digest,
+      revisionId: draft.revisionId,
+      runId: 'run',
+      source: 'draft',
+      startedAt: '2026-09-02T00:00:01.000Z',
+      status: 'waiting',
+      version: 1,
+      waiting: {
+        actions: ['approve', 'reject'],
+        expiresAt: '2026-09-09T00:00:02.000Z',
+        nodeId: 'wait',
+        prompt: 'Review this request.',
+        waitId: '123456789012345678901',
+        waitingSince: '2026-09-02T00:00:02.000Z',
+      },
+    } as const
+    expect(designerGraph(draft, { kind: 'flow' }, {}, [], {}, {}, undefined, waiting).nodes[0]).toMatchObject({ run: { status: 'waiting' } })
+  })
+
   it('projects missing Trigger config diagnostics onto their fields', () => {
     const draft: NonNullable<Parameters<typeof designerGraph>[0]> = {
       actorId: 'actor',
