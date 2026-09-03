@@ -16,6 +16,7 @@ interface State {
   readonly loading: boolean
   readonly loadingMore: boolean
   readonly loadMoreFailed: boolean
+  readonly refreshing: boolean
   readonly nextCursor?: string
   readonly flows: readonly Flow[]
   readonly total?: number
@@ -26,6 +27,7 @@ export interface FlowCatalog$ {
   readonly loading: ReadonlyVal<boolean>
   readonly loadingMore: ReadonlyVal<boolean>
   readonly loadMoreFailed: ReadonlyVal<boolean>
+  readonly refreshing: ReadonlyVal<boolean>
   readonly nextCursor: ReadonlyVal<string | undefined>
   readonly flows: ReadonlyVal<readonly Flow[]>
   readonly total: ReadonlyVal<number | undefined>
@@ -37,6 +39,7 @@ const initialState: State = {
   loading: true,
   loadingMore: false,
   loadMoreFailed: false,
+  refreshing: false,
   flows: [],
 }
 
@@ -58,6 +61,7 @@ export class FlowCatalog {
       loading: derive(this.#state, (state) => state.loading),
       loadingMore: derive(this.#state, (state) => state.loadingMore),
       loadMoreFailed: derive(this.#state, (state) => state.loadMoreFailed),
+      refreshing: derive(this.#state, (state) => state.refreshing),
       nextCursor: derive(this.#state, (state) => state.nextCursor),
       flows: derive(this.#state, (state) => state.flows),
       total: derive(this.#state, (state) => state.total),
@@ -85,36 +89,42 @@ export class FlowCatalog {
 
   public async reload(): Promise<void> {
     const current = this.#session.begin()
-    this.#set({
-      failed: false,
-      loaded: false,
-      loading: true,
-      loadingMore: false,
-      loadMoreFailed: false,
-      nextCursor: undefined,
-      flows: [],
-      total: undefined,
-    })
+    const loaded = this.#state.value.loaded
+    if (loaded) {
+      this.#set({ failed: false, loadingMore: false, loadMoreFailed: false, refreshing: true })
+    } else {
+      this.#set({
+        failed: false,
+        loading: true,
+        loadingMore: false,
+        loadMoreFailed: false,
+        refreshing: false,
+        nextCursor: undefined,
+        flows: [],
+        total: undefined,
+      })
+    }
     try {
       const page = await this.#client.listFlows({ includeTotal: true, limit: pageLimit })
       if (!current()) return
       this.#set({
         loaded: true,
         loading: false,
+        refreshing: false,
         nextCursor: page.nextCursor,
         flows: page.flows,
         total: page.total,
       })
     } catch (error) {
       if (!current()) return
-      this.#set({ failed: true, loading: false })
+      this.#set({ failed: !loaded, loading: false, refreshing: false })
       this.#setNotice(errorNotice(error, this.#i18n.t))
     }
   }
 
   public async loadMore(): Promise<void> {
-    const { loadingMore, nextCursor } = this.#state.value
-    if (loadingMore || nextCursor == null) return
+    const { loadingMore, nextCursor, refreshing } = this.#state.value
+    if (loadingMore || refreshing || nextCursor == null) return
     const current = this.#session.capture()
     this.#set({ loadingMore: true, loadMoreFailed: false })
     try {
