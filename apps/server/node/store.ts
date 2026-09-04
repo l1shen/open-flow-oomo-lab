@@ -1416,10 +1416,10 @@ export class Store {
       .run(runId, cursor, kind, JSON.stringify(payload), value === undefined ? null : JSON.stringify(value), this.#clock())
   }
 
-  #finishRun(runId: string, status: RunTerminalStatus, result: unknown, condition: string, finishedAt: number): boolean {
+  #finishRun(runId: string, status: RunTerminalStatus, result: unknown, condition: string, finishedAt: number, ...conditionParams: readonly string[]): boolean {
     const changed = this.#database
       .prepare(`UPDATE runs SET status = ?, result = ?, finished_at = ?, events_expires_at = ? WHERE run_id = ? AND ${condition}`)
-      .run(status, JSON.stringify(result), finishedAt, finishedAt + this.#runEventRetentionMs, runId)
+      .run(status, JSON.stringify(result), finishedAt, finishedAt + this.#runEventRetentionMs, runId, ...conditionParams)
     if (changed.changes != 1) return false
     this.#database.prepare('UPDATE run_waits SET checkpoint_json = NULL WHERE run_id = ?').run(runId)
     this.#database.prepare('DELETE FROM wait_notifications WHERE run_id = ?').run(runId)
@@ -1587,8 +1587,9 @@ export class Store {
           row.runId,
           'indeterminate',
           { error: { code: 'execution.resume-unavailable', message: 'The stored Wait checkpoint is unavailable.' } },
-          `status = '${row.status}'`,
+          'status = ?',
           this.#clock(),
+          row.status,
         ),
       )
     }
