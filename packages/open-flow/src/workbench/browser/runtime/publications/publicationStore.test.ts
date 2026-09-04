@@ -116,4 +116,143 @@ describe('PublicationStore', () => {
       workspace.dispose()
     }
   })
+
+  it('keeps loaded Publications visible while refreshing the same Flow', async () => {
+    const refreshed = Promise.withResolvers<Response>()
+    let liveReads = 0
+    const nextPublication = { ...publication, publicationId: 'publication-2' }
+    const request = vi.fn(async (path: string) => {
+      if (path == '/v1/flows/flow-1/live') {
+        liveReads += 1
+        if (liveReads == 1) {
+          return Response.json({ flowId: 'flow-1', hasUnpublishedChanges: false, publication, revision: 1, status: 'runnable', version: 1 })
+        }
+        return await refreshed.promise
+      }
+      if (path == '/v1/flows/flow-1/publications?limit=50&includeTotal=true') {
+        return Response.json({ publications: liveReads == 1 ? [publication] : [nextPublication, publication], total: liveReads, version: 1 })
+      }
+      if (path == '/v1/flows/flow-1/triggers') return Response.json({ bindings: [], flowId: 'flow-1', version: 1 })
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    const client = new WorkbenchClient(request)
+    const workspace = new WorkspaceStore(client, vi.fn())
+    const store = new PublicationStore(client, workspace, vi.fn(), { getItem: () => null, setItem: vi.fn() })
+
+    try {
+      await store.load('flow-1')
+
+      const refreshing = store.load('flow-1')
+      expect(store.$.loading.value).toBe(false)
+      expect(store.$.refreshing.value).toBe(true)
+      expect(store.$.publications.value).toEqual([publication])
+      expect(store.$.live.value?.publication?.publicationId).toBe(publication.publicationId)
+
+      refreshed.resolve(
+        Response.json({ flowId: 'flow-1', hasUnpublishedChanges: false, publication: nextPublication, revision: 2, status: 'runnable', version: 1 }),
+      )
+      await refreshing
+
+      expect(store.$.refreshing.value).toBe(false)
+      expect(store.$.publications.value.map((item) => item.publicationId)).toEqual(['publication-2', 'publication-1'])
+      expect(store.$.live.value?.publication?.publicationId).toBe(nextPublication.publicationId)
+    } finally {
+      store.dispose()
+      workspace.dispose()
+    }
+  })
+
+  it('does not let an older operation refresh replace a newer load', async () => {
+    const oldRefresh = Promise.withResolvers<Response>()
+    const oldPublication = { ...publication, publicationId: 'publication-old', revisionId: 'revision-old' }
+    const nextPublication = { ...publication, publicationId: 'publication-next', revisionId: 'revision-next' }
+    let liveReads = 0
+    let publicationReads = 0
+    const request = vi.fn(async (path: string) => {
+      if (path == '/v1/flows/flow-1/live') {
+        liveReads += 1
+        if (liveReads == 2) return await oldRefresh.promise
+        const current = liveReads == 1 ? publication : nextPublication
+        return Response.json({ flowId: 'flow-1', hasUnpublishedChanges: false, publication: current, revision: liveReads, status: 'runnable', version: 1 })
+      }
+      if (path == '/v1/flows/flow-1/publications?limit=50&includeTotal=true') {
+        publicationReads += 1
+        const publications = publicationReads == 1 ? [publication] : publicationReads == 2 ? [oldPublication] : [nextPublication]
+        return Response.json({ publications, total: 1, version: 1 })
+      }
+      if (path == '/v1/flows/flow-1/triggers') return Response.json({ bindings: [], flowId: 'flow-1', version: 1 })
+      if (path == `/v1/flows/flow-1/publications/${oldPublication.publicationId}/rollback`) return Response.json(oldPublication)
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    const client = new WorkbenchClient(request)
+    const workspace = new WorkspaceStore(client, vi.fn())
+    vi.spyOn(workspace, 'refreshFlows').mockResolvedValue()
+    const updateLive = vi.spyOn(workspace, 'updateLive')
+    const store = new PublicationStore(client, workspace, vi.fn(), { getItem: () => null, setItem: vi.fn() })
+
+    try {
+      await store.load('flow-1')
+
+      const rollback = store.rollback(oldPublication)
+      await vi.waitFor(() => expect(liveReads).toBe(2))
+      await store.load('flow-1')
+
+      expect(store.$.live.value?.publication?.publicationId).toBe(nextPublication.publicationId)
+      expect(store.$.publications.value).toEqual([nextPublication])
+
+      oldRefresh.resolve(
+        Response.json({ flowId: 'flow-1', hasUnpublishedChanges: false, publication: oldPublication, revision: 2, status: 'runnable', version: 1 }),
+      )
+      await rollback
+
+      expect(store.$.live.value?.publication?.publicationId).toBe(nextPublication.publicationId)
+      expect(store.$.publications.value).toEqual([nextPublication])
+      expect(updateLive).toHaveBeenLastCalledWith(expect.objectContaining({ publication: nextPublication }))
+    } finally {
+      store.dispose()
+      workspace.dispose()
+    }
+  })
+
+  it('clears refreshing when an operation refresh replaces a warm load and fails', async () => {
+    const warmLive = Promise.withResolvers<Response>()
+    const oldPublication = { ...publication, publicationId: 'publication-old', revisionId: 'revision-old' }
+    let liveReads = 0
+    const request = vi.fn(async (path: string) => {
+      if (path == '/v1/flows/flow-1/live') {
+        liveReads += 1
+        if (liveReads == 2) return await warmLive.promise
+        if (liveReads == 3) throw new Error('Refresh failed')
+        return Response.json({ flowId: 'flow-1', hasUnpublishedChanges: false, publication, revision: 1, status: 'runnable', version: 1 })
+      }
+      if (path == '/v1/flows/flow-1/publications?limit=50&includeTotal=true') {
+        return Response.json({ publications: [publication], total: 1, version: 1 })
+      }
+      if (path == '/v1/flows/flow-1/triggers') return Response.json({ bindings: [], flowId: 'flow-1', version: 1 })
+      if (path == `/v1/flows/flow-1/publications/${oldPublication.publicationId}/rollback`) return Response.json(oldPublication)
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    const client = new WorkbenchClient(request)
+    const workspace = new WorkspaceStore(client, vi.fn())
+    const store = new PublicationStore(client, workspace, vi.fn(), { getItem: () => null, setItem: vi.fn() })
+
+    try {
+      await store.load('flow-1')
+
+      const loading = store.load('flow-1')
+      await vi.waitFor(() => expect(liveReads).toBe(2))
+      expect(store.$.refreshing.value).toBe(true)
+
+      expect(await store.rollback(oldPublication)).toBe(false)
+      expect(store.$.refreshing.value).toBe(false)
+      expect(store.$.publications.value).toEqual([publication])
+
+      warmLive.resolve(Response.json({ flowId: 'flow-1', hasUnpublishedChanges: false, publication, revision: 1, status: 'runnable', version: 1 }))
+      await loading
+      expect(store.$.refreshing.value).toBe(false)
+    } finally {
+      store.dispose()
+      workspace.dispose()
+    }
+  })
 })
