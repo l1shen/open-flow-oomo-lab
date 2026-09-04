@@ -28,6 +28,7 @@ import { inertFilter, inertFilterMap } from '@wopjs/cast'
 import { disposableStore, dispose } from '@wopjs/disposable'
 import { compute, derive } from 'value-enhancer'
 import { reactiveMap } from 'value-enhancer/collections'
+import { Document } from 'yaml'
 import { dirname } from '../../../../base/common/posixPath.ts'
 import { getReactiveValue } from '../../../../base/common/reactivity.ts'
 import { createWeakMemoizedFunction } from '../../../../base/common/weakMemoize.ts'
@@ -37,7 +38,7 @@ import { WritableSubflowNodeManifest } from '../../writable/node/writableSubflow
 import { WritableTaskNodeManifest } from '../../writable/node/writableTaskNodeManifest.ts'
 import { WritableTriggerNodeManifest } from '../../writable/node/writableTriggerNodeManifest.ts'
 import { WritableValueNodeManifest } from '../../writable/node/writableValueNodeManifest.ts'
-import { getYamlNode, parseYamlDoc, stringify } from '../../yaml.ts'
+import { getYamlNode } from '../../yaml.ts'
 import { ValueBlockMeta } from '../block/valueBlockMeta.ts'
 import { NodeMeta } from '../nodeMeta.ts'
 import { FlowLikeMetaKind } from './internal.ts'
@@ -131,8 +132,7 @@ export abstract class FlowLikeMeta<TManifest extends WritableFlowLikeManifest = 
 
     for (const option of Array.isArray(options) ? options : [options]) {
       const { type, data } = option
-      // FIXME: Construct the YAML document directly from the JavaScript object.
-      const doc = parseYamlDoc(stringify({ data }))
+      const doc = new Document({ data })
       const yamlParent = getYamlNode(doc, 'data').unwrap() as YamlMap
       switch (type) {
         case 'task': {
