@@ -25,4 +25,7 @@ export default defineConfig(({ command }) => ({
   server: {
     proxy: { [serverPathPattern]: { target: process.env.OPEN_FLOW_DEV_API_ORIGIN ?? 'http://127.0.0.1:3001' } },
   },
+  optimizeDeps: {
+    entries: ['index.html', '../../packages/open-flow/src/workbench/browser/typeScriptWorker.ts'],
+  },
 }))
